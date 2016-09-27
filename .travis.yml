@@ -4,8 +4,13 @@ os:
   - osx
 compiler:
     - clang
+env:
+    - NINJA_JOBS=2
 addons:
    apt:
+    sources:
+    - george-edison55-precise-backports
+    - ubuntu-toolchain-r-test
     packages:
     - cmake
     - ninja-build

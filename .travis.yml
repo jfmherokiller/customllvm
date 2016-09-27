@@ -4,6 +4,7 @@ os:
   - osx
 compiler:
     - clang
+sudo: required
 env:
     - NINJA_JOBS=2
 addons:
@@ -13,6 +14,7 @@ addons:
     - ubuntu-toolchain-r-test
     packages:
     - cmake
+    - cmake-data
     - ninja-build
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update ; fi

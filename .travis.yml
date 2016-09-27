@@ -14,6 +14,8 @@ addons:
     packages:
     - ninja-build
     - clang
+    - g++-4.8
+    - gcc-4.8
 before_install:
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then wget --no-check-certificate http://cmake.org/files/v3.4/cmake-3.4.3-Linux-x86_64.tar.gz   ;fi
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then tar -xzf cmake-3.4.3-Linux-x86_64.tar.gz                                                  ;fi
@@ -22,7 +24,8 @@ before_install:
 - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then export PATH=$PWD/cmake-3.4.3-Linux-x86_64/bin:$PATH
   ;fi
 - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update ; fi
-- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install ninja; fi
+- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew reinstall ninja; fi
+- if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew unlink cmake; fi
 - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install cmake; fi
 script: "./SetupEnv.sh"
 notifications:
@@ -33,5 +36,8 @@ deploy:
     secure: NjiFuSIHoeCcS47WK0a6pdwNArf7u0yNcg0YeiggqwqTuaOKYNChx6dXuTY69Eps47pTkMt7a+RE+ZhPEIXlRMEGCBDObs9gWgU5RD3eRL6L1LjP/CU3weVQpvGrTGHhQ/Zi828dDtDiCMXQvdTpRa4rfUNpWGcACf+2jX/6bT4AtB9F2IotITKpLFc1zBUVOM9f9UdzPsQKUjZmXGT92H/zoWzTaydGYbXGjB8tXMd/x9I+O5tXkFXeZB4H6j+NGwUuOi1f90j3ALgQrSCDWXvkU+H+V1yGWRuYLYgi+GZlI9NIrS12MAKLcQSylpYqj8Sp3gWLz8o0fBwiJfQGyyEf9iER7cyaBfMYu4ZHjaagzWG6Y5v3kzcR65jnOVTSdTN6jAghUZ2y4IPI+4mBzPuU7Zjin2E43cl9K1HOuRhYfyL2cnq7NCLQbJ44k497Qw80UdH4c09832J3U1bUCLclhlyaFq+RVLlKgWb+8wUbrwWCdz58aG3yAjalzC4ot6xdKWjj8ip2Py6Lmo4Pesu1/Gufmu+72Yy4KwKD7ICCEQdnYMcRefkEnm726f7o7RI3Y854U4VOIqTagQbut/hSbuB481AdQYYnRwACTHHlSGoKe4vCYNPzhkhoODfauMwouRC2dEm7EqK3SmvgQRSwD6b7Y5snOwNhau0dj6U=
   file: myllvm.tar.gz
   skip_cleanup: true
+
   on:
+    all_branches: true
+    tags: true
     repo: jfmherokiller/customllvm

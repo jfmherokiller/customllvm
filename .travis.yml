@@ -4,7 +4,6 @@ os:
   - osx
 compiler:
     - clang
-sudo: required
 env:
     - NINJA_JOBS=2
 addons:

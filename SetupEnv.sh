@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -ev
 export WORKDIR=`pwd`;
 export INSTALLDIR=$WORKDIR

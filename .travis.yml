@@ -2,10 +2,10 @@ language: c++
 os:
   - linux
   - osx
-  compiler:
-  - clang
+compiler:
+    - clang
 addons:
-  apt:
+   apt:
     packages:
     - cmake
     - ninja

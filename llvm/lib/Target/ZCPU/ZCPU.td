@@ -1,4 +1,4 @@
-//===-- Sparc.td - Describe the Sparc Target Machine -------*- tablegen -*-===//
+//===-- ZCPU.td - Describe the ZCPU Target Machine -------*- tablegen -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -22,3 +22,42 @@ include "llvm/Target/Target.td"
 def FeatureZGPU
   : SubtargetFeature<"gpu", "IsZGPU", "true",
                      "Enable ZGPU instructions">;
+
+//===----------------------------------------------------------------------===//
+// Register File, Calling Conv, Instruction Descriptions
+//===----------------------------------------------------------------------===//
+include "ZCPURegisterInfo.td"
+include "ZCPUCallingConv.td"
+include "ZCPUSchedule.td"
+include "ZCPUInstrInfo.td"
+
+def ZCPUInstrInfo : InstrInfo;
+
+def ZCPUAsmParser : AsmParser {
+  bit ShouldEmitMatchRegisterName = 0;
+}
+//===----------------------------------------------------------------------===//
+// ZCPU processors supported.
+//===----------------------------------------------------------------------===//
+class Proc<string Name, list<SubtargetFeature> Features>
+ : Processor<Name, NoItineraries, Features>;
+
+def : Proc<"generic",         []>;
+def : Proc<"ZGPU",              [FeatureZGPU]>; 
+
+//===----------------------------------------------------------------------===//
+// Declare the target which we are implementing
+//===----------------------------------------------------------------------===//
+
+def ZCPUAsmWriter : AsmWriter {
+  string AsmWriterClassName  = "InstPrinter";
+  int PassSubtarget = 1;
+  int Variant = 0;
+}
+
+def ZCPU : Target {
+  // Pull in Instruction Info:
+  let InstructionSet = ZCPUInstrInfo;
+  let AssemblyParsers  = [ZCPUAsmParser];
+  let AssemblyWriters = [ZCPUAsmWriter];
+}

@@ -69,4 +69,7 @@ def SS : ZCPUReg<"ss", 2>;
 def ES : ZCPUReg<"es", 0>;
 def FS : ZCPUReg<"fs", 4>;
 def GS : ZCPUReg<"gs", 5>;
+def KS : ZCPUReg<"ks", 6>;
+def LS : ZCPUReg<"ls", 7>;
+
 //TODO: These Registers can suck it

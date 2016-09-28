@@ -7,6 +7,8 @@ compiler:
 - clang
 env:
 - NINJA_JOBS=2
+- if [ "$CC"  == "clang" ]; then ln -s $(which ccache) $HOME/clang && ln -s $(which ccache) $HOME/clang++ && export PATH=$HOME:$PATH; fi
+- ccache -z -M 100M
 addons:
   apt:
     sources:
@@ -31,6 +33,7 @@ before_install:
 script: "./SetupEnv.sh"
 notifications:
   email: false
+before_cache: ccache -s
 before_deploy:
   - cd "llvm-build"
   - export RELEASE_TAR_FILE=$(ls *.tar.gz)

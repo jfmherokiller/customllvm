@@ -30,6 +30,7 @@ script: "./SetupEnv.sh"
 notifications:
   email: false
 before_deploy:
+  - cd "llvm-build"
   - export RELEASE_TAR_FILE=$(ls *.tar.gz)
   - echo "deploying $RELEASE_TAR_FILE to GitHub releases"
 deploy:

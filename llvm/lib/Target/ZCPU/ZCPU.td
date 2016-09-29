@@ -27,15 +27,15 @@ def FeatureZGPU
 // Register File, Calling Conv, Instruction Descriptions
 //===----------------------------------------------------------------------===//
 include "ZCPURegisterInfo.td"
-include "ZCPUCallingConv.td"
-include "ZCPUSchedule.td"
-include "ZCPUInstrInfo.td"
+//include "ZCPUCallingConv.td"
+//include "ZCPUSchedule.td"
+//include "ZCPUInstrInfo.td"
 
-def ZCPUInstrInfo : InstrInfo;
+;def ZCPUInstrInfo : InstrInfo;
 
-def ZCPUAsmParser : AsmParser {
-  bit ShouldEmitMatchRegisterName = 0;
-}
+;def ZCPUAsmParser : AsmParser {
+;  bit ShouldEmitMatchRegisterName = 0;
+;}
 //===----------------------------------------------------------------------===//
 // ZCPU processors supported.
 //===----------------------------------------------------------------------===//
@@ -49,15 +49,15 @@ def : Proc<"ZGPU",              [FeatureZGPU]>;
 // Declare the target which we are implementing
 //===----------------------------------------------------------------------===//
 
-def ZCPUAsmWriter : AsmWriter {
-  string AsmWriterClassName  = "InstPrinter";
-  int PassSubtarget = 1;
-  int Variant = 0;
-}
+;def ZCPUAsmWriter : AsmWriter {
+;  string AsmWriterClassName  = "InstPrinter";
+;  int PassSubtarget = 1;
+;  int Variant = 0;
+;}
 
 def ZCPU : Target {
   // Pull in Instruction Info:
-  let InstructionSet = ZCPUInstrInfo;
-  let AssemblyParsers  = [ZCPUAsmParser];
-  let AssemblyWriters = [ZCPUAsmWriter];
+;  let InstructionSet = ZCPUInstrInfo;
+;  let AssemblyParsers  = [ZCPUAsmParser];
+;  let AssemblyWriters = [ZCPUAsmWriter];
 }

@@ -22,46 +22,46 @@ class ZCPUReg<string n, bits<64> Enc = 0, int Cost = 0>
 //===----------------------------------------------------------------------===//
 //main Registers
 def EAX : ZCPUReg<"eax", 0>
-def EBX : ZCPUReg<"ebx", 3>
-def ECX : ZCPUReg<"ecx", 1>
-def EDX : ZCPUReg<"edx", 2>
-def ESI : ZCPUReg<"esi", 6>
-def EDI : ZCPUReg<"edi", 7>
-def ESP : ZCPUReg<"esp", 4>
-def EBP : ZCPUReg<"ebp", 5>
+def EBX : ZCPUReg<"ebx", 1>
+def ECX : ZCPUReg<"ecx", 2>
+def EDX : ZCPUReg<"edx", 3>
+def ESI : ZCPUReg<"esi", 4>
+def EDI : ZCPUReg<"edi", 5>
+def ESP : ZCPUReg<"esp", 6>
+def EBP : ZCPUReg<"ebp", 7>
 def IP : ZCPUReg<"ip", 8>
 //Extended Registers
-R0
-R1
-R2
-R3
-R4
-R5
-R6
-R7
-R8
-R9
-R10
-R11
-R12
-R13
-R14
-R15
-R16
-R17
-R18
-R19
-R20
-R21
-R22
-R23
-R24
-R25
-R26
-R27
-R28
-R30
-R31
+def R0 : ZCPUReg<"R0", 0>;
+def R1 : ZCPUReg<"R1", 1>;
+def R2 : ZCPUReg<"R2", 2>;
+def R3 : ZCPUReg<"R3", 3>;
+def R4 : ZCPUReg<"R4", 4>;
+def R5 : ZCPUReg<"R5", 5>;
+def R6 : ZCPUReg<"R6", 6>;
+def R7 : ZCPUReg<"R7", 7>;
+def R8 : ZCPUReg<"R8", 8>;
+def R9 : ZCPUReg<"R9", 9>;
+def R10 : ZCPUReg<"R10", 10>;
+def R11 : ZCPUReg<"R11", 11>;
+def R12 : ZCPUReg<"R12", 12>;
+def R13 : ZCPUReg<"R13", 13>;
+def R14 : ZCPUReg<"R14", 14>;
+def R15 : ZCPUReg<"R15", 15>;
+def R16 : ZCPUReg<"R16", 16>;
+def R17 : ZCPUReg<"R17", 17>;
+def R18 : ZCPUReg<"R18", 18>;
+def R19 : ZCPUReg<"R19", 19>;
+def R20 : ZCPUReg<"R20", 20>;
+def R21 : ZCPUReg<"R21", 21>;
+def R22 : ZCPUReg<"R22", 22>;
+def R23 : ZCPUReg<"R23", 23>;
+def R24 : ZCPUReg<"R24", 24>;
+def R25 : ZCPUReg<"R25", 25>;
+def R26 : ZCPUReg<"R26", 26>;
+def R27 : ZCPUReg<"R27", 27>;
+def R28 : ZCPUReg<"R28", 28>;
+def R30 : ZCPUReg<"R30", 30>;
+def R31 : ZCPUReg<"R31", 31>;
 //stack segment Registers
 def CS : ZCPUReg<"cs", 1>;
 def DS : ZCPUReg<"ds", 3>;

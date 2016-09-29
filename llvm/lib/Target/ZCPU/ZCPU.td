@@ -27,7 +27,7 @@ def FeatureZGPU
 // Register File, Calling Conv, Instruction Descriptions
 //===----------------------------------------------------------------------===//
 include "ZCPURegisterInfo.td"
-//include "ZCPUCallingConv.td"
+include "ZCPUCallingConv.td"
 //include "ZCPUSchedule.td"
 //include "ZCPUInstrInfo.td"
 

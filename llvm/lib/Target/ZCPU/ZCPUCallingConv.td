@@ -35,4 +35,4 @@ def CC_ZCPU : CallingConv<[
 //===----------------------------------------------------------------------===//
 
 def CSR_NoRegs : CalleeSavedRegs<(add)>;
-def CSR_ALLPASS : CalleeSavedRegs<(add ESP,ECX,EBP,EAX)>;
+def CSR_ALLPASS : CalleeSavedRegs<(add ECX,EBP,EAX)>;

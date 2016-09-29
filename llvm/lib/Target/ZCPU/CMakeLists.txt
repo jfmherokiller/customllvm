@@ -1,6 +1,6 @@
 set(LLVM_TARGET_DEFINITIONS ZCPU.td)
 
-tablegen(LLVM X86GenRegisterInfo.inc -gen-register-info)
+tablegen(LLVM ZCPUGenRegisterInfo.inc -gen-register-info)
 #tablegen(LLVM X86GenDisassemblerTables.inc -gen-disassembler)
 #tablegen(LLVM X86GenInstrInfo.inc -gen-instr-info)
 #tablegen(LLVM X86GenAsmWriter.inc -gen-asm-writer)

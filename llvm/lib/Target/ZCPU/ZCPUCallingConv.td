@@ -15,10 +15,7 @@
 //===----------------------------------------------------------------------===//
 // ZCPU Return Value Calling Convention
 //===----------------------------------------------------------------------===//
-def RetCC_ZCPU : CallingConv<[
-
-  CCIfType<[], CCAssignToReg<[EAX]>>,
-]>;
+def RetCC_ZCPU : CallingConv<[CCIfType<[i64], CCAssignToReg<[EAX]>>]>;
 
 //===----------------------------------------------------------------------===//
 // ZCPU Argument Calling Conventions
@@ -28,7 +25,7 @@ def CC_ZCPU : CallingConv<[
   CCIfType<[i64], CCAssignToReg<[EAX, ECX, EBP]>>,
 
   // Assign other arguments to stack slots
-  CCIfType<[i64], CCAssignToStack<0, 0>>,
+  CCIfType<[i64], CCAssignToStack<0, 0>>
 ]>;
 //===----------------------------------------------------------------------===//
 // Callee-saved Registers.

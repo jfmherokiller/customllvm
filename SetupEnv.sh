@@ -2,7 +2,7 @@
 set -ev
 export WORKDIR=`pwd`;
 export INSTALLDIR=$WORKDIR/installme
-mkdir $WORKDIR/llvm-build
+mkdir -p $WORKDIR/llvm-build
 cd $WORKDIR/llvm-build
 cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX=$INSTALLDIR -DLLVM_CCACHE_BUILD=ON -DLLVM_EXPERIMENTAL_TARGETS_TO_BUILD=ZCPU -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release $WORKDIR/llvm
 make -j2 install

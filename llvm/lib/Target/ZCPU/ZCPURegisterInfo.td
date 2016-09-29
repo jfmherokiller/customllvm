@@ -10,7 +10,7 @@
 //===----------------------------------------------------------------------===//
 //  Declarations that describe the ZCPU register file
 //===----------------------------------------------------------------------===//
-class ZCPUReg<string n, bits<64> Enc = 0, int Cost = 0>
+class ZCPUReg<string n, bits<16> Enc = 0, int Cost = 0>
   : Register<n> {
   let Namespace  = "ZCPU";
   let HWEncoding = Enc;
@@ -21,15 +21,15 @@ class ZCPUReg<string n, bits<64> Enc = 0, int Cost = 0>
 //  Registers
 //===----------------------------------------------------------------------===//
 //main Registers
-def EAX : ZCPUReg<"eax", 0>
-def EBX : ZCPUReg<"ebx", 1>
-def ECX : ZCPUReg<"ecx", 2>
-def EDX : ZCPUReg<"edx", 3>
-def ESI : ZCPUReg<"esi", 4>
-def EDI : ZCPUReg<"edi", 5>
-def ESP : ZCPUReg<"esp", 6>
-def EBP : ZCPUReg<"ebp", 7>
-def IP : ZCPUReg<"ip", 8>
+def EAX : ZCPUReg<"eax", 0>;
+def EBX : ZCPUReg<"ebx", 1>;
+def ECX : ZCPUReg<"ecx", 2>;
+def EDX : ZCPUReg<"edx", 3>;
+def ESI : ZCPUReg<"esi", 4>;
+def EDI : ZCPUReg<"edi", 5>;
+def ESP : ZCPUReg<"esp", 6>;
+def EBP : ZCPUReg<"ebp", 7>;
+def IP : ZCPUReg<"ip", 8>;
 //Extended Registers
 def R0 : ZCPUReg<"R0", 0>;
 def R1 : ZCPUReg<"R1", 1>;
@@ -72,4 +72,9 @@ def GS : ZCPUReg<"gs", 5>;
 def KS : ZCPUReg<"ks", 6>;
 def LS : ZCPUReg<"ls", 7>;
 
-//TODO: These Registers can suck it
+//=====================
+//register classes
+//=====================
+def GRZCPU : RegisterClass<"ZCPU", [i32], 64,
+                         (add EAX,EBX,ECX, EDX,ESI,EDI,ESP,EBP,IP)>;
+def SEGMENT_REG : RegisterClass<"ZCPU", [i16], 16, (add CS, DS, SS, ES, FS, GS)>;

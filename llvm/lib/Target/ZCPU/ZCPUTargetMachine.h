@@ -13,8 +13,11 @@
 
 #ifndef LLVM_LIB_TARGET_ZCPU_ZCPUTARGETMACHINE_H
 #define LLVM_LIB_TARGET_ZCPU_ZCPUTARGETMACHINE_H
-namespace llvm {
+#include "llvm/Target/TargetMachine.h"
 
+namespace llvm {
+class ZCPUTargetMachine : public LLVMTargetMachine {
+}
 
 } // end namespace llvm
 #endif

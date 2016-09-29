@@ -14,5 +14,8 @@ add_public_tablegen_target(ZCPUCommonTableGen)
 
 set(sources
 ZCPUTargetMachine.cpp
+ZCPURegisterInfo.cpp
 )
 add_llvm_target(ZCPUCodeGen ${sources})
+
+add_subdirectory(TargetInfo)

@@ -16,3 +16,6 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
+extern "C" void LLVMInitializeZCPUTarget() {
+    RegisterTargetMachine<ZCPUTargetMachine> X(TheZCPUTarget);
+}

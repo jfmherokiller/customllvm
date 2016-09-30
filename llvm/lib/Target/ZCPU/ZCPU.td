@@ -33,11 +33,11 @@ include "ZCPUCallingConv.td"
 //include "ZCPUSchedule.td"
 //include "ZCPUInstrInfo.td"
 
-//def ZCPUInstrInfo : InstrInfo;
+def ZCPUInstrInfo : InstrInfo;
 
-//def ZCPUAsmParser : AsmParser {
-//  bit ShouldEmitMatchRegisterName = 0;
-//}
+def ZCPUAsmParser : AsmParser {
+  bit ShouldEmitMatchRegisterName = 0;
+  }
 //===----------------------------------------------------------------------===//
 // ZCPU processors supported.
 //===----------------------------------------------------------------------===//

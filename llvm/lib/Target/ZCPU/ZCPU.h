@@ -19,5 +19,9 @@
 
 
 namespace llvm {
+    class FunctionPass;
+    class ImmutablePass;
+    class PassRegistry;
+    class ZCPUTargetMachine;
 } // end namespace llvm;
 #endif

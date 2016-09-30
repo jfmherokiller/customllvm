@@ -19,3 +19,4 @@ ZCPURegisterInfo.cpp
 add_llvm_target(ZCPUCodeGen ${sources})
 
 add_subdirectory(TargetInfo)
+add_subdirectory(MCTargetDesc)

@@ -1053,6 +1053,7 @@
       <config projectName="LLVM" targetName="Kaleidoscope" />
       <config projectName="LLVM" targetName="check-clang-cxx-intro-intro.object" />
       <config projectName="LLVM" targetName="check-interception" />
+      <config projectName="LLVM" targetName="install-LLVMZCPUDesc" />
       <config projectName="LLVM" targetName="install-LLVMDebugInfoCodeView" />
       <config projectName="LLVM" targetName="check-clang-cxx-conv-conv.mem" />
       <config projectName="LLVM" targetName="check-llvm-mc-mips-micromips" />
@@ -1535,6 +1536,7 @@
       <config projectName="LLVM" targetName="check-clang-cxx-stmt.stmt-stmt.jump-stmt.goto" />
       <config projectName="LLVM" targetName="LLVMNVPTXInfo" />
       <config projectName="LLVM" targetName="check-clang-cxx-temp-temp.decls-temp.class-temp.mem.enum" />
+      <config projectName="LLVM" targetName="LLVMZCPUDesc" />
       <config projectName="LLVM" targetName="check-llvm-codegen-aarch64-globalisel" />
       <config projectName="LLVM" targetName="install-llvm-dwp" />
       <config projectName="LLVM" targetName="LLVMDebugInfoDWARF" />
@@ -1734,7 +1736,7 @@
       <file leaf-file-name="ZCPU.h" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.h">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="150">
+            <state relative-caret-position="70">
               <caret line="10" column="17" lean-forward="false" selection-start-line="10" selection-start-column="17" selection-end-line="10" selection-end-column="17" />
               <folding>
                 <marker date="1475195318000" expanded="false" signature="606:675" ph="..." />
@@ -1744,21 +1746,41 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="ZCPUCallingConv.td" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUCallingConv.td">
+      <file leaf-file-name="LLVMBuild.txt" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/LLVMBuild.txt">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="0">
-              <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+            <state relative-caret-position="315">
+              <caret line="21" column="37" lean-forward="false" selection-start-line="21" selection-start-column="37" selection-end-line="21" selection-end-column="37" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="ZCPUTargetMachine.cpp" pinned="false" current-in-tab="false">
+      <file leaf-file-name="CMakeLists.txt" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/CMakeLists.txt">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="45">
+              <caret line="3" column="0" lean-forward="false" selection-start-line="3" selection-start-column="0" selection-end-line="3" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="CMakeLists.txt" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="285">
+              <caret line="19" column="0" lean-forward="false" selection-start-line="19" selection-start-column="0" selection-end-line="19" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="ZCPUTargetMachine.cpp" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="330">
-              <caret line="22" column="38" lean-forward="false" selection-start-line="22" selection-start-column="38" selection-end-line="22" selection-end-column="38" />
+            <state relative-caret-position="280">
+              <caret line="25" column="57" lean-forward="true" selection-start-line="25" selection-start-column="57" selection-end-line="25" selection-end-column="57" />
               <folding>
                 <marker date="1475199960000" expanded="true" signature="506:850" ph="..." />
                 <marker date="1475199960000" expanded="true" signature="916:982" ph="{...}" />
@@ -1767,42 +1789,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="X86TargetMachine.cpp" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86TargetMachine.cpp">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="555">
-              <caret line="37" column="49" lean-forward="false" selection-start-line="37" selection-start-column="49" selection-end-line="37" selection-end-column="49" />
-              <folding>
-                <marker date="1474987175000" expanded="true" signature="503:914" ph="..." />
-                <marker date="1474987175000" expanded="true" signature="1162:1216" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="1260:1542" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="1622:2333" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="2390:3536" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="3669:4800" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="5350:6664" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="6789:8342" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="8919:9035" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="9242:9803" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="9341:9800" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="9493:9536" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="9892:9933" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="9969:10067" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="10107:10468" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="10503:10619" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="10654:10859" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="10898:11111" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="11151:11205" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="11322:11666" ph="{...}" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="X86MCTargetDesc.h" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.h">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="1665">
-              <caret line="111" column="16" lean-forward="false" selection-start-line="111" selection-start-column="0" selection-end-line="115" selection-end-column="33" />
+            <state relative-caret-position="1095">
+              <caret line="111" column="17" lean-forward="false" selection-start-line="111" selection-start-column="17" selection-end-line="111" selection-end-column="17" />
               <folding>
                 <marker date="1474987175000" expanded="true" signature="613:689" ph="..." />
                 <marker date="1474987175000" expanded="true" signature="706:3853" ph="{...}" />
@@ -1816,12 +1807,13 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="X86MCTargetDesc.cpp" pinned="false" current-in-tab="true">
+      <file leaf-file-name="X86MCTargetDesc.cpp" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.cpp">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-6065">
-              <caret line="17" column="28" lean-forward="true" selection-start-line="17" selection-start-column="28" selection-end-line="17" selection-end-column="28" />
+            <state relative-caret-position="195">
+              <caret line="36" column="0" lean-forward="false" selection-start-line="36" selection-start-column="0" selection-end-line="36" selection-end-column="0" />
               <folding>
+                <marker date="1474987175000" expanded="false" signature="494:980" ph="..." />
                 <marker date="1474987175000" expanded="false" signature="995:1014" ph="..." />
                 <marker date="1474987175000" expanded="true" signature="1294:1568" ph="{...}" />
                 <marker date="1474987175000" expanded="true" signature="1635:1964" ph="{...}" />
@@ -1876,21 +1868,6 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="X86TargetMachine.h" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86TargetMachine.h">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="465">
-              <caret line="31" column="14" lean-forward="false" selection-start-line="28" selection-start-column="0" selection-end-line="33" selection-end-column="31" />
-              <folding>
-                <marker date="1474987175000" expanded="true" signature="598:711" ph="..." />
-                <marker date="1474987175000" expanded="true" signature="728:1528" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="805:1524" ph="{...}" />
-                <marker date="1474987175000" expanded="true" signature="1494:1522" ph="{...}" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
     </leaf>
   </component>
   <component name="Git.Settings">
@@ -1905,6 +1882,9 @@
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h" />
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.cpp" />
         <option value="$PROJECT_DIR$/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.cpp" />
+        <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/CMakeLists.txt" />
+        <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/LLVMBuild.txt" />
+        <option value="$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt" />
       </list>
     </option>
   </component>
@@ -2085,6 +2065,13 @@
     <property name="settings.editor.selected.configurable" value="CMakeSettings" />
     <property name="last_opened_file_path" value="$PROJECT_DIR$/../llvm-build" />
     <property name="settings.editor.splitter.proportion" value="0.2" />
+    <property name="nodejs_interpreter_path" value="/usr/local/bin/node" />
+    <property name="js.eslint.eslintPackage" value="" />
+  </component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc" />
+    </key>
   </component>
   <component name="RestoreUpdateTree" date="Moments ago" ActionInfo="_Update">
     <UpdatedFiles>
@@ -2100,329 +2087,9 @@
           <option name="mySupportsDeletion" value="false" />
           <option name="myCanBeAbsent" value="false" />
           <option name="myId" value="UPDATED" />
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/DebugInfo/DIContext.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Option/ArgList.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/ADT/StringExtras.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/ADT/STLExtras.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/ADT/Statistic.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/IR/Attributes.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/IR/LLVMContext.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/IR/Mangler.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/IR/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/IR/IntrinsicsNVVM.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/IR/DiagnosticInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Support/CommandLine.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Support/ConvertUTF.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Analysis/LoopAccessAnalysis.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Analysis/ProfileSummaryInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Analysis/OptimizationDiagnosticInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Analysis/TargetTransformInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Analysis/ScalarEvolution.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Target/TargetRegisterInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/LTO/LTO.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/CodeGen/ScheduleDAGInstrs.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/CodeGen/GlobalISel/RegisterBankInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Config/config.h.cmake</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Config/llvm-config.h.cmake</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/docs/CMake.rst</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/docs/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/docs/CodingStandards.rst</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/docs/HowToAddABuilder.rst</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/opt/opt.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/llvm-cxxfilt/llvm-cxxfilt.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/llvm-cxxfilt/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/sancov/sancov.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/llvm-mc/llvm-mc.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/llvm-objdump/llvm-objdump.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/utils/lit/README.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/utils/lit/lit/run.py</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/utils/release/test-release.sh</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/unittests/ADT/STLExtrasTest.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/unittests/ADT/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/unittests/Support/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/IR/DiagnosticInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/IR/LLVMContextImpl.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/IR/LLVMContext.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/IR/Mangler.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/Unix/Signals.inc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/Unix/Process.inc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/Statistic.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/LoopAccessAnalysis.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/ScalarEvolution.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/ModuleSummaryAnalysis.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/OptimizationDiagnosticInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/ProfileSummaryInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/InstructionSimplify.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Analysis/ValueTracking.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerCorpus.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerTracePC.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerInternal.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerExtFunctions.def</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerLoop.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerValueBitMap.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/FuzzerTracePC.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Fuzzer/test/fuzzer-printcovpcs.test</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/AMDGPUISelLowering.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SIInstrInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SILowerControlFlow.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/AMDGPUCodeGenPrepare.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/AMDGPU.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SIInstructions.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/AMDGPUTargetMachine.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SOPInstructions.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/InstPrinter/AMDGPUInstPrinter.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/InstPrinter/AMDGPUInstPrinter.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SILowerI1Copies.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/VOPCInstructions.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SIShrinkInstructions.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/AMDGPU.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SIISelLowering.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/SystemZ/SystemZTargetTransformInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/SystemZ/SystemZTargetTransformInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXSubtarget.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXInstrInfo.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXISelLowering.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXIntrinsics.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXAsmPrinter.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXTargetTransformInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTX.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/NVPTX/NVPTXSubtarget.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86InstrInfo.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86ISelLowering.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86InstrSSE.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86InstrAVX512.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86RegisterInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86FastISel.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86InstrInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86CallingConv.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/X86/X86ShuffleDecodeConstantPool.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/TargetInfo/AVRTargetInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AVRISelLowering.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/MCTargetDesc/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/MCTargetDesc/AVRMCTargetDesc.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AVRTargetMachine.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/LLVMBuild.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AVRCallingConv.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AVRInstrInfo.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AVR.td</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AArch64/AArch64RegisterBankInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AArch64/AArch64GenRegisterBankInfo.def</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AArch64/AArch64RegisterInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AArch64/MCTargetDesc/AArch64MCCodeEmitter.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AArch64/AArch64RegisterInfo.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/Hexagon/RDFGraph.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/Hexagon/RDFLiveness.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/Hexagon/RDFGraph.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/Mips/MipsAsmPrinter.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/LTO/ThinLTOCodeGenerator.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/LTO/LTOBackend.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Utils/LoopSimplify.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Utils/Local.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Instrumentation/SanitizerCoverage.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Scalar/LoopUnrollPass.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Scalar/IndVarSimplify.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Scalar/LoopDistribute.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Scalar/LoopDataPrefetch.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/IPO/Inliner.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/IPO/FunctionImport.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/IPO/WholeProgramDevirt.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/InstCombine/InstCombineSelect.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/InstCombine/InstCombineInternal.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Vectorize/LoadStoreVectorizer.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Transforms/Vectorize/LoopVectorize.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/MC/MCContext.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/SelectionDAG/DAGCombiner.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/MachineRegisterInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/GlobalISel/RegisterBankInfo.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/GlobalISel/RegBankSelect.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/LexicalScopes.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/MachineFunction.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/LiveDebugVariables.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/TargetLoweringBase.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/AsmPrinter/CodeViewDebug.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/IfConversion.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/CodeGen/LiveDebugValues.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Object/ELF.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Object/MachOObjectFile.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Option/ArgList.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/.arcconfig</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/InstSimplify/AndOrXor.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/Inline/optimization-remarks.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/InstCombine/bit-checks.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/FunctionImport/hotness_based_import.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/GVN/PRE/rle.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/LoopUnroll/rebuild_lcssa.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/MC/X86/ret.s</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/DebugInfo/X86/fission-ranges.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/DebugInfo/COFF/register-variables.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Instrumentation/SanitizerCoverage/tracing.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Instrumentation/SanitizerCoverage/tracing-comdat.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/BPF/undef.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/msa/i5_ld_st.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/mips64-f128.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/mno-ldc1-sdc1.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/o32_cc_vararg.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/micromips-li.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/cconv/arguments-float.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/cconv/arguments-varargs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/load-store-left-right.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/o32_cc_byval.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Mips/fastcc.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/ctlz.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/spill-m0.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/cvt_f32_ubyte.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/inline-asm.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/cf-loop-on-constant.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/debugger-insert-nops.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/subreg-coalescer-undef-use.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/vgpr-spill-emergency-stack-slot.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/private-element-size.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/selectcc.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/32-bit-local-address-space.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/sint_to_fp.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/si-lower-control-flow-unreachable-block.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/llvm.amdgcn.icmp.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/icmp64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/r600-export-fix.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/branch-uniformity.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/cndmask-no-def-vcc.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/select-vectors.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/sint_to_fp.i64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/uint_to_fp.i64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/trunc-cmp-constant.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/basic-branch.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/zero_extend.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/convergent-inlineasm.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/setcc-opt.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/select-i1.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/vgpr-spill-emergency-stack-slot-compute.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/uniform-loop-inside-nonuniform.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/llvm.amdgcn.div.fmas.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/fdiv.f64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/setcc.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/ctlz_zero_undef.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/sopk-compares.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/si-annotate-cf.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/selectcc-opt.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/setcc64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/merge-stores.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/commute-compares.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/trunc.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/sgpr-control-flow.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/uniform-cfg.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/valu-i1.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/sint_to_fp.f64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/uint_to_fp.f64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/indirect-addressing-si.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/llvm.round.f64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/addrspacecast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/skip-if-dead.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/i1-copy-phi.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/uint_to_fp.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/si-triv-disjoint-mem-access.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/SystemZ/unaligned-01.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/SystemZ/vec-perm-13.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/ARM/alloc-no-stack-realign.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/ARM/2012-10-04-AAPCS-byval-align8.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/ARM/memset-inline.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/ARM/ifcvt10.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/ARM/static-addr-hoisting.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/PowerPC/structsinmem.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/PowerPC/complex-return.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/PowerPC/anon_aggr.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/PowerPC/jaggedstructs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/PowerPC/ppc64-align-long-double.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/PowerPC/structsinregs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Thumb/stack-access.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Thumb/2010-07-15-debugOrdering.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/XCore/varargs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/2012-11-28-merge-store-alias.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx512-fsel.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/merge-consecutive-loads-256.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx2-intrinsics-fast-isel.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-combining-avx512bw.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/win32-eh.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx2-vbroadcast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/chain_order.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/subvector-broadcast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx512-bugfix-25270.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/dont-trunc-store-double-to-float.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx512-mask-op.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx512vl-intrinsics-fast-isel.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/i256-add.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/merge-consecutive-loads-128.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/MergeConsecutiveStores.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-variable-256.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/2010-09-17-SideEffectsInChain.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/copy-eflags.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/split-store.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/stores-merging.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vec_fabs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/fast-isel-select-cmov.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-512-v32.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx-vbroadcast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-512-v8.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-512-v16.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/merge-store-partially-alias-loads.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/extractelement-legalization-store-ordering.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/live-range-nosubreg.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-lzcnt-128.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-512-v64.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-256-v4.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-compare-results.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/copysign-constant-magnitude.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx512-intrinsics-fast-isel.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/i386-shrink-wrapping.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/dag-merge-fast-accesses.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/vector-shuffle-variable-128.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/avx512-vbroadcast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/clear_upper_vector_element_bits.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/masked_gather_scatter.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/MSP430/Inst16mm.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/arm64-abi.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/argument-blocks.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/vector_merge_dep_check.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/merge-store.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/arm64-memset-inline.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/arm64-stur.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AArch64/arm64-abi-varargs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/macho-invalid.test</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/cmake/modules/AddLLVM.cmake</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/cmake/modules/GetHostTriple.cmake</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/cmake/modules/HandleLLVMOptions.cmake</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/cmake/config-ix.cmake</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/test/asan/TestCases/Linux/print_memory_profile_test.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/test/asan/TestCases/Linux/swapcontext_annotation.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/include/sanitizer/common_interface_defs.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/scudo/scudo_allocator.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/scudo/scudo_allocator_secondary.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_allocator_combined.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_allocator_secondary.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_linux_libcdep.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_common.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_symbolizer_posix_libcdep.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_allocator.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/sanitizer_allocator.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/asan/asan_thread.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/asan/asan_thread.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/asan/asan_allocator.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/builtins/arm/comparesf2.S</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/msan/msan_allocator.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/interception/interception_win.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/tsan/rtl/tsan_mman.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/include/new</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/include/support/win32/locale_win32.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/src/experimental/filesystem/operations.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/src/algorithm.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/src/exception.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/src/mutex.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/src/memory.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/docs/DesignDocs/VisibilityMacros.rst</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/libcxx/CMakeLists.txt</PATH>
+          <PATH vcs="svn" revision="282833">$PROJECT_DIR$/lib/Transforms/IPO/FunctionImport.cpp</PATH>
+          <PATH vcs="svn" revision="282833">$PROJECT_DIR$/test/Transforms/FunctionImport/hotness_based_import.ll</PATH>
+          <PATH vcs="svn" revision="282833">$PROJECT_DIR$/test/Transforms/FunctionImport/Inputs/hotness_based_import.ll</PATH>
         </FILE-GROUP>
         <FILE-GROUP>
           <option name="myUpdateName" value="Created" />
@@ -2430,64 +2097,6 @@
           <option name="mySupportsDeletion" value="false" />
           <option name="myCanBeAbsent" value="false" />
           <option name="myId" value="CREATED" />
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/include/llvm/Support/xxhash.h</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/tools/sancov/symcov-report-server.py</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/unittests/ADT/StringExtrasTest.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/unittests/Support/xxhashTest.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/xxhash.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/ConvertUTF.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AMDGPU/SIOptimizeExecMasking.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/MCTargetDesc/AVRMCTargetDesc.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AsmParser</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AsmParser/CMakeLists.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AsmParser/AVRAsmParser.cpp</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Target/AVR/AsmParser/LLVMBuild.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/Inline/optimization-remarks-passed-yaml.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/Inline/optimization-remarks-yaml.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/GVN/addrspace-cast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/GVN/PRE/rle-addrspace-cast.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Transforms/IndVarSimplify/iv-widen-elim-ext.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/MC/AArch64/tls-add-shift.s</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/tools/sancov/merge.test</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/tools/sancov/Inputs/test-linux_x86_64.0.symcov</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/tools/sancov/Inputs/test-linux_x86_64.1.symcov</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/tools/sancov/symbolize.test</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/DebugInfo/MIR/X86/livedebugvalues-limit.mir</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/DebugInfo/COFF/int8-char-type.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/amdgpu-codegenprepare-i16-to-i32.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/mul_uint24-amdgcn.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/mul_uint24-r600.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/control-flow-fastregalloc.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/amdgpu-codegenprepare-fdiv.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/ARM/dbg-range-extension.mir</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/NVPTX/atomics-with-scope.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/pr18023.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/win64-nosse-csrs.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/fast-isel-load-i1.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/pr29112.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/combiner-aa-1.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/combiner-aa-0.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/MIR/AArch64/machine-sink-zr.mir</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/MIR/AMDGPU/optimize-if-exec-masking.mir</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/Hexagon/ifcvt-live-subreg.mir</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-source-bad-size</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-source-more-than-one</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-dyld-name_toobig</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-rpath-name_offset-toobig</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-vers-small</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-dyld-small</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-rpath-small</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-entry-more-than-one</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-vers-more-than-one</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-dyld-name_offset-toobig</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-rpath-name_toobig</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/Object/Inputs/macho-invalid-entry-bad-size</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/symbolizer</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/symbolizer/scripts</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/symbolizer/scripts/global_symbols.txt</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/symbolizer/scripts/build_symbolizer.sh</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/symbolizer/sanitizer_symbolize.cc</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/lib/sanitizer_common/symbolizer/sanitizer_wrappers.cc</PATH>
         </FILE-GROUP>
         <FILE-GROUP>
           <option name="myUpdateName" value="Deleted" />
@@ -2495,14 +2104,6 @@
           <option name="mySupportsDeletion" value="false" />
           <option name="myCanBeAbsent" value="true" />
           <option name="myId" value="REMOVED_FROM_REPOSITORY" />
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/lib/Support/ConvertUTF.c</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/tools/sancov/html-report.test</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/amdgpu-codegenprepare.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/AMDGPU/mul_uint24.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/pr18023.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/combiner-aa-1.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/test/CodeGen/X86/combiner-aa-0.ll</PATH>
-          <PATH vcs="svn" revision="282832">$PROJECT_DIR$/projects/compiler-rt/test/asan/TestCases/Linux/coverage_html_report.cc</PATH>
         </FILE-GROUP>
         <FILE-GROUP>
           <option name="myUpdateName" value="Restored" />
@@ -9466,7 +9067,15 @@
       <envs />
       <method />
     </configuration>
-    <list size="1680">
+    <configuration default="false" name="install-LLVMZCPUDesc" type="CMakeRunConfiguration" factoryName="Application" PASS_PARENT_ENVS_2="true" PROJECT_NAME="LLVM" TARGET_NAME="install-LLVMZCPUDesc" CONFIG_NAME="Debug">
+      <envs />
+      <method />
+    </configuration>
+    <configuration default="false" name="LLVMZCPUDesc" type="CMakeRunConfiguration" factoryName="Application" PASS_PARENT_ENVS_2="true" PROJECT_NAME="LLVM" TARGET_NAME="LLVMZCPUDesc" CONFIG_NAME="Debug">
+      <envs />
+      <method />
+    </configuration>
+    <list size="1682">
       <item index="0" class="java.lang.String" itemvalue="Application.Build All" />
       <item index="1" class="java.lang.String" itemvalue="Application.check-all" />
       <item index="2" class="java.lang.String" itemvalue="Application.installhdrs" />
@@ -11147,6 +10756,8 @@
       <item index="1677" class="java.lang.String" itemvalue="Application.ZCPUCommonTableGen" />
       <item index="1678" class="java.lang.String" itemvalue="Application.install-LLVMZCPUInfo" />
       <item index="1679" class="java.lang.String" itemvalue="Application.LLVMZCPUInfo" />
+      <item index="1680" class="java.lang.String" itemvalue="Application.install-LLVMZCPUDesc" />
+      <item index="1681" class="java.lang.String" itemvalue="Application.LLVMZCPUDesc" />
     </list>
   </component>
   <component name="ShelveChangesManager" show_recycled="false">
@@ -11198,12 +10809,12 @@
       <option name="presentableId" value="Default" />
       <updated>1475196307717</updated>
       <workItem from="1475196323732" duration="4343000" />
-      <workItem from="1475202510765" duration="2353000" />
+      <workItem from="1475202510765" duration="5763000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="6696000" />
+    <option name="totallyTimeSpent" value="10106000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="23" width="1280" height="730" extended-state="6" />
@@ -11211,26 +10822,44 @@
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2494043" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3291536" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
-      <window_info id="CMake" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32288402" sideWeight="0.49722" order="7" side_tool="false" content_ui="tabs" />
-      <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.30250785" sideWeight="0.50277996" order="7" side_tool="true" content_ui="tabs" />
-      <window_info id="Version Control" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3291536" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
+      <window_info id="Messages" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3291536" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
+      <window_info id="CMake" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32288402" sideWeight="0.49245432" order="7" side_tool="false" content_ui="tabs" />
+      <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32288402" sideWeight="0.50754565" order="7" side_tool="true" content_ui="tabs" />
+      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3291536" sideWeight="0.49722" order="7" side_tool="false" content_ui="tabs" />
+      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3291536" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
+      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
-      <window_info id="Messages" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3291536" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Commander" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Inspection" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
-      <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Hierarchy" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="2" side_tool="false" content_ui="combo" />
       <window_info id="Find" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
-      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
     </layout>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="processed" value="true" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State>
+              <option name="RECENTLY_FILTERED_USER_GROUPS">
+                <collection />
+              </option>
+              <option name="RECENTLY_FILTERED_BRANCH_GROUPS">
+                <collection />
+              </option>
+            </State>
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="Vcs.Log.UiProperties">
     <option name="RECENTLY_FILTERED_USER_GROUPS">
@@ -11288,28 +10917,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="555">
           <caret line="37" column="49" lean-forward="false" selection-start-line="37" selection-start-column="49" selection-end-line="37" selection-end-column="49" />
-          <folding>
-            <marker date="1474987175000" expanded="true" signature="503:914" ph="..." />
-            <marker date="1474987175000" expanded="true" signature="1162:1216" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1260:1542" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1622:2333" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="2390:3536" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="3669:4800" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="5350:6664" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="6789:8342" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="8919:9035" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9242:9803" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9341:9800" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9493:9536" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9892:9933" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9969:10067" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10107:10468" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10503:10619" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10654:10859" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10898:11111" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="11151:11205" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="11322:11666" ph="{...}" />
-          </folding>
+          <folding />
         </state>
       </provider>
     </entry>
@@ -11334,6 +10942,7 @@
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
           <folding>
+            <marker date="1474987175000" expanded="false" signature="494:980" ph="..." />
             <marker date="1474987175000" expanded="false" signature="995:1014" ph="..." />
             <marker date="1474987175000" expanded="true" signature="1294:1568" ph="{...}" />
             <marker date="1474987175000" expanded="true" signature="1635:1964" ph="{...}" />
@@ -11405,6 +11014,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="139">
           <caret line="900" column="11" lean-forward="false" selection-start-line="900" selection-start-column="11" selection-end-line="900" selection-end-column="11" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -11416,13 +11026,6 @@
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/TargetIntrinsicInfo.cpp">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
@@ -11493,17 +11096,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="150">
-          <caret line="10" column="17" lean-forward="false" selection-start-line="10" selection-start-column="17" selection-end-line="10" selection-end-column="17" />
-          <folding>
-            <marker date="1475195318000" expanded="false" signature="606:675" ph="..." />
-            <marker date="1475195318000" expanded="true" signature="693:798" ph="{...}" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86TargetMachine.h">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="465">
@@ -11529,62 +11121,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="330">
-          <caret line="22" column="38" lean-forward="false" selection-start-line="22" selection-start-column="38" selection-end-line="22" selection-end-column="38" />
-          <folding>
-            <marker date="1475199960000" expanded="true" signature="506:850" ph="..." />
-            <marker date="1475199960000" expanded="true" signature="916:982" ph="{...}" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86TargetMachine.cpp">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="555">
-          <caret line="37" column="49" lean-forward="false" selection-start-line="37" selection-start-column="49" selection-end-line="37" selection-end-column="49" />
-          <folding>
-            <marker date="1474987175000" expanded="true" signature="503:914" ph="..." />
-            <marker date="1474987175000" expanded="true" signature="1162:1216" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1260:1542" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1622:2333" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="2390:3536" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="3669:4800" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="5350:6664" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="6789:8342" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="8919:9035" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9242:9803" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9341:9800" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9493:9536" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9892:9933" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="9969:10067" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10107:10468" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10503:10619" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10654:10859" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="10898:11111" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="11151:11205" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="11322:11666" ph="{...}" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1665">
-          <caret line="111" column="16" lean-forward="false" selection-start-line="111" selection-start-column="0" selection-end-line="115" selection-end-column="33" />
-          <folding>
-            <marker date="1474987175000" expanded="true" signature="613:689" ph="..." />
-            <marker date="1474987175000" expanded="true" signature="706:3853" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1097:1170" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1106:1167" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1223:1315" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1232:1312" ph="{...}" />
-            <marker date="1474987175000" expanded="true" signature="1334:1757" ph="{...}" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="405">
@@ -11601,11 +11137,28 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1095">
+          <caret line="111" column="17" lean-forward="false" selection-start-line="111" selection-start-column="17" selection-end-line="111" selection-end-column="17" />
+          <folding>
+            <marker date="1474987175000" expanded="true" signature="613:689" ph="..." />
+            <marker date="1474987175000" expanded="true" signature="706:3853" ph="{...}" />
+            <marker date="1474987175000" expanded="true" signature="1097:1170" ph="{...}" />
+            <marker date="1474987175000" expanded="true" signature="1106:1167" ph="{...}" />
+            <marker date="1474987175000" expanded="true" signature="1223:1315" ph="{...}" />
+            <marker date="1474987175000" expanded="true" signature="1232:1312" ph="{...}" />
+            <marker date="1474987175000" expanded="true" signature="1334:1757" ph="{...}" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/X86/MCTargetDesc/X86MCTargetDesc.cpp">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-6065">
-          <caret line="17" column="28" lean-forward="true" selection-start-line="17" selection-start-column="28" selection-end-line="17" selection-end-column="28" />
+        <state relative-caret-position="195">
+          <caret line="36" column="0" lean-forward="false" selection-start-line="36" selection-start-column="0" selection-end-line="36" selection-end-column="0" />
           <folding>
+            <marker date="1474987175000" expanded="false" signature="494:980" ph="..." />
             <marker date="1474987175000" expanded="false" signature="995:1014" ph="..." />
             <marker date="1474987175000" expanded="true" signature="1294:1568" ph="{...}" />
             <marker date="1474987175000" expanded="true" signature="1635:1964" ph="{...}" />
@@ -11621,6 +11174,60 @@
             <marker date="1474987175000" expanded="true" signature="8519:9984" ph="{...}" />
             <marker date="1474987175000" expanded="true" signature="10114:17166" ph="{...}" />
             <marker date="1474987175000" expanded="true" signature="17246:17378" ph="{...}" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86TargetMachine.cpp">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="210">
+          <caret line="37" column="49" lean-forward="false" selection-start-line="37" selection-start-column="49" selection-end-line="37" selection-end-column="49" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="70">
+          <caret line="10" column="17" lean-forward="false" selection-start-line="10" selection-start-column="17" selection-end-line="10" selection-end-column="17" />
+          <folding>
+            <marker date="1475195318000" expanded="false" signature="606:675" ph="..." />
+            <marker date="1475195318000" expanded="true" signature="693:798" ph="{...}" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/CMakeLists.txt">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="45">
+          <caret line="3" column="0" lean-forward="false" selection-start-line="3" selection-start-column="0" selection-end-line="3" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/LLVMBuild.txt">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="315">
+          <caret line="21" column="37" lean-forward="false" selection-start-line="21" selection-start-column="37" selection-end-line="21" selection-end-column="37" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="285">
+          <caret line="19" column="0" lean-forward="false" selection-start-line="19" selection-start-column="0" selection-end-line="19" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="280">
+          <caret line="25" column="57" lean-forward="true" selection-start-line="25" selection-start-column="57" selection-end-line="25" selection-end-column="57" />
+          <folding>
+            <marker date="1475199960000" expanded="true" signature="506:850" ph="..." />
+            <marker date="1475199960000" expanded="true" signature="916:982" ph="{...}" />
           </folding>
         </state>
       </provider>

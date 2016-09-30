@@ -27,7 +27,7 @@ before_install:
 - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install cmake; fi
 - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew install ccache; fi
 - if [ "$CC"  == "clang" ]; then ln -s $(which ccache) $HOME/clang && ln -s $(which ccache) $HOME/clang++ && export PATH=$HOME:$PATH; fi
-- ccache -z -M 100M
+- ccache -z -M 500M
 script: "./SetupEnv.sh"
 notifications:
   email: false

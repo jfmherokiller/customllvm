@@ -19,8 +19,10 @@ namespace fuzzer {
 
 class TracePC {
  public:
-  void HandleTrace(uintptr_t *guard, uintptr_t PC);
-  void HandleInit(uintptr_t *start, uintptr_t *stop);
+  static const size_t kFeatureSetSize = ValueBitMap::kNumberOfItems;
+
+  void HandleTrace(uint32_t *guard, uintptr_t PC);
+  void HandleInit(uint32_t *start, uint32_t *stop);
   void HandleCallerCallee(uintptr_t Caller, uintptr_t Callee);
   void HandleValueProfile(size_t Value) { ValueProfileMap.AddValue(Value); }
   size_t GetTotalPCCoverage() { return TotalPCCoverage; }
@@ -58,6 +60,8 @@ class TracePC {
 
   void PrintCoverage();
 
+  bool HasFeature(size_t Idx) { return CounterMap.Get(Idx); }
+
 private:
   bool UseCounters = false;
   bool UseValueProfile = false;
@@ -71,7 +75,7 @@ private:
   }
 
   struct Module {
-    uintptr_t *Start, *Stop;
+    uint32_t *Start, *Stop;
   };
 
   Module Modules[4096];
@@ -79,22 +83,13 @@ private:
   size_t NumGuards = 0;
 
   static const size_t kNumCounters = 1 << 14;
-  uint8_t Counters[kNumCounters];
+  alignas(8) uint8_t Counters[kNumCounters];
 
   static const size_t kNumPCs = 1 << 20;
   uintptr_t PCs[kNumPCs];
 
   ValueBitMap CounterMap;
   ValueBitMap ValueProfileMap;
-
-  struct Feature {
-    size_t Count;
-    size_t SmallestElementIdx;
-    size_t SmallestElementSize;
-  };
-
-  static const size_t kFeatureSetSize = ValueBitMap::kNumberOfItems;
-  Feature FeatureSet[kFeatureSetSize];
 };
 
 extern TracePC TPC;

@@ -141,3 +141,5 @@ Temporary Items
 
 ### SVN ###
 *.svn/
+
+*.idea/*

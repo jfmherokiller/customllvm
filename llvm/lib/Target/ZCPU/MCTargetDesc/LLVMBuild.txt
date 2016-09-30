@@ -20,5 +20,5 @@ type = Library
 name = ZCPUDesc
 parent = ZCPU
 ;required_libraries = MC MCDisassembler Object Support X86AsmPrinter X86Info
-required_libraries = MC MCDisassembler Object Support
+required_libraries = MC MCDisassembler Object Support ZCPUInfo
 add_to_library_groups = ZCPU

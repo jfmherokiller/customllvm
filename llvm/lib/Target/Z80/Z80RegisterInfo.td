@@ -46,16 +46,16 @@ class Z80Reg16Class<dag reglist>
 
 // 8 bit registers
 def A : Z80Reg<"eax", 7>;
-def B : Z80Reg<"b", 0>;
-def C : Z80Reg<"c", 1>;
-def D : Z80Reg<"d", 2>;
-def E : Z80Reg<"e", 3>;
-def H : Z80Reg<"h", 4>;
-def L : Z80Reg<"l", 5>;
-def XH : Z80Reg<"xh", 4, 1>;
-def XL : Z80Reg<"xl", 5, 1>;
-def YH : Z80Reg<"yh", 4, 1>;
-def YL : Z80Reg<"yl", 5, 1>;
+def B : Z80Reg<"ebx", 0>;
+def C : Z80Reg<"ecx", 1>;
+def D : Z80Reg<"edx", 2>;
+def E : Z80Reg<"r7", 3>;
+def H : Z80Reg<"r8", 4>;
+def L : Z80Reg<"r9", 5>;
+def XH : Z80Reg<"r10", 4, 1>;
+def XL : Z80Reg<"r11", 5, 1>;
+def YH : Z80Reg<"r12", 4, 1>;
+def YL : Z80Reg<"r13", 5, 1>;
 
 // Flags register
 def FLAGS : Z80Reg<"f">;
@@ -68,8 +68,8 @@ def AF : Z80Reg<"R4",3>;
 def IX : Z80Reg<"R5", 4>;
 def IY : Z80Reg<"R6", 5>;
 
-def SP : Z80Reg<"sp">;
-def PC : Z80Reg<"pc">;
+def SP : Z80Reg<"esp">;
+def PC : Z80Reg<"ip">;
 
 def GR8  : Z80Reg8Class<(add A, B, C, D, E, H, L)>;
 def GR16 : Z80Reg16Class<(add BC, DE, HL, IX, IY)>;

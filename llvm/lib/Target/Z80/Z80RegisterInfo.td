@@ -45,7 +45,7 @@ class Z80Reg16Class<dag reglist>
 //===----------------------------------------------------------------------===//
 
 // 8 bit registers
-def A : Z80Reg<"a", 7>;
+def A : Z80Reg<"eax", 7>;
 def B : Z80Reg<"b", 0>;
 def C : Z80Reg<"c", 1>;
 def D : Z80Reg<"d", 2>;
@@ -61,12 +61,12 @@ def YL : Z80Reg<"yl", 5, 1>;
 def FLAGS : Z80Reg<"f">;
 
 // 16 bit registers
-def BC : Z80RegWithSubRegs<"bc", 0, [B, C]>;
-def DE : Z80RegWithSubRegs<"de", 1, [D, E]>;
-def HL : Z80RegWithSubRegs<"hl", 2, [H, L]>;
-def AF : Z80RegWithSubRegs<"af", 3, [A, FLAGS]>;
-def IX : Z80RegWithSubRegs<"ix", 2, [XH, XL], 1>;
-def IY : Z80RegWithSubRegs<"iy", 2, [YH, YL], 1>;
+def BC : Z80Reg<"R0", 0>;
+def DE : Z80Reg<"R1", 1>;
+def HL : Z80Reg<"R3",2>;
+def AF : Z80Reg<"R4",3>;
+def IX : Z80Reg<"R5", 4>;
+def IY : Z80Reg<"R6", 5>;
 
 def SP : Z80Reg<"sp">;
 def PC : Z80Reg<"pc">;

@@ -8,6 +8,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ADT/OwningPtr.h"
+#include "llvm/ExecutionEngine/JIT.h"
 #include "gtest/gtest.h"
 
 using namespace llvm;
@@ -15,17 +17,17 @@ using namespace llvm;
 namespace {
 
 TEST(MCJITMemoryManagerTest, BasicAllocations) {
-  std::unique_ptr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
+  OwningPtr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
 
   uint8_t *code1 = MemMgr->allocateCodeSection(256, 0, 1, "");
   uint8_t *data1 = MemMgr->allocateDataSection(256, 0, 2, "", true);
   uint8_t *code2 = MemMgr->allocateCodeSection(256, 0, 3, "");
   uint8_t *data2 = MemMgr->allocateDataSection(256, 0, 4, "", false);
 
-  EXPECT_NE((uint8_t*)nullptr, code1);
-  EXPECT_NE((uint8_t*)nullptr, code2);
-  EXPECT_NE((uint8_t*)nullptr, data1);
-  EXPECT_NE((uint8_t*)nullptr, data2);
+  EXPECT_NE((uint8_t*)0, code1);
+  EXPECT_NE((uint8_t*)0, code2);
+  EXPECT_NE((uint8_t*)0, data1);
+  EXPECT_NE((uint8_t*)0, data2);
 
   // Initialize the data
   for (unsigned i = 0; i < 256; ++i) {
@@ -48,17 +50,17 @@ TEST(MCJITMemoryManagerTest, BasicAllocations) {
 }
 
 TEST(MCJITMemoryManagerTest, LargeAllocations) {
-  std::unique_ptr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
+  OwningPtr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
 
   uint8_t *code1 = MemMgr->allocateCodeSection(0x100000, 0, 1, "");
   uint8_t *data1 = MemMgr->allocateDataSection(0x100000, 0, 2, "", true);
   uint8_t *code2 = MemMgr->allocateCodeSection(0x100000, 0, 3, "");
   uint8_t *data2 = MemMgr->allocateDataSection(0x100000, 0, 4, "", false);
 
-  EXPECT_NE((uint8_t*)nullptr, code1);
-  EXPECT_NE((uint8_t*)nullptr, code2);
-  EXPECT_NE((uint8_t*)nullptr, data1);
-  EXPECT_NE((uint8_t*)nullptr, data2);
+  EXPECT_NE((uint8_t*)0, code1);
+  EXPECT_NE((uint8_t*)0, code2);
+  EXPECT_NE((uint8_t*)0, data1);
+  EXPECT_NE((uint8_t*)0, data2);
 
   // Initialize the data
   for (unsigned i = 0; i < 0x100000; ++i) {
@@ -81,7 +83,7 @@ TEST(MCJITMemoryManagerTest, LargeAllocations) {
 }
 
 TEST(MCJITMemoryManagerTest, ManyAllocations) {
-  std::unique_ptr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
+  OwningPtr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
 
   uint8_t* code[10000];
   uint8_t* data[10000];
@@ -97,8 +99,8 @@ TEST(MCJITMemoryManagerTest, ManyAllocations) {
       data[i][j] = 2 + (i % 254);
     }
 
-    EXPECT_NE((uint8_t *)nullptr, code[i]);
-    EXPECT_NE((uint8_t *)nullptr, data[i]);
+    EXPECT_NE((uint8_t *)0, code[i]);
+    EXPECT_NE((uint8_t *)0, data[i]);
   }
 
   // Verify the data (this is checking for overlaps in the addresses)
@@ -116,7 +118,7 @@ TEST(MCJITMemoryManagerTest, ManyAllocations) {
 }
 
 TEST(MCJITMemoryManagerTest, ManyVariedAllocations) {
-  std::unique_ptr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
+  OwningPtr<SectionMemoryManager> MemMgr(new SectionMemoryManager());
 
   uint8_t* code[10000];
   uint8_t* data[10000];
@@ -140,8 +142,8 @@ TEST(MCJITMemoryManagerTest, ManyVariedAllocations) {
       data[i][j] = 2 + (i % 254);
     }
 
-    EXPECT_NE((uint8_t *)nullptr, code[i]);
-    EXPECT_NE((uint8_t *)nullptr, data[i]);
+    EXPECT_NE((uint8_t *)0, code[i]);
+    EXPECT_NE((uint8_t *)0, data[i]);
 
     uintptr_t CodeAlign = Align ? (uintptr_t)code[i] % Align : 0;
     uintptr_t DataAlign = Align ? (uintptr_t)data[i] % Align : 0;

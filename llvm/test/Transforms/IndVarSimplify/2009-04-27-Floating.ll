@@ -1,9 +1,5 @@
 ; RUN: opt < %s -indvars -S | FileCheck %s
 ; PR4086
-
-; Provide legal integer types.
-target datalayout = "n8:16:32:64"
-
 declare void @foo()
 
 define void @test() {

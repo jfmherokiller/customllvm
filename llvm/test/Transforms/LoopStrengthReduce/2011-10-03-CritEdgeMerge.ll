@@ -4,10 +4,6 @@
 
 target triple = "x86-apple-darwin"
 
-; Provide legal integer types.
-target datalayout = "n8:16:32:64"
-
-
 ; Verify that identical edges are merged. rdar://problem/6453893
 ; CHECK-LABEL: @test1(
 ; CHECK: bb89:
@@ -20,7 +16,7 @@ entry:
 loop:
   %rec = phi i32 [ %next, %loop ], [ 0, %entry ]
   %next = add i32 %rec, 1
-  %tmp75 = getelementptr i8, i8* null, i32 %next
+  %tmp75 = getelementptr i8* null, i32 %next
   br i1 false, label %loop, label %loopexit
 
 loopexit:
@@ -57,7 +53,7 @@ entry:
 loop:
   %rec = phi i32 [ %next, %loop ], [ 0, %entry ]
   %next = add i32 %rec, 1
-  %tmp75 = getelementptr i8, i8* null, i32 %next
+  %tmp75 = getelementptr i8* null, i32 %next
   br i1 false, label %loop, label %loopexit
 
 loopexit:

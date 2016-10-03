@@ -17,10 +17,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define CM_NAME "cost-model"
+#define DEBUG_TYPE CM_NAME
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Analysis/VectorUtils.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
@@ -31,9 +32,6 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
-#define CM_NAME "cost-model"
-#define DEBUG_TYPE CM_NAME
-
 static cl::opt<bool> EnableReduxCost("costmodel-reduxcost", cl::init(false),
                                      cl::Hidden,
                                      cl::desc("Recognize reduction patterns."));
@@ -43,7 +41,7 @@ namespace {
 
   public:
     static char ID; // Class identification, replacement for typeinfo
-    CostModelAnalysis() : FunctionPass(ID), F(nullptr), TTI(nullptr) {
+    CostModelAnalysis() : FunctionPass(ID), F(0), TTI(0) {
       initializeCostModelAnalysisPass(
         *PassRegistry::getPassRegistry());
     }
@@ -55,9 +53,9 @@ namespace {
     unsigned getInstructionCost(const Instruction *I) const;
 
   private:
-    void getAnalysisUsage(AnalysisUsage &AU) const override;
-    bool runOnFunction(Function &F) override;
-    void print(raw_ostream &OS, const Module*) const override;
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+    virtual bool runOnFunction(Function &F);
+    virtual void print(raw_ostream &OS, const Module*) const;
 
     /// The function that we analyze.
     Function *F;
@@ -84,8 +82,7 @@ CostModelAnalysis::getAnalysisUsage(AnalysisUsage &AU) const {
 bool
 CostModelAnalysis::runOnFunction(Function &F) {
  this->F = &F;
- auto *TTIWP = getAnalysisIfAvailable<TargetTransformInfoWrapperPass>();
- TTI = TTIWP ? &TTIWP->getTTI(F) : nullptr;
+ TTI = getAnalysisIfAvailable<TargetTransformInfo>();
 
  return false;
 }
@@ -97,49 +94,32 @@ static bool isReverseVectorMask(SmallVectorImpl<int> &Mask) {
   return true;
 }
 
-static bool isAlternateVectorMask(SmallVectorImpl<int> &Mask) {
-  bool isAlternate = true;
-  unsigned MaskSize = Mask.size();
-
-  // Example: shufflevector A, B, <0,5,2,7>
-  for (unsigned i = 0; i < MaskSize && isAlternate; ++i) {
-    if (Mask[i] < 0)
-      continue;
-    isAlternate = Mask[i] == (int)((i & 1) ? MaskSize + i : i);
-  }
-
-  if (isAlternate)
-    return true;
-
-  isAlternate = true;
-  // Example: shufflevector A, B, <4,1,6,3>
-  for (unsigned i = 0; i < MaskSize && isAlternate; ++i) {
-    if (Mask[i] < 0)
-      continue;
-    isAlternate = Mask[i] == (int)((i & 1) ? i : MaskSize + i);
-  }
-
-  return isAlternate;
-}
-
 static TargetTransformInfo::OperandValueKind getOperandInfo(Value *V) {
   TargetTransformInfo::OperandValueKind OpInfo =
-      TargetTransformInfo::OK_AnyValue;
+    TargetTransformInfo::OK_AnyValue;
 
-  // Check for a splat of a constant or for a non uniform vector of constants.
-  if (isa<ConstantVector>(V) || isa<ConstantDataVector>(V)) {
-    OpInfo = TargetTransformInfo::OK_NonUniformConstantValue;
-    if (cast<Constant>(V)->getSplatValue() != nullptr)
+  // Check for a splat of a constant.
+  ConstantDataVector *CDV = 0;
+  if ((CDV = dyn_cast<ConstantDataVector>(V)))
+    if (CDV->getSplatValue() != NULL)
       OpInfo = TargetTransformInfo::OK_UniformConstantValue;
-  }
-
-  // Check for a splat of a uniform value. This is not loop aware, so return
-  // true only for the obviously uniform cases (argument, globalvalue)
-  const Value *Splat = getSplatValue(V);
-  if (Splat && (isa<Argument>(Splat) || isa<GlobalValue>(Splat)))
-    OpInfo = TargetTransformInfo::OK_UniformValue;
+  ConstantVector *CV = 0;
+  if ((CV = dyn_cast<ConstantVector>(V)))
+    if (CV->getSplatValue() != NULL)
+      OpInfo = TargetTransformInfo::OK_UniformConstantValue;
 
   return OpInfo;
+}
+
+static bool matchMask(SmallVectorImpl<int> &M1, SmallVectorImpl<int> &M2) {
+  if (M1.size() != M2.size())
+    return false;
+
+  for (unsigned i = 0, e = M1.size(); i != e; ++i)
+    if (M1[i] != M2[i])
+      return false;
+
+  return true;
 }
 
 static bool matchPairwiseShuffleMask(ShuffleVectorInst *SI, bool IsLeft,
@@ -159,7 +139,10 @@ static bool matchPairwiseShuffleMask(ShuffleVectorInst *SI, bool IsLeft,
     Mask[i] = val;
 
   SmallVector<int, 16> ActualMask = SI->getShuffleMask();
-  return Mask == ActualMask;
+  if (!matchMask(Mask, ActualMask))
+    return false;
+
+  return true;
 }
 
 static bool matchPairwiseReductionAtLevel(const BinaryOperator *BinOp,
@@ -170,7 +153,7 @@ static bool matchPairwiseReductionAtLevel(const BinaryOperator *BinOp,
   // %rdx.shuf.0.1 = shufflevector <4 x float> %rdx, <4 x float> undef,
   //       <4 x i32> <i32 1, i32 3, i32 undef, i32 undef>
   // %bin.rdx.0 = fadd <4 x float> %rdx.shuf.0.0, %rdx.shuf.0.1
-  if (BinOp == nullptr)
+  if (BinOp == 0)
     return false;
 
   assert(BinOp->getType()->isVectorTy() && "Expecting a vector type");
@@ -191,9 +174,9 @@ static bool matchPairwiseReductionAtLevel(const BinaryOperator *BinOp,
     return false;
 
   // Shuffle inputs must match.
-  Value *NextLevelOpL = LS ? LS->getOperand(0) : nullptr;
-  Value *NextLevelOpR = RS ? RS->getOperand(0) : nullptr;
-  Value *NextLevelOp = nullptr;
+  Value *NextLevelOpL = LS ? LS->getOperand(0) : 0;
+  Value *NextLevelOpR = RS ? RS->getOperand(0) : 0;
+  Value *NextLevelOp = 0;
   if (NextLevelOpR && NextLevelOpL) {
     // If we have two shuffles their operands must match.
     if (NextLevelOpL != NextLevelOpR)
@@ -218,7 +201,7 @@ static bool matchPairwiseReductionAtLevel(const BinaryOperator *BinOp,
 
   // Check that the next levels binary operation exists and matches with the
   // current one.
-  BinaryOperator *NextLevelBinOp = nullptr;
+  BinaryOperator *NextLevelBinOp = 0;
   if (Level + 1 != NumLevels) {
     if (!(NextLevelBinOp = dyn_cast<BinaryOperator>(NextLevelOp)))
       return false;
@@ -297,7 +280,7 @@ getShuffleAndOtherOprd(BinaryOperator *B) {
 
   Value *L = B->getOperand(0);
   Value *R = B->getOperand(1);
-  ShuffleVectorInst *S = nullptr;
+  ShuffleVectorInst *S = 0;
 
   if ((S = dyn_cast<ShuffleVectorInst>(L)))
     return std::make_pair(R, S);
@@ -354,10 +337,10 @@ static bool matchVectorSplittingReduction(const ExtractElementInst *ReduxRoot,
 
     Value *NextRdxOp;
     ShuffleVectorInst *Shuffle;
-    std::tie(NextRdxOp, Shuffle) = getShuffleAndOtherOprd(BinOp);
+    tie(NextRdxOp, Shuffle) = getShuffleAndOtherOprd(BinOp);
 
     // Check the current reduction operation and the shuffle use the same value.
-    if (Shuffle == nullptr)
+    if (Shuffle == 0)
       return false;
     if (Shuffle->getOperand(0) != NextRdxOp)
       return false;
@@ -369,7 +352,7 @@ static bool matchVectorSplittingReduction(const ExtractElementInst *ReduxRoot,
     std::fill(&ShuffleMask[MaskStart], ShuffleMask.end(), -1);
 
     SmallVector<int, 16> Mask = Shuffle->getShuffleMask();
-    if (ShuffleMask != Mask)
+    if (!matchMask(ShuffleMask, Mask))
       return false;
 
     RdxOp = NextRdxOp;
@@ -387,8 +370,10 @@ unsigned CostModelAnalysis::getInstructionCost(const Instruction *I) const {
     return -1;
 
   switch (I->getOpcode()) {
-  case Instruction::GetElementPtr:
-    return TTI->getUserCost(I);
+  case Instruction::GetElementPtr:{
+    Type *ValTy = I->getOperand(0)->getType()->getPointerElementType();
+    return TTI->getAddressComputationCost(ValTy);
+  }
 
   case Instruction::Ret:
   case Instruction::PHI:
@@ -454,8 +439,7 @@ unsigned CostModelAnalysis::getInstructionCost(const Instruction *I) const {
   case Instruction::UIToFP:
   case Instruction::Trunc:
   case Instruction::FPTrunc:
-  case Instruction::BitCast:
-  case Instruction::AddrSpaceCast: {
+  case Instruction::BitCast: {
     Type *SrcTy = I->getOperand(0)->getType();
     return TTI->getCastInstrCost(I->getOpcode(), I->getType(), SrcTy);
   }
@@ -494,29 +478,19 @@ unsigned CostModelAnalysis::getInstructionCost(const Instruction *I) const {
     unsigned NumVecElems = VecTypOp0->getVectorNumElements();
     SmallVector<int, 16> Mask = Shuffle->getShuffleMask();
 
-    if (NumVecElems == Mask.size()) {
-      if (isReverseVectorMask(Mask))
-        return TTI->getShuffleCost(TargetTransformInfo::SK_Reverse, VecTypOp0,
-                                   0, nullptr);
-      if (isAlternateVectorMask(Mask))
-        return TTI->getShuffleCost(TargetTransformInfo::SK_Alternate,
-                                   VecTypOp0, 0, nullptr);
-    }
-
+    if (NumVecElems == Mask.size() && isReverseVectorMask(Mask))
+      return TTI->getShuffleCost(TargetTransformInfo::SK_Reverse, VecTypOp0, 0,
+                                 0);
     return -1;
   }
   case Instruction::Call:
     if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
-      SmallVector<Value *, 4> Args;
+      SmallVector<Type*, 4> Tys;
       for (unsigned J = 0, JE = II->getNumArgOperands(); J != JE; ++J)
-        Args.push_back(II->getArgOperand(J));
-
-      FastMathFlags FMF;
-      if (auto *FPMO = dyn_cast<FPMathOperator>(II))
-        FMF = FPMO->getFastMathFlags();
+        Tys.push_back(II->getArgOperand(J)->getType());
 
       return TTI->getIntrinsicInstrCost(II->getIntrinsicID(), II->getType(),
-                                        Args, FMF);
+                                        Tys);
     }
     return -1;
   default:
@@ -529,15 +503,16 @@ void CostModelAnalysis::print(raw_ostream &OS, const Module*) const {
   if (!F)
     return;
 
-  for (BasicBlock &B : *F) {
-    for (Instruction &Inst : B) {
-      unsigned Cost = getInstructionCost(&Inst);
+  for (Function::iterator B = F->begin(), BE = F->end(); B != BE; ++B) {
+    for (BasicBlock::iterator it = B->begin(), e = B->end(); it != e; ++it) {
+      Instruction *Inst = it;
+      unsigned Cost = getInstructionCost(Inst);
       if (Cost != (unsigned)-1)
         OS << "Cost Model: Found an estimated cost of " << Cost;
       else
         OS << "Cost Model: Unknown cost";
 
-      OS << " for instruction: " << Inst << "\n";
+      OS << " for instruction: "<< *Inst << "\n";
     }
   }
 }

@@ -10,7 +10,8 @@
 
 exception Error of string
 
-let _ = Callback.register_exception "Llvm_irreader.Error" (Error "")
+external register_exns : exn -> unit = "llvm_register_irreader_exns"
+let _ = register_exns (Error "")
 
 external parse_ir : Llvm.llcontext -> Llvm.llmemorybuffer -> Llvm.llmodule
                   = "llvm_parse_ir"

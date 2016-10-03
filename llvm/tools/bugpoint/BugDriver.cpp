@@ -16,9 +16,8 @@
 #include "BugDriver.h"
 #include "ToolRunner.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
-#include "llvm/Linker/Linker.h"
+#include "llvm/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
@@ -29,20 +28,20 @@
 using namespace llvm;
 
 namespace llvm {
-Triple TargetTriple;
+  Triple TargetTriple;
 }
 
 // Anonymous namespace to define command line options for debugging.
 //
 namespace {
-// Output - The user can specify a file containing the expected output of the
-// program.  If this filename is set, it is used as the reference diff source,
-// otherwise the raw input run through an interpreter is used as the reference
-// source.
-//
-cl::opt<std::string> OutputFile("output",
-                                cl::desc("Specify a reference program output "
-                                         "(for miscompilation detection)"));
+  // Output - The user can specify a file containing the expected output of the
+  // program.  If this filename is set, it is used as the reference diff source,
+  // otherwise the raw input run through an interpreter is used as the reference
+  // source.
+  //
+  cl::opt<std::string>
+  OutputFile("output", cl::desc("Specify a reference program output "
+                                "(for miscompilation detection)"));
 }
 
 /// setNewProgram - If we reduce or update the program somehow, call this method
@@ -53,61 +52,57 @@ void BugDriver::setNewProgram(Module *M) {
   Program = M;
 }
 
+
 /// getPassesString - Turn a list of passes into a string which indicates the
 /// command line options that must be passed to add the passes.
 ///
 std::string llvm::getPassesString(const std::vector<std::string> &Passes) {
   std::string Result;
   for (unsigned i = 0, e = Passes.size(); i != e; ++i) {
-    if (i)
-      Result += " ";
+    if (i) Result += " ";
     Result += "-";
     Result += Passes[i];
   }
   return Result;
 }
 
-BugDriver::BugDriver(const char *toolname, bool find_bugs, unsigned timeout,
-                     unsigned memlimit, bool use_valgrind, LLVMContext &ctxt)
-    : Context(ctxt), ToolName(toolname), ReferenceOutputFile(OutputFile),
-      Program(nullptr), Interpreter(nullptr), SafeInterpreter(nullptr),
-      cc(nullptr), run_find_bugs(find_bugs), Timeout(timeout),
-      MemoryLimit(memlimit), UseValgrind(use_valgrind) {}
+BugDriver::BugDriver(const char *toolname, bool find_bugs,
+                     unsigned timeout, unsigned memlimit, bool use_valgrind,
+                     LLVMContext& ctxt)
+  : Context(ctxt), ToolName(toolname), ReferenceOutputFile(OutputFile),
+    Program(0), Interpreter(0), SafeInterpreter(0), gcc(0),
+    run_find_bugs(find_bugs), Timeout(timeout),
+    MemoryLimit(memlimit), UseValgrind(use_valgrind) {}
 
 BugDriver::~BugDriver() {
   delete Program;
-  if (Interpreter != SafeInterpreter)
-    delete Interpreter;
-  delete SafeInterpreter;
-  delete cc;
 }
 
-std::unique_ptr<Module> llvm::parseInputFile(StringRef Filename,
-                                             LLVMContext &Ctxt) {
-  SMDiagnostic Err;
-  std::unique_ptr<Module> Result = parseIRFile(Filename, Err, Ctxt);
-  if (!Result) {
-    Err.print("bugpoint", errs());
-    return Result;
-  }
 
-  if (verifyModule(*Result, &errs())) {
-    errs() << "bugpoint: " << Filename << ": error: input module is broken!\n";
-    return std::unique_ptr<Module>();
-  }
+/// ParseInputFile - Given a bitcode or assembly input filename, parse and
+/// return it, or return null if not possible.
+///
+Module *llvm::ParseInputFile(const std::string &Filename,
+                             LLVMContext& Ctxt) {
+  SMDiagnostic Err;
+  Module *Result = ParseIRFile(Filename, Err, Ctxt);
+  if (!Result)
+    Err.print("bugpoint", errs());
 
   // If we don't have an override triple, use the first one to configure
   // bugpoint, or use the host triple if none provided.
-  if (TargetTriple.getTriple().empty()) {
-    Triple TheTriple(Result->getTargetTriple());
+  if (Result) {
+    if (TargetTriple.getTriple().empty()) {
+      Triple TheTriple(Result->getTargetTriple());
 
-    if (TheTriple.getTriple().empty())
-      TheTriple.setTriple(sys::getDefaultTargetTriple());
+      if (TheTriple.getTriple().empty())
+        TheTriple.setTriple(sys::getDefaultTargetTriple());
 
-    TargetTriple.setTriple(TheTriple.getTriple());
+      TargetTriple.setTriple(TheTriple.getTriple());
+    }
+
+    Result->setTargetTriple(TargetTriple.getTriple());  // override the triple
   }
-
-  Result->setTargetTriple(TargetTriple.getTriple()); // override the triple
   return Result;
 }
 
@@ -117,24 +112,27 @@ std::unique_ptr<Module> llvm::parseInputFile(StringRef Filename,
 // parsed), and false on success.
 //
 bool BugDriver::addSources(const std::vector<std::string> &Filenames) {
-  assert(!Program && "Cannot call addSources multiple times!");
+  assert(Program == 0 && "Cannot call addSources multiple times!");
   assert(!Filenames.empty() && "Must specify at least on input filename!");
 
   // Load the first input file.
-  Program = parseInputFile(Filenames[0], Context).release();
-  if (!Program)
-    return true;
+  Program = ParseInputFile(Filenames[0], Context);
+  if (Program == 0) return true;
 
   outs() << "Read input file      : '" << Filenames[0] << "'\n";
 
   for (unsigned i = 1, e = Filenames.size(); i != e; ++i) {
-    std::unique_ptr<Module> M = parseInputFile(Filenames[i], Context);
-    if (!M.get())
-      return true;
+    OwningPtr<Module> M(ParseInputFile(Filenames[i], Context));
+    if (M.get() == 0) return true;
 
     outs() << "Linking in input file: '" << Filenames[i] << "'\n";
-    if (Linker::linkModules(*Program, std::move(M)))
+    std::string ErrorMessage;
+    if (Linker::LinkModules(Program, M.get(), Linker::DestroySource,
+                            &ErrorMessage)) {
+      errs() << ToolName << ": error linking in '" << Filenames[i] << "': "
+             << ErrorMessage << '\n';
       return true;
+    }
   }
 
   outs() << "*** All input ok\n";
@@ -143,14 +141,16 @@ bool BugDriver::addSources(const std::vector<std::string> &Filenames) {
   return false;
 }
 
+
+
 /// run - The top level method that is invoked after all of the instance
 /// variables are set up from command line arguments.
 ///
-Error BugDriver::run() {
+bool BugDriver::run(std::string &ErrMsg) {
   if (run_find_bugs) {
     // Rearrange the passes and apply them to the program. Repeat this process
     // until the user kills the program or we find a bug.
-    return runManyPasses(PassesToRun);
+    return runManyPasses(PassesToRun, ErrMsg);
   }
 
   // If we're not running as a child, the first thing that we must do is
@@ -167,14 +167,15 @@ Error BugDriver::run() {
   }
 
   // Set up the execution environment, selecting a method to run LLVM bitcode.
-  if (Error E = initializeExecutionEnvironment())
-    return E;
+  if (initializeExecutionEnvironment()) return true;
 
   // Test to see if we have a code generator crash.
   outs() << "Running the code generator to test for a crash: ";
-  if (Error E = compileProgram(Program)) {
-    outs() << toString(std::move(E));
-    return debugCodeGeneratorCrash();
+  std::string Error;
+  compileProgram(Program, &Error);
+  if (!Error.empty()) {
+    outs() << Error;
+    return debugCodeGeneratorCrash(ErrMsg);
   }
   outs() << '\n';
 
@@ -185,9 +186,8 @@ Error BugDriver::run() {
   bool CreatedOutput = false;
   if (ReferenceOutputFile.empty()) {
     outs() << "Generating reference output from raw program: ";
-    if (Error E = createReferenceFile(Program)) {
-      errs() << toString(std::move(E));
-      return debugCodeGeneratorCrash();
+    if (!createReferenceFile(Program)) {
+      return debugCodeGeneratorCrash(ErrMsg);
     }
     CreatedOutput = true;
   }
@@ -201,33 +201,34 @@ Error BugDriver::run() {
   // matches, then we assume there is a miscompilation bug and try to
   // diagnose it.
   outs() << "*** Checking the code generator...\n";
-  Expected<bool> Diff = diffProgram(Program, "", "", false);
-  if (Error E = Diff.takeError()) {
-    errs() << toString(std::move(E));
-    return debugCodeGeneratorCrash();
+  bool Diff = diffProgram(Program, "", "", false, &Error);
+  if (!Error.empty()) {
+    errs() << Error;
+    return debugCodeGeneratorCrash(ErrMsg);
   }
-  if (!*Diff) {
+  if (!Diff) {
     outs() << "\n*** Output matches: Debugging miscompilation!\n";
-    if (Error E = debugMiscompilation()) {
-      errs() << toString(std::move(E));
-      return debugCodeGeneratorCrash();
+    debugMiscompilation(&Error);
+    if (!Error.empty()) {
+      errs() << Error;
+      return debugCodeGeneratorCrash(ErrMsg);
     }
-    return Error::success();
+    return false;
   }
 
   outs() << "\n*** Input program does not match reference diff!\n";
   outs() << "Debugging code generator problem!\n";
-  if (Error E = debugCodeGenerator()) {
-    errs() << toString(std::move(E));
-    return debugCodeGeneratorCrash();
+  bool Failure = debugCodeGenerator(&Error);
+  if (!Error.empty()) {
+    errs() << Error;
+    return debugCodeGeneratorCrash(ErrMsg);
   }
-  return Error::success();
+  return Failure;
 }
 
-void llvm::PrintFunctionList(const std::vector<Function *> &Funcs) {
+void llvm::PrintFunctionList(const std::vector<Function*> &Funcs) {
   unsigned NumPrint = Funcs.size();
-  if (NumPrint > 10)
-    NumPrint = 10;
+  if (NumPrint > 10) NumPrint = 10;
   for (unsigned i = 0; i != NumPrint; ++i)
     outs() << " " << Funcs[i]->getName();
   if (NumPrint < Funcs.size())
@@ -235,10 +236,9 @@ void llvm::PrintFunctionList(const std::vector<Function *> &Funcs) {
   outs().flush();
 }
 
-void llvm::PrintGlobalVariableList(const std::vector<GlobalVariable *> &GVs) {
+void llvm::PrintGlobalVariableList(const std::vector<GlobalVariable*> &GVs) {
   unsigned NumPrint = GVs.size();
-  if (NumPrint > 10)
-    NumPrint = 10;
+  if (NumPrint > 10) NumPrint = 10;
   for (unsigned i = 0; i != NumPrint; ++i)
     outs() << " " << GVs[i]->getName();
   if (NumPrint < GVs.size())

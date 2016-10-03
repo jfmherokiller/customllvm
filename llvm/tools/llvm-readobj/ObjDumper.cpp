@@ -13,14 +13,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "ObjDumper.h"
+
 #include "Error.h"
+#include "StreamWriter.h"
+
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace llvm {
 
-ObjDumper::ObjDumper(ScopedPrinter &Writer) : W(Writer) {}
+ObjDumper::ObjDumper(StreamWriter& Writer)
+  : W(Writer) {
+}
 
 ObjDumper::~ObjDumper() {
 }

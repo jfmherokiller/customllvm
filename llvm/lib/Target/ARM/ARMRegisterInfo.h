@@ -11,10 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_ARM_ARMREGISTERINFO_H
-#define LLVM_LIB_TARGET_ARM_ARMREGISTERINFO_H
+#ifndef ARMREGISTERINFO_H
+#define ARMREGISTERINFO_H
 
+#include "ARM.h"
 #include "ARMBaseRegisterInfo.h"
+#include "llvm/Target/TargetRegisterInfo.h"
 
 namespace llvm {
 
@@ -23,7 +25,7 @@ class ARMSubtarget;
 struct ARMRegisterInfo : public ARMBaseRegisterInfo {
   virtual void anchor();
 public:
-  ARMRegisterInfo();
+  ARMRegisterInfo(const ARMSubtarget &STI);
 };
 
 } // end namespace llvm

@@ -1,4 +1,4 @@
-//===- MCJITMultipeModuleTest.cpp - Unit tests for the MCJIT ----*- C++ -*-===//
+//===- MCJITMultipeModuleTest.cpp - Unit tests for the MCJIT---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -18,9 +18,9 @@
 
 using namespace llvm;
 
-namespace {
-
 class MCJITMultipleModuleTest : public testing::Test, public MCJITTestBase {};
+
+namespace {
 
 // FIXME: ExecutionEngine has no support empty modules
 /*
@@ -90,12 +90,12 @@ TEST_F(MCJITMultipleModuleTest, multiple_empty_modules) {
 TEST_F(MCJITMultipleModuleTest, two_module_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB;
   createTwoModuleCase(A, FA, B, FB);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FA->getName().str());
   checkAdd(ptr);
@@ -110,12 +110,12 @@ TEST_F(MCJITMultipleModuleTest, two_module_case) {
 TEST_F(MCJITMultipleModuleTest, two_module_reverse_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB;
   createTwoModuleCase(A, FA, B, FB);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FB->getName().str());
   TheJIT->finalizeObject();
@@ -131,12 +131,12 @@ TEST_F(MCJITMultipleModuleTest, two_module_reverse_case) {
 TEST_F(MCJITMultipleModuleTest, two_module_extern_reverse_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB;
   createTwoModuleExternCase(A, FA, B, FB);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FB->getName().str());
   TheJIT->finalizeObject();
@@ -152,12 +152,12 @@ TEST_F(MCJITMultipleModuleTest, two_module_extern_reverse_case) {
 TEST_F(MCJITMultipleModuleTest, two_module_extern_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB;
   createTwoModuleExternCase(A, FA, B, FB);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FA->getName().str());
   checkAdd(ptr);
@@ -172,13 +172,13 @@ TEST_F(MCJITMultipleModuleTest, two_module_extern_case) {
 TEST_F(MCJITMultipleModuleTest, two_module_consecutive_call_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA1, *FA2, *FB;
   createTwoModuleExternCase(A, FA1, B, FB);
   FA2 = insertSimpleCallFunction<int32_t(int32_t, int32_t)>(A.get(), FA1);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FB->getName().str());
   TheJIT->finalizeObject();
@@ -194,15 +194,14 @@ TEST_F(MCJITMultipleModuleTest, two_module_consecutive_call_case) {
 
 
 // Module A { Global Variable GVA, Function FA loads GVA },
-// Module B { Global Variable GVB, Internal Global GVC, Function FB loads GVB },
-// execute FB then FA, also check that the global variables are properly accesible
-// through the ExecutionEngine APIs
+// Module B { Global Variable GVB, Function FB loads GVB },
+// execute FB then FA
 TEST_F(MCJITMultipleModuleTest, two_module_global_variables_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB;
-  GlobalVariable *GVA, *GVB, *GVC;
+  GlobalVariable *GVA, *GVB;
   A.reset(createEmptyModule("A"));
   B.reset(createEmptyModule("B"));
 
@@ -214,27 +213,19 @@ TEST_F(MCJITMultipleModuleTest, two_module_global_variables_case) {
   FB = startFunction<int32_t(void)>(B.get(), "FB");
   endFunctionWithRet(FB, Builder.CreateLoad(GVB));
 
-  GVC = insertGlobalInt32(B.get(), "GVC", initialNum);
-  GVC->setLinkage(GlobalValue::InternalLinkage);
-
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
-
-  EXPECT_EQ(GVA, TheJIT->FindGlobalVariableNamed("GVA"));
-  EXPECT_EQ(GVB, TheJIT->FindGlobalVariableNamed("GVB"));
-  EXPECT_EQ(GVC, TheJIT->FindGlobalVariableNamed("GVC",true));
-  EXPECT_EQ(nullptr, TheJIT->FindGlobalVariableNamed("GVC"));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t FBPtr = TheJIT->getFunctionAddress(FB->getName().str());
   TheJIT->finalizeObject();
   EXPECT_TRUE(0 != FBPtr);
-  int32_t(*FuncPtr)() = (int32_t(*)())FBPtr;
+  int32_t(*FuncPtr)(void) = (int32_t(*)(void))FBPtr;
   EXPECT_EQ(initialNum, FuncPtr())
     << "Invalid value for global returned from JITted function in module B";
 
   uint64_t FAPtr = TheJIT->getFunctionAddress(FA->getName().str());
   EXPECT_TRUE(0 != FAPtr);
-  FuncPtr = (int32_t(*)())FAPtr;
+  FuncPtr = (int32_t(*)(void))FAPtr;
   EXPECT_EQ(initialNum, FuncPtr())
     << "Invalid value for global returned from JITted function in module A";
 }
@@ -246,13 +237,13 @@ TEST_F(MCJITMultipleModuleTest, two_module_global_variables_case) {
 TEST_F(MCJITMultipleModuleTest, three_module_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B, C;
+  OwningPtr<Module> A, B, C;
   Function *FA, *FB, *FC;
   createThreeModuleCase(A, FA, B, FB, C, FC);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
-  TheJIT->addModule(std::move(C));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
+  TheJIT->addModule(C.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FC->getName().str());
   checkAdd(ptr);
@@ -271,13 +262,13 @@ TEST_F(MCJITMultipleModuleTest, three_module_case) {
 TEST_F(MCJITMultipleModuleTest, three_module_case_reverse_order) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B, C;
+  OwningPtr<Module> A, B, C;
   Function *FA, *FB, *FC;
   createThreeModuleCase(A, FA, B, FB, C, FC);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
-  TheJIT->addModule(std::move(C));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
+  TheJIT->addModule(C.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FA->getName().str());
   checkAdd(ptr);
@@ -296,13 +287,13 @@ TEST_F(MCJITMultipleModuleTest, three_module_case_reverse_order) {
 TEST_F(MCJITMultipleModuleTest, three_module_chain_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B, C;
+  OwningPtr<Module> A, B, C;
   Function *FA, *FB, *FC;
   createThreeModuleChainedCallsCase(A, FA, B, FB, C, FC);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
-  TheJIT->addModule(std::move(C));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
+  TheJIT->addModule(C.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FC->getName().str());
   checkAdd(ptr);
@@ -321,13 +312,13 @@ TEST_F(MCJITMultipleModuleTest, three_module_chain_case) {
 TEST_F(MCJITMultipleModuleTest, three_modules_chain_case_reverse_order) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B, C;
+  OwningPtr<Module> A, B, C;
   Function *FA, *FB, *FC;
   createThreeModuleChainedCallsCase(A, FA, B, FB, C, FC);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
-  TheJIT->addModule(std::move(C));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
+  TheJIT->addModule(C.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FA->getName().str());
   checkAdd(ptr);
@@ -346,12 +337,12 @@ TEST_F(MCJITMultipleModuleTest, three_modules_chain_case_reverse_order) {
 TEST_F(MCJITMultipleModuleTest, cross_module_dependency_case) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB1, *FB2;
   createCrossModuleRecursiveCase(A, FA, B, FB1, FB2);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FA->getName().str());
   checkAccumulate(ptr);
@@ -367,12 +358,12 @@ TEST_F(MCJITMultipleModuleTest, cross_module_dependency_case) {
 TEST_F(MCJITMultipleModuleTest, cross_module_dependency_case_reverse_order) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB1, *FB2;
   createCrossModuleRecursiveCase(A, FA, B, FB1, FB2);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FB1->getName().str());
   checkAccumulate(ptr);
@@ -388,12 +379,12 @@ TEST_F(MCJITMultipleModuleTest, cross_module_dependency_case_reverse_order) {
 TEST_F(MCJITMultipleModuleTest, cross_module_dependency_case3) {
   SKIP_UNSUPPORTED_PLATFORM;
 
-  std::unique_ptr<Module> A, B;
+  OwningPtr<Module> A, B;
   Function *FA, *FB1, *FB2;
   createCrossModuleRecursiveCase(A, FA, B, FB1, FB2);
 
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
+  createJIT(A.take());
+  TheJIT->addModule(B.take());
 
   uint64_t ptr = TheJIT->getFunctionAddress(FB1->getName().str());
   checkAccumulate(ptr);
@@ -401,23 +392,4 @@ TEST_F(MCJITMultipleModuleTest, cross_module_dependency_case3) {
   ptr = TheJIT->getFunctionAddress(FB2->getName().str());
   checkAccumulate(ptr);
 }
-
-// Test that FindFunctionNamed finds the definition of
-// a function in the correct module. We check two functions
-// in two different modules, to make sure that for at least
-// one of them MCJIT had to ignore the extern declaration.
-TEST_F(MCJITMultipleModuleTest, FindFunctionNamed_test) {
-  SKIP_UNSUPPORTED_PLATFORM;
-
-  std::unique_ptr<Module> A, B;
-  Function *FA, *FB1, *FB2;
-  createCrossModuleRecursiveCase(A, FA, B, FB1, FB2);
-
-  createJIT(std::move(A));
-  TheJIT->addModule(std::move(B));
-
-  EXPECT_EQ(FA, TheJIT->FindFunctionNamed(FA->getName().data()));
-  EXPECT_EQ(FB1, TheJIT->FindFunctionNamed(FB1->getName().data()));
 }
-
-} // end anonymous namespace

@@ -12,17 +12,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "SparcMCAsmInfo.h"
-#include "SparcMCExpr.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/MC/MCStreamer.h"
 
 using namespace llvm;
 
-void SparcELFMCAsmInfo::anchor() {}
+void SparcELFMCAsmInfo::anchor() { }
 
-SparcELFMCAsmInfo::SparcELFMCAsmInfo(const Triple &TheTriple) {
+SparcELFMCAsmInfo::SparcELFMCAsmInfo(StringRef TT) {
+  IsLittleEndian = false;
+  Triple TheTriple(TT);
   bool isV9 = (TheTriple.getArch() == Triple::sparcv9);
-  IsLittleEndian = (TheTriple.getArch() == Triple::sparcel);
 
   if (isV9) {
     PointerSize = CalleeSaveStackSlotSize = 8;
@@ -31,9 +30,10 @@ SparcELFMCAsmInfo::SparcELFMCAsmInfo(const Triple &TheTriple) {
   Data16bitsDirective = "\t.half\t";
   Data32bitsDirective = "\t.word\t";
   // .xword is only supported by V9.
-  Data64bitsDirective = (isV9) ? "\t.xword\t" : nullptr;
+  Data64bitsDirective = (isV9) ? "\t.xword\t" : 0;
   ZeroDirective = "\t.skip\t";
   CommentString = "!";
+  HasLEB128 = true;
   SupportsDebugInformation = true;
 
   ExceptionsType = ExceptionHandling::DwarfCFI;
@@ -41,30 +41,7 @@ SparcELFMCAsmInfo::SparcELFMCAsmInfo(const Triple &TheTriple) {
   SunStyleELFSectionSwitchSyntax = true;
   UsesELFSectionDirectiveForBSS = true;
 
-  UseIntegratedAssembler = true;
+  PrivateGlobalPrefix = ".L";
 }
 
-const MCExpr*
-SparcELFMCAsmInfo::getExprForPersonalitySymbol(const MCSymbol *Sym,
-                                               unsigned Encoding,
-                                               MCStreamer &Streamer) const {
-  if (Encoding & dwarf::DW_EH_PE_pcrel) {
-    MCContext &Ctx = Streamer.getContext();
-    return SparcMCExpr::create(SparcMCExpr::VK_Sparc_R_DISP32,
-                               MCSymbolRefExpr::create(Sym, Ctx), Ctx);
-  }
 
-  return MCAsmInfo::getExprForPersonalitySymbol(Sym, Encoding, Streamer);
-}
-
-const MCExpr*
-SparcELFMCAsmInfo::getExprForFDESymbol(const MCSymbol *Sym,
-                                       unsigned Encoding,
-                                       MCStreamer &Streamer) const {
-  if (Encoding & dwarf::DW_EH_PE_pcrel) {
-    MCContext &Ctx = Streamer.getContext();
-    return SparcMCExpr::create(SparcMCExpr::VK_Sparc_R_DISP32,
-                               MCSymbolRefExpr::create(Sym, Ctx), Ctx);
-  }
-  return MCAsmInfo::getExprForFDESymbol(Sym, Encoding, Streamer);
-}

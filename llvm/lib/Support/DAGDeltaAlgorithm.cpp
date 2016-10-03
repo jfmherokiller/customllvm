@@ -42,8 +42,6 @@
 #include <map>
 using namespace llvm;
 
-#define DEBUG_TYPE "dag-delta"
-
 namespace {
 
 class DAGDeltaAlgorithmImpl {
@@ -62,6 +60,9 @@ private:
   typedef std::set<change_ty>::iterator succ_closure_iterator_ty;
 
   DAGDeltaAlgorithm &DDA;
+
+  const changeset_ty &Changes;
+  const std::vector<edge_ty> &Dependencies;
 
   std::vector<change_ty> Roots;
 
@@ -136,8 +137,9 @@ private:
   }
 
 public:
-  DAGDeltaAlgorithmImpl(DAGDeltaAlgorithm &DDA, const changeset_ty &Changes,
-                        const std::vector<edge_ty> &Dependencies);
+  DAGDeltaAlgorithmImpl(DAGDeltaAlgorithm &_DDA,
+                        const changeset_ty &_Changes,
+                        const std::vector<edge_ty> &_Dependencies);
 
   changeset_ty Run();
 
@@ -160,27 +162,31 @@ class DeltaActiveSetHelper : public DeltaAlgorithm {
 
 protected:
   /// UpdatedSearchState - Callback used when the search state changes.
-  void UpdatedSearchState(const changeset_ty &Changes,
-                                  const changesetlist_ty &Sets) override {
+  virtual void UpdatedSearchState(const changeset_ty &Changes,
+                                  const changesetlist_ty &Sets) LLVM_OVERRIDE {
     DDAI.UpdatedSearchState(Changes, Sets, Required);
   }
 
-  bool ExecuteOneTest(const changeset_ty &S) override {
+  virtual bool ExecuteOneTest(const changeset_ty &S) LLVM_OVERRIDE {
     return DDAI.GetTestResult(S, Required);
   }
 
 public:
-  DeltaActiveSetHelper(DAGDeltaAlgorithmImpl &DDAI,
-                       const changeset_ty &Required)
-      : DDAI(DDAI), Required(Required) {}
+  DeltaActiveSetHelper(DAGDeltaAlgorithmImpl &_DDAI,
+                       const changeset_ty &_Required)
+    : DDAI(_DDAI), Required(_Required) {}
 };
 
 }
 
-DAGDeltaAlgorithmImpl::DAGDeltaAlgorithmImpl(
-    DAGDeltaAlgorithm &DDA, const changeset_ty &Changes,
-    const std::vector<edge_ty> &Dependencies)
-    : DDA(DDA) {
+DAGDeltaAlgorithmImpl::DAGDeltaAlgorithmImpl(DAGDeltaAlgorithm &_DDA,
+                                             const changeset_ty &_Changes,
+                                             const std::vector<edge_ty>
+                                               &_Dependencies)
+  : DDA(_DDA),
+    Changes(_Changes),
+    Dependencies(_Dependencies)
+{
   for (changeset_ty::const_iterator it = Changes.begin(),
          ie = Changes.end(); it != ie; ++it) {
     Predecessors.insert(std::make_pair(*it, std::vector<change_ty>()));

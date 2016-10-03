@@ -17,109 +17,57 @@
 namespace llvm {
 using namespace object;
 
-ELFObjectFileBase::ELFObjectFileBase(unsigned int Type, MemoryBufferRef Source)
-    : ObjectFile(Type, Source) {}
+// Creates an in-memory object-file by default: createELFObjectFile(Buffer)
+ObjectFile *ObjectFile::createELFObjectFile(MemoryBuffer *Object) {
+  std::pair<unsigned char, unsigned char> Ident = getElfArchType(Object);
+  error_code ec;
 
-ErrorOr<std::unique_ptr<ObjectFile>>
-ObjectFile::createELFObjectFile(MemoryBufferRef Obj) {
-  std::pair<unsigned char, unsigned char> Ident =
-      getElfArchType(Obj.getBuffer());
   std::size_t MaxAlignment =
-      1ULL << countTrailingZeros(uintptr_t(Obj.getBufferStart()));
+    1ULL << countTrailingZeros(uintptr_t(Object->getBufferStart()));
 
-  if (MaxAlignment < 2)
-    return object_error::parse_failed;
-
-  std::error_code EC;
-  std::unique_ptr<ObjectFile> R;
-  if (Ident.first == ELF::ELFCLASS32) {
-    if (Ident.second == ELF::ELFDATA2LSB)
-      R.reset(new ELFObjectFile<ELFType<support::little, false>>(Obj, EC));
-    else if (Ident.second == ELF::ELFDATA2MSB)
-      R.reset(new ELFObjectFile<ELFType<support::big, false>>(Obj, EC));
+  if (Ident.first == ELF::ELFCLASS32 && Ident.second == ELF::ELFDATA2LSB)
+#if !LLVM_IS_UNALIGNED_ACCESS_FAST
+    if (MaxAlignment >= 4)
+      return new ELFObjectFile<ELFType<support::little, 4, false> >(Object, ec);
     else
-      return object_error::parse_failed;
-  } else if (Ident.first == ELF::ELFCLASS64) {
-    if (Ident.second == ELF::ELFDATA2LSB)
-      R.reset(new ELFObjectFile<ELFType<support::little, true>>(Obj, EC));
-    else if (Ident.second == ELF::ELFDATA2MSB)
-      R.reset(new ELFObjectFile<ELFType<support::big, true>>(Obj, EC));
+#endif
+    if (MaxAlignment >= 2)
+      return new ELFObjectFile<ELFType<support::little, 2, false> >(Object, ec);
     else
-      return object_error::parse_failed;
-  } else {
-    return object_error::parse_failed;
+      llvm_unreachable("Invalid alignment for ELF file!");
+  else if (Ident.first == ELF::ELFCLASS32 && Ident.second == ELF::ELFDATA2MSB)
+#if !LLVM_IS_UNALIGNED_ACCESS_FAST
+    if (MaxAlignment >= 4)
+      return new ELFObjectFile<ELFType<support::big, 4, false> >(Object, ec);
+    else
+#endif
+    if (MaxAlignment >= 2)
+      return new ELFObjectFile<ELFType<support::big, 2, false> >(Object, ec);
+    else
+      llvm_unreachable("Invalid alignment for ELF file!");
+  else if (Ident.first == ELF::ELFCLASS64 && Ident.second == ELF::ELFDATA2MSB)
+#if !LLVM_IS_UNALIGNED_ACCESS_FAST
+    if (MaxAlignment >= 8)
+      return new ELFObjectFile<ELFType<support::big, 8, true> >(Object, ec);
+    else
+#endif
+    if (MaxAlignment >= 2)
+      return new ELFObjectFile<ELFType<support::big, 2, true> >(Object, ec);
+    else
+      llvm_unreachable("Invalid alignment for ELF file!");
+  else if (Ident.first == ELF::ELFCLASS64 && Ident.second == ELF::ELFDATA2LSB) {
+#if !LLVM_IS_UNALIGNED_ACCESS_FAST
+    if (MaxAlignment >= 8)
+      return new ELFObjectFile<ELFType<support::little, 8, true> >(Object, ec);
+    else
+#endif
+    if (MaxAlignment >= 2)
+      return new ELFObjectFile<ELFType<support::little, 2, true> >(Object, ec);
+    else
+      llvm_unreachable("Invalid alignment for ELF file!");
   }
 
-  if (EC)
-    return EC;
-  return std::move(R);
-}
-
-SubtargetFeatures ELFObjectFileBase::getFeatures() const {
-  switch (getEMachine()) {
-  case ELF::EM_MIPS: {
-    SubtargetFeatures Features;
-    unsigned PlatformFlags;
-    getPlatformFlags(PlatformFlags);
-
-    switch (PlatformFlags & ELF::EF_MIPS_ARCH) {
-    case ELF::EF_MIPS_ARCH_1:
-      break;
-    case ELF::EF_MIPS_ARCH_2:
-      Features.AddFeature("mips2");
-      break;
-    case ELF::EF_MIPS_ARCH_3:
-      Features.AddFeature("mips3");
-      break;
-    case ELF::EF_MIPS_ARCH_4:
-      Features.AddFeature("mips4");
-      break;
-    case ELF::EF_MIPS_ARCH_5:
-      Features.AddFeature("mips5");
-      break;
-    case ELF::EF_MIPS_ARCH_32:
-      Features.AddFeature("mips32");
-      break;
-    case ELF::EF_MIPS_ARCH_64:
-      Features.AddFeature("mips64");
-      break;
-    case ELF::EF_MIPS_ARCH_32R2:
-      Features.AddFeature("mips32r2");
-      break;
-    case ELF::EF_MIPS_ARCH_64R2:
-      Features.AddFeature("mips64r2");
-      break;
-    case ELF::EF_MIPS_ARCH_32R6:
-      Features.AddFeature("mips32r6");
-      break;
-    case ELF::EF_MIPS_ARCH_64R6:
-      Features.AddFeature("mips64r6");
-      break;
-    default:
-      llvm_unreachable("Unknown EF_MIPS_ARCH value");
-    }
-
-    switch (PlatformFlags & ELF::EF_MIPS_MACH) {
-    case ELF::EF_MIPS_MACH_NONE:
-      // No feature associated with this value.
-      break;
-    case ELF::EF_MIPS_MACH_OCTEON:
-      Features.AddFeature("cnmips");
-      break;
-    default:
-      llvm_unreachable("Unknown EF_MIPS_ARCH value");
-    }
-
-    if (PlatformFlags & ELF::EF_MIPS_ARCH_ASE_M16)
-      Features.AddFeature("mips16");
-    if (PlatformFlags & ELF::EF_MIPS_MICROMIPS)
-      Features.AddFeature("micromips");
-
-    return Features;
-  }
-  default:
-    return SubtargetFeatures();
-  }
+  report_fatal_error("Buffer is not an ELF object file!");
 }
 
 } // end namespace llvm

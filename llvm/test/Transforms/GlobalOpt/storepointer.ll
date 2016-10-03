@@ -1,5 +1,4 @@
-; RUN: opt < %s -globalopt -S | FileCheck %s
-; CHECK-NOT: global
+; RUN: opt < %s -globalopt -S | not grep global
 
 @G = internal global void ()* null              ; <void ()**> [#uses=2]
 
@@ -13,7 +12,8 @@ define void @init() {
 }
 
 define void @doit() {
-        %FP = load void ()*, void ()** @G         ; <void ()*> [#uses=1]
+        %FP = load void ()** @G         ; <void ()*> [#uses=1]
         call void %FP( )
         ret void
 }
+

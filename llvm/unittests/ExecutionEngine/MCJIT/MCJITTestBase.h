@@ -1,4 +1,4 @@
-//===- MCJITTestBase.h - Common base class for MCJIT Unit tests -*- C++ -*-===//
+//===- MCJITTestBase.h - Common base class for MCJIT Unit tests  ----------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,10 +13,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_UNITTESTS_EXECUTIONENGINE_MCJIT_MCJITTESTBASE_H
-#define LLVM_UNITTESTS_EXECUTIONENGINE_MCJIT_MCJITTESTBASE_H
 
-#include "MCJITTestAPICommon.h"
+#ifndef MCJIT_TEST_BASE_H
+#define MCJIT_TEST_BASE_H
+
 #include "llvm/Config/config.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
@@ -26,6 +26,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/TypeBuilder.h"
 #include "llvm/Support/CodeGen.h"
+#include "MCJITTestAPICommon.h"
 
 namespace llvm {
 
@@ -69,8 +70,9 @@ protected:
 
     SmallVector<Value*, 1> CallArgs;
 
-    for (Argument &A : Result->args())
-      CallArgs.push_back(&A);
+    Function::arg_iterator arg_iter = Result->arg_begin();
+    for(;arg_iter != Result->arg_end(); ++arg_iter)
+      CallArgs.push_back(arg_iter);
 
     Value *ReturnCode = Builder.CreateCall(Callee, CallArgs);
     Builder.CreateRet(ReturnCode);
@@ -96,21 +98,12 @@ protected:
     Function *Result = startFunction<int32_t(int32_t, int32_t)>(M, Name);
 
     Function::arg_iterator args = Result->arg_begin();
-    Value *Arg1 = &*args;
-    Value *Arg2 = &*++args;
+    Value *Arg1 = args;
+    Value *Arg2 = ++args;
     Value *AddResult = Builder.CreateAdd(Arg1, Arg2);
 
     endFunctionWithRet(Result, AddResult);
 
-    return Result;
-  }
-
-  // Inserts a declaration to a function defined elsewhere
-  template <typename FuncType>
-  Function *insertExternalReferenceToFunction(Module *M, StringRef Name) {
-    Function *Result = Function::Create(
-                         TypeBuilder<FuncType, false>::get(Context),
-                         GlobalValue::ExternalLinkage, Name, M);
     return Result;
   }
 
@@ -158,17 +151,17 @@ protected:
   //   }
   // NOTE: if Helper is left as the default parameter, Helper == recursive_add.
   Function *insertAccumulateFunction(Module *M,
-                                     Function *Helper = nullptr,
-                                     StringRef Name = "accumulate") {
+                                              Function *Helper = 0,
+                                              StringRef Name = "accumulate") {
     Function *Result = startFunction<int32_t(int32_t)>(M, Name);
-    if (!Helper)
+    if (Helper == 0)
       Helper = Result;
 
     BasicBlock *BaseCase = BasicBlock::Create(Context, "", Result);
     BasicBlock *RecursiveCase = BasicBlock::Create(Context, "", Result);
 
     // if (num == 0)
-    Value *Param = &*Result->arg_begin();
+    Value *Param = Result->arg_begin();
     Value *Zero = ConstantInt::get(Context, APInt(32, 0));
     Builder.CreateCondBr(Builder.CreateICmpEQ(Param, Zero),
                          BaseCase, RecursiveCase);
@@ -192,12 +185,14 @@ protected:
   // Populates Modules A and B:
   // Module A { Extern FB1, Function FA which calls FB1 },
   // Module B { Extern FA, Function FB1, Function FB2 which calls FA },
-  void createCrossModuleRecursiveCase(std::unique_ptr<Module> &A, Function *&FA,
-                                      std::unique_ptr<Module> &B,
-                                      Function *&FB1, Function *&FB2) {
+  void createCrossModuleRecursiveCase(OwningPtr<Module> &A,
+                                      Function *&FA,
+                                      OwningPtr<Module> &B,
+                                      Function *&FB1,
+                                      Function *&FB2) {
     // Define FB1 in B.
     B.reset(createEmptyModule("B"));
-    FB1 = insertAccumulateFunction(B.get(), nullptr, "FB1");
+    FB1 = insertAccumulateFunction(B.get(), 0, "FB1");
 
     // Declare FB1 in A (as an external).
     A.reset(createEmptyModule("A"));
@@ -216,10 +211,12 @@ protected:
   // Module A { Function FA },
   // Module B { Extern FA, Function FB which calls FA },
   // Module C { Extern FB, Function FC which calls FB },
-  void
-  createThreeModuleChainedCallsCase(std::unique_ptr<Module> &A, Function *&FA,
-                                    std::unique_ptr<Module> &B, Function *&FB,
-                                    std::unique_ptr<Module> &C, Function *&FC) {
+  void createThreeModuleChainedCallsCase(OwningPtr<Module> &A,
+                             Function *&FA,
+                             OwningPtr<Module> &B,
+                             Function *&FB,
+                             OwningPtr<Module> &C,
+                             Function *&FC) {
     A.reset(createEmptyModule("A"));
     FA = insertAddFunction(A.get());
 
@@ -232,11 +229,12 @@ protected:
     FC = insertSimpleCallFunction<int32_t(int32_t, int32_t)>(C.get(), FBExtern_in_C);
   }
 
+
   // Module A { Function FA },
   // Populates Modules A and B:
   // Module B { Function FB }
-  void createTwoModuleCase(std::unique_ptr<Module> &A, Function *&FA,
-                           std::unique_ptr<Module> &B, Function *&FB) {
+  void createTwoModuleCase(OwningPtr<Module> &A, Function *&FA,
+                           OwningPtr<Module> &B, Function *&FB) {
     A.reset(createEmptyModule("A"));
     FA = insertAddFunction(A.get());
 
@@ -246,8 +244,8 @@ protected:
 
   // Module A { Function FA },
   // Module B { Extern FA, Function FB which calls FA }
-  void createTwoModuleExternCase(std::unique_ptr<Module> &A, Function *&FA,
-                                 std::unique_ptr<Module> &B, Function *&FB) {
+  void createTwoModuleExternCase(OwningPtr<Module> &A, Function *&FA,
+                                 OwningPtr<Module> &B, Function *&FB) {
     A.reset(createEmptyModule("A"));
     FA = insertAddFunction(A.get());
 
@@ -260,9 +258,12 @@ protected:
   // Module A { Function FA },
   // Module B { Extern FA, Function FB which calls FA },
   // Module C { Extern FB, Function FC which calls FA },
-  void createThreeModuleCase(std::unique_ptr<Module> &A, Function *&FA,
-                             std::unique_ptr<Module> &B, Function *&FB,
-                             std::unique_ptr<Module> &C, Function *&FC) {
+  void createThreeModuleCase(OwningPtr<Module> &A,
+                             Function *&FA,
+                             OwningPtr<Module> &B,
+                             Function *&FB,
+                             OwningPtr<Module> &C,
+                             Function *&FC) {
     A.reset(createEmptyModule("A"));
     FA = insertAddFunction(A.get());
 
@@ -276,12 +277,14 @@ protected:
   }
 };
 
+
 class MCJITTestBase : public MCJITTestAPICommon, public TrivialModuleBuilder {
 protected:
 
   MCJITTestBase()
     : TrivialModuleBuilder(HostTriple)
     , OptLevel(CodeGenOpt::None)
+    , RelocModel(Reloc::Default)
     , CodeModel(CodeModel::Default)
     , MArch("")
     , MM(new SectionMemoryManager)
@@ -293,8 +296,6 @@ protected:
     SupportedArchs.push_back(Triple::arm);
     SupportedArchs.push_back(Triple::mips);
     SupportedArchs.push_back(Triple::mipsel);
-    SupportedArchs.push_back(Triple::mips64);
-    SupportedArchs.push_back(Triple::mips64el);
     SupportedArchs.push_back(Triple::x86);
     SupportedArchs.push_back(Triple::x86_64);
 
@@ -305,22 +306,29 @@ protected:
     SupportedSubArchs.push_back("armv6");
     SupportedSubArchs.push_back("armv7");
 
-    UnsupportedEnvironments.push_back(Triple::Cygnus);
+    // The operating systems below are known to be incompatible with MCJIT as
+    // they are copied from the test/ExecutionEngine/MCJIT/lit.local.cfg and
+    // should be kept in sync.
+    UnsupportedOSs.push_back(Triple::Cygwin);
+    UnsupportedOSs.push_back(Triple::Darwin);
   }
 
-  void createJIT(std::unique_ptr<Module> M) {
+  void createJIT(Module *M) {
 
     // Due to the EngineBuilder constructor, it is required to have a Module
     // in order to construct an ExecutionEngine (i.e. MCJIT)
     assert(M != 0 && "a non-null Module must be provided to create MCJIT");
 
-    EngineBuilder EB(std::move(M));
+    EngineBuilder EB(M);
     std::string Error;
     TheJIT.reset(EB.setEngineKind(EngineKind::JIT)
-                 .setMCJITMemoryManager(std::move(MM))
+                 .setUseMCJIT(true) /* can this be folded into the EngineKind enum? */
+                 .setMCJITMemoryManager(MM)
                  .setErrorStr(&Error)
                  .setOptLevel(CodeGenOpt::None)
+                 .setAllocateGVsWithCode(false) /*does this do anything?*/
                  .setCodeModel(CodeModel::JITDefault)
+                 .setRelocationModel(Reloc::Default)
                  .setMArch(MArch)
                  .setMCPU(sys::getHostCPUName())
                  //.setMAttrs(MAttrs)
@@ -330,15 +338,16 @@ protected:
   }
 
   CodeGenOpt::Level OptLevel;
+  Reloc::Model RelocModel;
   CodeModel::Model CodeModel;
   StringRef MArch;
   SmallVector<std::string, 1> MAttrs;
-  std::unique_ptr<ExecutionEngine> TheJIT;
-  std::unique_ptr<RTDyldMemoryManager> MM;
+  OwningPtr<ExecutionEngine> TheJIT;
+  RTDyldMemoryManager *MM;
 
-  std::unique_ptr<Module> M;
+  OwningPtr<Module> M;
 };
 
 } // namespace llvm
 
-#endif // LLVM_UNITTESTS_EXECUTIONENGINE_MCJIT_MCJITTESTBASE_H
+#endif // MCJIT_TEST_H

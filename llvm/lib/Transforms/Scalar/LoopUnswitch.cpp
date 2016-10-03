@@ -26,46 +26,35 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "loop-unswitch"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/GlobalsModRef.h"
-#include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/CodeMetrics.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/InstructionSimplify.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Analysis/BlockFrequencyInfoImpl.h"
-#include "llvm/Analysis/BlockFrequencyInfo.h"
-#include "llvm/Analysis/BranchProbabilityInfo.h"
-#include "llvm/Support/BranchProbability.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/MDBuilder.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Transforms/Utils/LoopUtils.h"
 #include <algorithm>
 #include <map>
 #include <set>
 using namespace llvm;
 
-#define DEBUG_TYPE "loop-unswitch"
-
 STATISTIC(NumBranches, "Number of branches unswitched");
 STATISTIC(NumSwitches, "Number of switches unswitched");
-STATISTIC(NumGuards,   "Number of guards unswitched");
 STATISTIC(NumSelects , "Number of selects unswitched");
 STATISTIC(NumTrivial , "Number of unswitches that are trivial");
 STATISTIC(NumSimplify, "Number of simplifications of unswitched code");
@@ -76,19 +65,6 @@ STATISTIC(TotalInsts,  "Total number of instructions analyzed");
 static cl::opt<unsigned>
 Threshold("loop-unswitch-threshold", cl::desc("Max loop size to unswitch"),
           cl::init(100), cl::Hidden);
-
-static cl::opt<bool>
-LoopUnswitchWithBlockFrequency("loop-unswitch-with-block-frequency",
-    cl::init(false), cl::Hidden,
-    cl::desc("Enable the use of the block frequency analysis to access PGO "
-             "heuristics to minimize code growth in cold regions."));
-
-static cl::opt<unsigned>
-ColdnessThreshold("loop-unswitch-coldness-threshold", cl::init(1), cl::Hidden,
-    cl::desc("Coldness threshold in percentage. The loop header frequency "
-             "(relative to the entry frequency) is compared with this "
-             "threshold to determine if non-trivial unswitching should be "
-             "enabled."));
 
 namespace {
 
@@ -101,7 +77,6 @@ namespace {
 
     struct LoopProperties {
       unsigned CanBeUnswitchedCount;
-      unsigned WasUnswitchedCount;
       unsigned SizeEstimation;
       UnswitchedValsMap UnswitchedVals;
     };
@@ -115,71 +90,47 @@ namespace {
     UnswitchedValsMap *CurLoopInstructions;
     LoopProperties *CurrentLoopProperties;
 
-    // A loop unswitching with an estimated cost above this threshold
-    // is not performed. MaxSize is turned into unswitching quota for
-    // the current loop, and reduced correspondingly, though note that
-    // the quota is returned by releaseMemory() when the loop has been
-    // processed, so that MaxSize will return to its previous
-    // value. So in most cases MaxSize will equal the Threshold flag
-    // when a new loop is processed. An exception to that is that
-    // MaxSize will have a smaller value while processing nested loops
-    // that were introduced due to loop unswitching of an outer loop.
-    //
-    // FIXME: The way that MaxSize works is subtle and depends on the
-    // pass manager processing loops and calling releaseMemory() in a
-    // specific order. It would be good to find a more straightforward
-    // way of doing what MaxSize does.
+    // Max size of code we can produce on remained iterations.
     unsigned MaxSize;
 
-  public:
-    LUAnalysisCache()
-        : CurLoopInstructions(nullptr), CurrentLoopProperties(nullptr),
-          MaxSize(Threshold) {}
+    public:
 
-    // Analyze loop. Check its size, calculate is it possible to unswitch
-    // it. Returns true if we can unswitch this loop.
-    bool countLoop(const Loop *L, const TargetTransformInfo &TTI,
-                   AssumptionCache *AC);
+      LUAnalysisCache() :
+        CurLoopInstructions(0), CurrentLoopProperties(0),
+        MaxSize(Threshold)
+      {}
 
-    // Clean all data related to given loop.
-    void forgetLoop(const Loop *L);
+      // Analyze loop. Check its size, calculate is it possible to unswitch
+      // it. Returns true if we can unswitch this loop.
+      bool countLoop(const Loop *L, const TargetTransformInfo &TTI);
 
-    // Mark case value as unswitched.
-    // Since SI instruction can be partly unswitched, in order to avoid
-    // extra unswitching in cloned loops keep track all unswitched values.
-    void setUnswitched(const SwitchInst *SI, const Value *V);
+      // Clean all data related to given loop.
+      void forgetLoop(const Loop *L);
 
-    // Check was this case value unswitched before or not.
-    bool isUnswitched(const SwitchInst *SI, const Value *V);
+      // Mark case value as unswitched.
+      // Since SI instruction can be partly unswitched, in order to avoid
+      // extra unswitching in cloned loops keep track all unswitched values.
+      void setUnswitched(const SwitchInst *SI, const Value *V);
 
-    // Returns true if another unswitching could be done within the cost
-    // threshold.
-    bool CostAllowsUnswitching();
+      // Check was this case value unswitched before or not.
+      bool isUnswitched(const SwitchInst *SI, const Value *V);
 
-    // Clone all loop-unswitch related loop properties.
-    // Redistribute unswitching quotas.
-    // Note, that new loop data is stored inside the VMap.
-    void cloneData(const Loop *NewLoop, const Loop *OldLoop,
-                   const ValueToValueMapTy &VMap);
+      // Clone all loop-unswitch related loop properties.
+      // Redistribute unswitching quotas.
+      // Note, that new loop data is stored inside the VMap.
+      void cloneData(const Loop *NewLoop, const Loop *OldLoop,
+                     const ValueToValueMapTy &VMap);
   };
 
   class LoopUnswitch : public LoopPass {
     LoopInfo *LI;  // Loop information
     LPPassManager *LPM;
-    AssumptionCache *AC;
 
-    // Used to check if second loop needs processing after
-    // RewriteLoopBodyWithConditionConstant rewrites first loop.
+    // LoopProcessWorklist - Used to check if second loop needs processing
+    // after RewriteLoopBodyWithConditionConstant rewrites first loop.
     std::vector<Loop*> LoopProcessWorklist;
 
     LUAnalysisCache BranchesInfo;
-
-    bool EnabledPGO;
-
-    // BFI and ColdEntryFreq are only used when PGO and
-    // LoopUnswitchWithBlockFrequency are enabled.
-    BlockFrequencyInfo BFI;
-    BlockFrequency ColdEntryFreq;
 
     bool OptimizeForSize;
     bool redoLoop;
@@ -188,9 +139,6 @@ namespace {
     DominatorTree *DT;
     BasicBlock *loopHeader;
     BasicBlock *loopPreheader;
-
-    bool SanitizeMemory;
-    LoopSafetyInfo SafetyInfo;
 
     // LoopBlocks contains all of the basic blocks of the loop, including the
     // preheader of the loop, the body of the loop, and the exit blocks of the
@@ -203,27 +151,42 @@ namespace {
     static char ID; // Pass ID, replacement for typeid
     explicit LoopUnswitch(bool Os = false) :
       LoopPass(ID), OptimizeForSize(Os), redoLoop(false),
-      currentLoop(nullptr), DT(nullptr), loopHeader(nullptr),
-      loopPreheader(nullptr) {
+      currentLoop(0), DT(0), loopHeader(0),
+      loopPreheader(0) {
         initializeLoopUnswitchPass(*PassRegistry::getPassRegistry());
       }
 
-    bool runOnLoop(Loop *L, LPPassManager &LPM) override;
+    bool runOnLoop(Loop *L, LPPassManager &LPM);
     bool processCurrentLoop();
 
     /// This transformation requires natural loop information & requires that
     /// loop preheaders be inserted into the CFG.
     ///
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
-      AU.addRequired<AssumptionCacheTracker>();
-      AU.addRequired<TargetTransformInfoWrapperPass>();
-      getLoopAnalysisUsage(AU);
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+      AU.addRequiredID(LoopSimplifyID);
+      AU.addPreservedID(LoopSimplifyID);
+      AU.addRequired<LoopInfo>();
+      AU.addPreserved<LoopInfo>();
+      AU.addRequiredID(LCSSAID);
+      AU.addPreservedID(LCSSAID);
+      AU.addPreserved<DominatorTree>();
+      AU.addPreserved<ScalarEvolution>();
+      AU.addRequired<TargetTransformInfo>();
     }
 
   private:
 
-    void releaseMemory() override {
+    virtual void releaseMemory() {
       BranchesInfo.forgetLoop(currentLoop);
+    }
+
+    /// RemoveLoopFromWorklist - If the specified loop is on the loop worklist,
+    /// remove it.
+    void RemoveLoopFromWorklist(Loop *L) {
+      std::vector<Loop*>::iterator I = std::find(LoopProcessWorklist.begin(),
+                                                 LoopProcessWorklist.end(), L);
+      if (I != LoopProcessWorklist.end())
+        LoopProcessWorklist.erase(I);
     }
 
     void initLoopData() {
@@ -233,17 +196,12 @@ namespace {
 
     /// Split all of the edges from inside the loop to their exit blocks.
     /// Update the appropriate Phi nodes as we do so.
-    void SplitExitEdges(Loop *L,
-                        const SmallVectorImpl<BasicBlock *> &ExitBlocks);
+    void SplitExitEdges(Loop *L, const SmallVectorImpl<BasicBlock *> &ExitBlocks);
 
-    bool TryTrivialLoopUnswitch(bool &Changed);
-
-    bool UnswitchIfProfitable(Value *LoopCond, Constant *Val,
-                              TerminatorInst *TI = nullptr);
+    bool UnswitchIfProfitable(Value *LoopCond, Constant *Val);
     void UnswitchTrivialCondition(Loop *L, Value *Cond, Constant *Val,
-                                  BasicBlock *ExitBlock, TerminatorInst *TI);
-    void UnswitchNontrivialCondition(Value *LIC, Constant *OnVal, Loop *L,
-                                     TerminatorInst *TI);
+                                  BasicBlock *ExitBlock);
+    void UnswitchNontrivialCondition(Value *LIC, Constant *OnVal, Loop *L);
 
     void RewriteLoopBodyWithConditionConstant(Loop *L, Value *LIC,
                                               Constant *Val, bool isEqual);
@@ -251,21 +209,25 @@ namespace {
     void EmitPreheaderBranchOnCondition(Value *LIC, Constant *Val,
                                         BasicBlock *TrueDest,
                                         BasicBlock *FalseDest,
-                                        Instruction *InsertPt,
-                                        TerminatorInst *TI);
+                                        Instruction *InsertPt);
 
     void SimplifyCode(std::vector<Instruction*> &Worklist, Loop *L);
+    void RemoveBlockIfDead(BasicBlock *BB,
+                           std::vector<Instruction*> &Worklist, Loop *l);
+    void RemoveLoopFromHierarchy(Loop *L);
+    bool IsTrivialUnswitchCondition(Value *Cond, Constant **Val = 0,
+                                    BasicBlock **LoopExit = 0);
+
   };
 }
 
 // Analyze loop. Check its size, calculate is it possible to unswitch
 // it. Returns true if we can unswitch this loop.
-bool LUAnalysisCache::countLoop(const Loop *L, const TargetTransformInfo &TTI,
-                                AssumptionCache *AC) {
+bool LUAnalysisCache::countLoop(const Loop *L, const TargetTransformInfo &TTI) {
 
   LoopPropsMapIt PropsIt;
   bool Inserted;
-  std::tie(PropsIt, Inserted) =
+  llvm::tie(PropsIt, Inserted) =
       LoopsProperties.insert(std::make_pair(L, LoopProperties()));
 
   LoopProperties &Props = PropsIt->second;
@@ -278,20 +240,16 @@ bool LUAnalysisCache::countLoop(const Loop *L, const TargetTransformInfo &TTI,
     // large numbers of branches which cause loop unswitching to go crazy.
     // This is a very ad-hoc heuristic.
 
-    SmallPtrSet<const Value *, 32> EphValues;
-    CodeMetrics::collectEphemeralValues(L, AC, EphValues);
-
     // FIXME: This is overly conservative because it does not take into
     // consideration code simplification opportunities and code that can
     // be shared by the resultant unswitched loops.
     CodeMetrics Metrics;
-    for (Loop::block_iterator I = L->block_begin(), E = L->block_end(); I != E;
-         ++I)
-      Metrics.analyzeBasicBlock(*I, TTI, EphValues);
+    for (Loop::block_iterator I = L->block_begin(), E = L->block_end();
+         I != E; ++I)
+      Metrics.analyzeBasicBlock(*I, TTI);
 
-    Props.SizeEstimation = Metrics.NumInsts;
+    Props.SizeEstimation = std::min(Metrics.NumInsts, Metrics.NumBlocks * 5);
     Props.CanBeUnswitchedCount = MaxSize / (Props.SizeEstimation);
-    Props.WasUnswitchedCount = 0;
     MaxSize -= Props.SizeEstimation * Props.CanBeUnswitchedCount;
 
     if (Metrics.notDuplicatable) {
@@ -300,6 +258,13 @@ bool LUAnalysisCache::countLoop(const Loop *L, const TargetTransformInfo &TTI,
                    << "duplicated!\n");
       return false;
     }
+  }
+
+  if (!Props.CanBeUnswitchedCount) {
+    DEBUG(dbgs() << "NOT unswitching loop %"
+                 << L->getHeader()->getName() << ", cost too high: "
+                 << L->getBlocks().size() << "\n");
+    return false;
   }
 
   // Be careful. This links are good only before new loop addition.
@@ -316,13 +281,12 @@ void LUAnalysisCache::forgetLoop(const Loop *L) {
 
   if (LIt != LoopsProperties.end()) {
     LoopProperties &Props = LIt->second;
-    MaxSize += (Props.CanBeUnswitchedCount + Props.WasUnswitchedCount) *
-               Props.SizeEstimation;
+    MaxSize += Props.CanBeUnswitchedCount * Props.SizeEstimation;
     LoopsProperties.erase(LIt);
   }
 
-  CurrentLoopProperties = nullptr;
-  CurLoopInstructions = nullptr;
+  CurrentLoopProperties = 0;
+  CurLoopInstructions = 0;
 }
 
 // Mark case value as unswitched.
@@ -335,10 +299,6 @@ void LUAnalysisCache::setUnswitched(const SwitchInst *SI, const Value *V) {
 // Check was this case value unswitched before or not.
 bool LUAnalysisCache::isUnswitched(const SwitchInst *SI, const Value *V) {
   return (*CurLoopInstructions)[SI].count(V);
-}
-
-bool LUAnalysisCache::CostAllowsUnswitching() {
-  return CurrentLoopProperties->CanBeUnswitchedCount > 0;
 }
 
 // Clone all loop-unswitch related loop properties.
@@ -354,8 +314,6 @@ void LUAnalysisCache::cloneData(const Loop *NewLoop, const Loop *OldLoop,
   // Reallocate "can-be-unswitched quota"
 
   --OldLoopProps.CanBeUnswitchedCount;
-  ++OldLoopProps.WasUnswitchedCount;
-  NewLoopProps.WasUnswitchedCount = 0;
   unsigned Quota = OldLoopProps.CanBeUnswitchedCount;
   NewLoopProps.CanBeUnswitchedCount = Quota / 2;
   OldLoopProps.CanBeUnswitchedCount = Quota - Quota / 2;
@@ -378,9 +336,10 @@ void LUAnalysisCache::cloneData(const Loop *NewLoop, const Loop *OldLoop,
 char LoopUnswitch::ID = 0;
 INITIALIZE_PASS_BEGIN(LoopUnswitch, "loop-unswitch", "Unswitch loops",
                       false, false)
-INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
-INITIALIZE_PASS_DEPENDENCY(LoopPass)
-INITIALIZE_PASS_DEPENDENCY(TargetTransformInfoWrapperPass)
+INITIALIZE_AG_DEPENDENCY(TargetTransformInfo)
+INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
+INITIALIZE_PASS_DEPENDENCY(LoopInfo)
+INITIALIZE_PASS_DEPENDENCY(LCSSA)
 INITIALIZE_PASS_END(LoopUnswitch, "loop-unswitch", "Unswitch loops",
                       false, false)
 
@@ -388,31 +347,26 @@ Pass *llvm::createLoopUnswitchPass(bool Os) {
   return new LoopUnswitch(Os);
 }
 
-/// Cond is a condition that occurs in L. If it is invariant in the loop, or has
-/// an invariant piece, return the invariant. Otherwise, return null.
-static Value *FindLIVLoopCondition(Value *Cond, Loop *L, bool &Changed,
-                                   DenseMap<Value *, Value *> &Cache) {
-  auto CacheIt = Cache.find(Cond);
-  if (CacheIt != Cache.end())
-    return CacheIt->second;
+/// FindLIVLoopCondition - Cond is a condition that occurs in L.  If it is
+/// invariant in the loop, or has an invariant piece, return the invariant.
+/// Otherwise, return null.
+static Value *FindLIVLoopCondition(Value *Cond, Loop *L, bool &Changed) {
 
   // We started analyze new instruction, increment scanned instructions counter.
   ++TotalInsts;
 
   // We can never unswitch on vector conditions.
   if (Cond->getType()->isVectorTy())
-    return nullptr;
+    return 0;
 
   // Constants should be folded, not unswitched on!
-  if (isa<Constant>(Cond)) return nullptr;
+  if (isa<Constant>(Cond)) return 0;
 
   // TODO: Handle: br (VARIANT|INVARIANT).
 
   // Hoist simple values out.
-  if (L->makeLoopInvariant(Cond, Changed)) {
-    Cache[Cond] = Cond;
+  if (L->makeLoopInvariant(Cond, Changed))
     return Cond;
-  }
 
   if (BinaryOperator *BO = dyn_cast<BinaryOperator>(Cond))
     if (BO->getOpcode() == Instruction::And ||
@@ -420,56 +374,21 @@ static Value *FindLIVLoopCondition(Value *Cond, Loop *L, bool &Changed,
       // If either the left or right side is invariant, we can unswitch on this,
       // which will cause the branch to go away in one loop and the condition to
       // simplify in the other one.
-      if (Value *LHS =
-              FindLIVLoopCondition(BO->getOperand(0), L, Changed, Cache)) {
-        Cache[Cond] = LHS;
+      if (Value *LHS = FindLIVLoopCondition(BO->getOperand(0), L, Changed))
         return LHS;
-      }
-      if (Value *RHS =
-              FindLIVLoopCondition(BO->getOperand(1), L, Changed, Cache)) {
-        Cache[Cond] = RHS;
+      if (Value *RHS = FindLIVLoopCondition(BO->getOperand(1), L, Changed))
         return RHS;
-      }
     }
 
-  Cache[Cond] = nullptr;
-  return nullptr;
-}
-
-static Value *FindLIVLoopCondition(Value *Cond, Loop *L, bool &Changed) {
-  DenseMap<Value *, Value *> Cache;
-  return FindLIVLoopCondition(Cond, L, Changed, Cache);
+  return 0;
 }
 
 bool LoopUnswitch::runOnLoop(Loop *L, LPPassManager &LPM_Ref) {
-  if (skipLoop(L))
-    return false;
-
-  AC = &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(
-      *L->getHeader()->getParent());
-  LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+  LI = &getAnalysis<LoopInfo>();
   LPM = &LPM_Ref;
-  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  DT = getAnalysisIfAvailable<DominatorTree>();
   currentLoop = L;
   Function *F = currentLoop->getHeader()->getParent();
-
-  SanitizeMemory = F->hasFnAttribute(Attribute::SanitizeMemory);
-  if (SanitizeMemory)
-    computeLoopSafetyInfo(&SafetyInfo, L);
-
-  EnabledPGO = F->getEntryCount().hasValue();
-
-  if (LoopUnswitchWithBlockFrequency && EnabledPGO) {
-    BranchProbabilityInfo BPI(*F, *LI);
-    BFI.calculate(*L->getHeader()->getParent(), BPI, *LI);
-
-    // Use BranchProbability to compute a minimum frequency based on
-    // function entry baseline frequency. Loops with headers below this
-    // frequency are considered as cold.
-    const BranchProbability ColdProb(ColdnessThreshold, 100);
-    ColdEntryFreq = BlockFrequency(BFI.getEntryFreq()) * ColdProb;
-  }
-
   bool Changed = false;
   do {
     assert(currentLoop->isLCSSAForm(*DT));
@@ -477,13 +396,16 @@ bool LoopUnswitch::runOnLoop(Loop *L, LPPassManager &LPM_Ref) {
     Changed |= processCurrentLoop();
   } while(redoLoop);
 
-  // FIXME: Reconstruct dom info, because it is not preserved properly.
-  if (Changed)
-    DT->recalculate(*F);
+  if (Changed) {
+    // FIXME: Reconstruct dom info, because it is not preserved properly.
+    if (DT)
+      DT->runOnFunction(*F);
+  }
   return Changed;
 }
 
-/// Do actual work and unswitch loop if possible and profitable.
+/// processCurrentLoop - Do actual work and unswitch loop if possible
+/// and profitable.
 bool LoopUnswitch::processCurrentLoop() {
   bool Changed = false;
 
@@ -503,77 +425,10 @@ bool LoopUnswitch::processCurrentLoop() {
 
   LLVMContext &Context = loopHeader->getContext();
 
-  // Analyze loop cost, and stop unswitching if loop content can not be duplicated.
-  if (!BranchesInfo.countLoop(
-          currentLoop, getAnalysis<TargetTransformInfoWrapperPass>().getTTI(
-                           *currentLoop->getHeader()->getParent()),
-          AC))
+  // Probably we reach the quota of branches for this loop. If so
+  // stop unswitching.
+  if (!BranchesInfo.countLoop(currentLoop, getAnalysis<TargetTransformInfo>()))
     return false;
-
-  // Try trivial unswitch first before loop over other basic blocks in the loop.
-  if (TryTrivialLoopUnswitch(Changed)) {
-    return true;
-  }
-
-  // Run through the instructions in the loop, keeping track of three things:
-  //
-  //  - That we do not unswitch loops containing convergent operations, as we
-  //    might be making them control dependent on the unswitch value when they
-  //    were not before.
-  //    FIXME: This could be refined to only bail if the convergent operation is
-  //    not already control-dependent on the unswitch value.
-  //
-  //  - That basic blocks in the loop contain invokes whose predecessor edges we
-  //    cannot split.
-  //
-  //  - The set of guard intrinsics encountered (these are non terminator
-  //    instructions that are also profitable to be unswitched).
-
-  SmallVector<IntrinsicInst *, 4> Guards;
-
-  for (const auto BB : currentLoop->blocks()) {
-    for (auto &I : *BB) {
-      auto CS = CallSite(&I);
-      if (!CS) continue;
-      if (CS.hasFnAttr(Attribute::Convergent))
-        return false;
-      if (auto *II = dyn_cast<InvokeInst>(&I))
-        if (!II->getUnwindDest()->canSplitPredecessors())
-          return false;
-      if (auto *II = dyn_cast<IntrinsicInst>(&I))
-        if (II->getIntrinsicID() == Intrinsic::experimental_guard)
-          Guards.push_back(II);
-    }
-  }
-
-  // Do not do non-trivial unswitch while optimizing for size.
-  // FIXME: Use Function::optForSize().
-  if (OptimizeForSize ||
-      loopHeader->getParent()->hasFnAttribute(Attribute::OptimizeForSize))
-    return false;
-
-  if (LoopUnswitchWithBlockFrequency && EnabledPGO) {
-    // Compute the weighted frequency of the hottest block in the
-    // loop (loopHeader in this case since inner loops should be
-    // processed before outer loop). If it is less than ColdFrequency,
-    // we should not unswitch.
-    BlockFrequency LoopEntryFreq = BFI.getBlockFreq(loopHeader);
-    if (LoopEntryFreq < ColdEntryFreq)
-      return false;
-  }
-
-  for (IntrinsicInst *Guard : Guards) {
-    Value *LoopCond =
-        FindLIVLoopCondition(Guard->getOperand(0), currentLoop, Changed);
-    if (LoopCond &&
-        UnswitchIfProfitable(LoopCond, ConstantInt::getTrue(Context))) {
-      // NB! Unswitching (if successful) could have erased some of the
-      // instructions in Guards leaving dangling pointers there.  This is fine
-      // because we're returning now, and won't look at Guards again.
-      ++NumGuards;
-      return true;
-    }
-  }
 
   // Loop over all of the basic blocks in the loop.  If we find an interior
   // block that is branching on a loop-invariant condition, we can unswitch this
@@ -581,17 +436,6 @@ bool LoopUnswitch::processCurrentLoop() {
   for (Loop::block_iterator I = currentLoop->block_begin(),
          E = currentLoop->block_end(); I != E; ++I) {
     TerminatorInst *TI = (*I)->getTerminator();
-
-    // Unswitching on a potentially uninitialized predicate is not
-    // MSan-friendly. Limit this to the cases when the original predicate is
-    // guaranteed to execute, to avoid creating a use-of-uninitialized-value
-    // in the code that did not have one.
-    // This is a workaround for the discrepancy between LLVM IR and MSan
-    // semantics. See PR28054 for more details.
-    if (SanitizeMemory &&
-        !isGuaranteedToExecute(*TI, DT, currentLoop, &SafetyInfo))
-      continue;
-
     if (BranchInst *BI = dyn_cast<BranchInst>(TI)) {
       // If this isn't branching on an invariant condition, we can't unswitch
       // it.
@@ -600,8 +444,8 @@ bool LoopUnswitch::processCurrentLoop() {
         // unswitch on it if we desire.
         Value *LoopCond = FindLIVLoopCondition(BI->getCondition(),
                                                currentLoop, Changed);
-        if (LoopCond &&
-            UnswitchIfProfitable(LoopCond, ConstantInt::getTrue(Context), TI)) {
+        if (LoopCond && UnswitchIfProfitable(LoopCond,
+                                             ConstantInt::getTrue(Context))) {
           ++NumBranches;
           return true;
         }
@@ -614,7 +458,7 @@ bool LoopUnswitch::processCurrentLoop() {
         // Find a value to unswitch on:
         // FIXME: this should chose the most expensive case!
         // FIXME: scan for a case with a non-critical edge?
-        Constant *UnswitchVal = nullptr;
+        Constant *UnswitchVal = 0;
 
         // Do not process same value again and again.
         // At this point we have some cases already unswitched and
@@ -654,8 +498,8 @@ bool LoopUnswitch::processCurrentLoop() {
   return Changed;
 }
 
-/// Check to see if all paths from BB exit the loop with no side effects
-/// (including infinite loops).
+/// isTrivialLoopExitBlock - Check to see if all paths from BB exit the
+/// loop with no side effects (including infinite loops).
 ///
 /// If true, we return true and set ExitBB to the block we
 /// exit through.
@@ -671,7 +515,7 @@ static bool isTrivialLoopExitBlockHelper(Loop *L, BasicBlock *BB,
   if (!L->contains(BB)) {
     // Otherwise, this is a loop exit, this is fine so long as this is the
     // first exit.
-    if (ExitBB) return false;
+    if (ExitBB != 0) return false;
     ExitBB = BB;
     return true;
   }
@@ -685,252 +529,64 @@ static bool isTrivialLoopExitBlockHelper(Loop *L, BasicBlock *BB,
 
   // Okay, everything after this looks good, check to make sure that this block
   // doesn't include any side effects.
-  for (Instruction &I : *BB)
-    if (I.mayHaveSideEffects())
+  for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+    if (I->mayHaveSideEffects())
       return false;
 
   return true;
 }
 
-/// Return true if the specified block unconditionally leads to an exit from
-/// the specified loop, and has no side-effects in the process. If so, return
-/// the block that is exited to, otherwise return null.
+/// isTrivialLoopExitBlock - Return true if the specified block unconditionally
+/// leads to an exit from the specified loop, and has no side-effects in the
+/// process.  If so, return the block that is exited to, otherwise return null.
 static BasicBlock *isTrivialLoopExitBlock(Loop *L, BasicBlock *BB) {
   std::set<BasicBlock*> Visited;
   Visited.insert(L->getHeader());  // Branches to header make infinite loops.
-  BasicBlock *ExitBB = nullptr;
+  BasicBlock *ExitBB = 0;
   if (isTrivialLoopExitBlockHelper(L, BB, ExitBB, Visited))
     return ExitBB;
-  return nullptr;
+  return 0;
 }
 
-/// We have found that we can unswitch currentLoop when LoopCond == Val to
-/// simplify the loop.  If we decide that this is profitable,
-/// unswitch the loop, reprocess the pieces, then return true.
-bool LoopUnswitch::UnswitchIfProfitable(Value *LoopCond, Constant *Val,
-                                        TerminatorInst *TI) {
-  // Check to see if it would be profitable to unswitch current loop.
-  if (!BranchesInfo.CostAllowsUnswitching()) {
-    DEBUG(dbgs() << "NOT unswitching loop %"
-                 << currentLoop->getHeader()->getName()
-                 << " at non-trivial condition '" << *Val
-                 << "' == " << *LoopCond << "\n"
-                 << ". Cost too high.\n");
-    return false;
-  }
+/// IsTrivialUnswitchCondition - Check to see if this unswitch condition is
+/// trivial: that is, that the condition controls whether or not the loop does
+/// anything at all.  If this is a trivial condition, unswitching produces no
+/// code duplications (equivalently, it produces a simpler loop and a new empty
+/// loop, which gets deleted).
+///
+/// If this is a trivial condition, return true, otherwise return false.  When
+/// returning true, this sets Cond and Val to the condition that controls the
+/// trivial condition: when Cond dynamically equals Val, the loop is known to
+/// exit.  Finally, this sets LoopExit to the BB that the loop exits to when
+/// Cond == Val.
+///
+bool LoopUnswitch::IsTrivialUnswitchCondition(Value *Cond, Constant **Val,
+                                       BasicBlock **LoopExit) {
+  BasicBlock *Header = currentLoop->getHeader();
+  TerminatorInst *HeaderTerm = Header->getTerminator();
+  LLVMContext &Context = Header->getContext();
 
-  UnswitchNontrivialCondition(LoopCond, Val, currentLoop, TI);
-  return true;
-}
-
-/// Recursively clone the specified loop and all of its children,
-/// mapping the blocks with the specified map.
-static Loop *CloneLoop(Loop *L, Loop *PL, ValueToValueMapTy &VM,
-                       LoopInfo *LI, LPPassManager *LPM) {
-  Loop &New = LPM->addLoop(PL);
-
-  // Add all of the blocks in L to the new loop.
-  for (Loop::block_iterator I = L->block_begin(), E = L->block_end();
-       I != E; ++I)
-    if (LI->getLoopFor(*I) == L)
-      New.addBasicBlockToLoop(cast<BasicBlock>(VM[*I]), *LI);
-
-  // Add all of the subloops to the new loop.
-  for (Loop *I : *L)
-    CloneLoop(I, &New, VM, LI, LPM);
-
-  return &New;
-}
-
-/// Emit a conditional branch on two values if LIC == Val, branch to TrueDst,
-/// otherwise branch to FalseDest. Insert the code immediately before InsertPt.
-void LoopUnswitch::EmitPreheaderBranchOnCondition(Value *LIC, Constant *Val,
-                                                  BasicBlock *TrueDest,
-                                                  BasicBlock *FalseDest,
-                                                  Instruction *InsertPt,
-                                                  TerminatorInst *TI) {
-  // Insert a conditional branch on LIC to the two preheaders.  The original
-  // code is the true version and the new code is the false version.
-  Value *BranchVal = LIC;
-  bool Swapped = false;
-  if (!isa<ConstantInt>(Val) ||
-      Val->getType() != Type::getInt1Ty(LIC->getContext()))
-    BranchVal = new ICmpInst(InsertPt, ICmpInst::ICMP_EQ, LIC, Val);
-  else if (Val != ConstantInt::getTrue(Val->getContext())) {
-    // We want to enter the new loop when the condition is true.
-    std::swap(TrueDest, FalseDest);
-    Swapped = true;
-  }
-
-  // Insert the new branch.
-  BranchInst *BI =
-      IRBuilder<>(InsertPt).CreateCondBr(BranchVal, TrueDest, FalseDest, TI);
-  if (Swapped)
-    BI->swapProfMetadata();
-
-  // If either edge is critical, split it. This helps preserve LoopSimplify
-  // form for enclosing loops.
-  auto Options = CriticalEdgeSplittingOptions(DT, LI).setPreserveLCSSA();
-  SplitCriticalEdge(BI, 0, Options);
-  SplitCriticalEdge(BI, 1, Options);
-}
-
-/// Given a loop that has a trivial unswitchable condition in it (a cond branch
-/// from its header block to its latch block, where the path through the loop
-/// that doesn't execute its body has no side-effects), unswitch it. This
-/// doesn't involve any code duplication, just moving the conditional branch
-/// outside of the loop and updating loop info.
-void LoopUnswitch::UnswitchTrivialCondition(Loop *L, Value *Cond, Constant *Val,
-                                            BasicBlock *ExitBlock,
-                                            TerminatorInst *TI) {
-  DEBUG(dbgs() << "loop-unswitch: Trivial-Unswitch loop %"
-               << loopHeader->getName() << " [" << L->getBlocks().size()
-               << " blocks] in Function "
-               << L->getHeader()->getParent()->getName() << " on cond: " << *Val
-               << " == " << *Cond << "\n");
-
-  // First step, split the preheader, so that we know that there is a safe place
-  // to insert the conditional branch.  We will change loopPreheader to have a
-  // conditional branch on Cond.
-  BasicBlock *NewPH = SplitEdge(loopPreheader, loopHeader, DT, LI);
-
-  // Now that we have a place to insert the conditional branch, create a place
-  // to branch to: this is the exit block out of the loop that we should
-  // short-circuit to.
-
-  // Split this block now, so that the loop maintains its exit block, and so
-  // that the jump from the preheader can execute the contents of the exit block
-  // without actually branching to it (the exit block should be dominated by the
-  // loop header, not the preheader).
-  assert(!L->contains(ExitBlock) && "Exit block is in the loop?");
-  BasicBlock *NewExit = SplitBlock(ExitBlock, &ExitBlock->front(), DT, LI);
-
-  // Okay, now we have a position to branch from and a position to branch to,
-  // insert the new conditional branch.
-  EmitPreheaderBranchOnCondition(Cond, Val, NewExit, NewPH,
-                                 loopPreheader->getTerminator(), TI);
-  LPM->deleteSimpleAnalysisValue(loopPreheader->getTerminator(), L);
-  loopPreheader->getTerminator()->eraseFromParent();
-
-  // We need to reprocess this loop, it could be unswitched again.
-  redoLoop = true;
-
-  // Now that we know that the loop is never entered when this condition is a
-  // particular value, rewrite the loop with this info.  We know that this will
-  // at least eliminate the old branch.
-  RewriteLoopBodyWithConditionConstant(L, Cond, Val, false);
-  ++NumTrivial;
-}
-
-/// Check if the first non-constant condition starting from the loop header is
-/// a trivial unswitch condition: that is, a condition controls whether or not
-/// the loop does anything at all. If it is a trivial condition, unswitching
-/// produces no code duplications (equivalently, it produces a simpler loop and
-/// a new empty loop, which gets deleted). Therefore always unswitch trivial
-/// condition.
-bool LoopUnswitch::TryTrivialLoopUnswitch(bool &Changed) {
-  BasicBlock *CurrentBB = currentLoop->getHeader();
-  TerminatorInst *CurrentTerm = CurrentBB->getTerminator();
-  LLVMContext &Context = CurrentBB->getContext();
-
-  // If loop header has only one reachable successor (currently via an
-  // unconditional branch or constant foldable conditional branch, but
-  // should also consider adding constant foldable switch instruction in
-  // future), we should keep looking for trivial condition candidates in
-  // the successor as well. An alternative is to constant fold conditions
-  // and merge successors into loop header (then we only need to check header's
-  // terminator). The reason for not doing this in LoopUnswitch pass is that
-  // it could potentially break LoopPassManager's invariants. Folding dead
-  // branches could either eliminate the current loop or make other loops
-  // unreachable. LCSSA form might also not be preserved after deleting
-  // branches. The following code keeps traversing loop header's successors
-  // until it finds the trivial condition candidate (condition that is not a
-  // constant). Since unswitching generates branches with constant conditions,
-  // this scenario could be very common in practice.
-  SmallSet<BasicBlock*, 8> Visited;
-
-  while (true) {
-    // If we exit loop or reach a previous visited block, then
-    // we can not reach any trivial condition candidates (unfoldable
-    // branch instructions or switch instructions) and no unswitch
-    // can happen. Exit and return false.
-    if (!currentLoop->contains(CurrentBB) || !Visited.insert(CurrentBB).second)
-      return false;
-
-    // Check if this loop will execute any side-effecting instructions (e.g.
-    // stores, calls, volatile loads) in the part of the loop that the code
-    // *would* execute. Check the header first.
-    for (Instruction &I : *CurrentBB)
-      if (I.mayHaveSideEffects())
-        return false;
-
-    // FIXME: add check for constant foldable switch instructions.
-    if (BranchInst *BI = dyn_cast<BranchInst>(CurrentTerm)) {
-      if (BI->isUnconditional()) {
-        CurrentBB = BI->getSuccessor(0);
-      } else if (BI->getCondition() == ConstantInt::getTrue(Context)) {
-        CurrentBB = BI->getSuccessor(0);
-      } else if (BI->getCondition() == ConstantInt::getFalse(Context)) {
-        CurrentBB = BI->getSuccessor(1);
-      } else {
-        // Found a trivial condition candidate: non-foldable conditional branch.
-        break;
-      }
-    } else {
-      break;
-    }
-
-    CurrentTerm = CurrentBB->getTerminator();
-  }
-
-  // CondVal is the condition that controls the trivial condition.
-  // LoopExitBB is the BasicBlock that loop exits when meets trivial condition.
-  Constant *CondVal = nullptr;
-  BasicBlock *LoopExitBB = nullptr;
-
-  if (BranchInst *BI = dyn_cast<BranchInst>(CurrentTerm)) {
-    // If this isn't branching on an invariant condition, we can't unswitch it.
-    if (!BI->isConditional())
-      return false;
-
-    Value *LoopCond = FindLIVLoopCondition(BI->getCondition(),
-                                           currentLoop, Changed);
-
-    // Unswitch only if the trivial condition itself is an LIV (not
-    // partial LIV which could occur in and/or)
-    if (!LoopCond || LoopCond != BI->getCondition())
+  BasicBlock *LoopExitBB = 0;
+  if (BranchInst *BI = dyn_cast<BranchInst>(HeaderTerm)) {
+    // If the header block doesn't end with a conditional branch on Cond, we
+    // can't handle it.
+    if (!BI->isConditional() || BI->getCondition() != Cond)
       return false;
 
     // Check to see if a successor of the branch is guaranteed to
     // exit through a unique exit block without having any
-    // side-effects.  If so, determine the value of Cond that causes
-    // it to do this.
+    // side-effects.  If so, determine the value of Cond that causes it to do
+    // this.
     if ((LoopExitBB = isTrivialLoopExitBlock(currentLoop,
                                              BI->getSuccessor(0)))) {
-      CondVal = ConstantInt::getTrue(Context);
+      if (Val) *Val = ConstantInt::getTrue(Context);
     } else if ((LoopExitBB = isTrivialLoopExitBlock(currentLoop,
                                                     BI->getSuccessor(1)))) {
-      CondVal = ConstantInt::getFalse(Context);
+      if (Val) *Val = ConstantInt::getFalse(Context);
     }
-
-    // If we didn't find a single unique LoopExit block, or if the loop exit
-    // block contains phi nodes, this isn't trivial.
-    if (!LoopExitBB || isa<PHINode>(LoopExitBB->begin()))
-      return false;   // Can't handle this.
-
-    UnswitchTrivialCondition(currentLoop, LoopCond, CondVal, LoopExitBB,
-                             CurrentTerm);
-    ++NumBranches;
-    return true;
-  } else if (SwitchInst *SI = dyn_cast<SwitchInst>(CurrentTerm)) {
-    // If this isn't switching on an invariant condition, we can't unswitch it.
-    Value *LoopCond = FindLIVLoopCondition(SI->getCondition(),
-                                           currentLoop, Changed);
-
-    // Unswitch only if the trivial condition itself is an LIV (not
-    // partial LIV which could occur in and/or)
-    if (!LoopCond || LoopCond != SI->getCondition())
-      return false;
+  } else if (SwitchInst *SI = dyn_cast<SwitchInst>(HeaderTerm)) {
+    // If this isn't a switch on Cond, we can't handle it.
+    if (SI->getCondition() != Cond) return false;
 
     // Check to see if a successor of the switch is guaranteed to go to the
     // latch block or exit through a one exit block without having any
@@ -951,26 +607,151 @@ bool LoopUnswitch::TryTrivialLoopUnswitch(bool &Changed) {
         if (BranchesInfo.isUnswitched(SI, CaseVal))
           continue;
         LoopExitBB = LoopExitCandidate;
-        CondVal = CaseVal;
+        if (Val) *Val = CaseVal;
         break;
       }
     }
-
-    // If we didn't find a single unique LoopExit block, or if the loop exit
-    // block contains phi nodes, this isn't trivial.
-    if (!LoopExitBB || isa<PHINode>(LoopExitBB->begin()))
-      return false;   // Can't handle this.
-
-    UnswitchTrivialCondition(currentLoop, LoopCond, CondVal, LoopExitBB,
-                             nullptr);
-    ++NumSwitches;
-    return true;
   }
-  return false;
+
+  // If we didn't find a single unique LoopExit block, or if the loop exit block
+  // contains phi nodes, this isn't trivial.
+  if (!LoopExitBB || isa<PHINode>(LoopExitBB->begin()))
+    return false;   // Can't handle this.
+
+  if (LoopExit) *LoopExit = LoopExitBB;
+
+  // We already know that nothing uses any scalar values defined inside of this
+  // loop.  As such, we just have to check to see if this loop will execute any
+  // side-effecting instructions (e.g. stores, calls, volatile loads) in the
+  // part of the loop that the code *would* execute.  We already checked the
+  // tail, check the header now.
+  for (BasicBlock::iterator I = Header->begin(), E = Header->end(); I != E; ++I)
+    if (I->mayHaveSideEffects())
+      return false;
+  return true;
 }
 
-/// Split all of the edges from inside the loop to their exit blocks.
-/// Update the appropriate Phi nodes as we do so.
+/// UnswitchIfProfitable - We have found that we can unswitch currentLoop when
+/// LoopCond == Val to simplify the loop.  If we decide that this is profitable,
+/// unswitch the loop, reprocess the pieces, then return true.
+bool LoopUnswitch::UnswitchIfProfitable(Value *LoopCond, Constant *Val) {
+  Function *F = loopHeader->getParent();
+  Constant *CondVal = 0;
+  BasicBlock *ExitBlock = 0;
+
+  if (IsTrivialUnswitchCondition(LoopCond, &CondVal, &ExitBlock)) {
+    // If the condition is trivial, always unswitch. There is no code growth
+    // for this case.
+    UnswitchTrivialCondition(currentLoop, LoopCond, CondVal, ExitBlock);
+    return true;
+  }
+
+  // Check to see if it would be profitable to unswitch current loop.
+
+  // Do not do non-trivial unswitch while optimizing for size.
+  if (OptimizeForSize ||
+      F->getAttributes().hasAttribute(AttributeSet::FunctionIndex,
+                                      Attribute::OptimizeForSize))
+    return false;
+
+  UnswitchNontrivialCondition(LoopCond, Val, currentLoop);
+  return true;
+}
+
+/// CloneLoop - Recursively clone the specified loop and all of its children,
+/// mapping the blocks with the specified map.
+static Loop *CloneLoop(Loop *L, Loop *PL, ValueToValueMapTy &VM,
+                       LoopInfo *LI, LPPassManager *LPM) {
+  Loop *New = new Loop();
+  LPM->insertLoop(New, PL);
+
+  // Add all of the blocks in L to the new loop.
+  for (Loop::block_iterator I = L->block_begin(), E = L->block_end();
+       I != E; ++I)
+    if (LI->getLoopFor(*I) == L)
+      New->addBasicBlockToLoop(cast<BasicBlock>(VM[*I]), LI->getBase());
+
+  // Add all of the subloops to the new loop.
+  for (Loop::iterator I = L->begin(), E = L->end(); I != E; ++I)
+    CloneLoop(*I, New, VM, LI, LPM);
+
+  return New;
+}
+
+/// EmitPreheaderBranchOnCondition - Emit a conditional branch on two values
+/// if LIC == Val, branch to TrueDst, otherwise branch to FalseDest.  Insert the
+/// code immediately before InsertPt.
+void LoopUnswitch::EmitPreheaderBranchOnCondition(Value *LIC, Constant *Val,
+                                                  BasicBlock *TrueDest,
+                                                  BasicBlock *FalseDest,
+                                                  Instruction *InsertPt) {
+  // Insert a conditional branch on LIC to the two preheaders.  The original
+  // code is the true version and the new code is the false version.
+  Value *BranchVal = LIC;
+  if (!isa<ConstantInt>(Val) ||
+      Val->getType() != Type::getInt1Ty(LIC->getContext()))
+    BranchVal = new ICmpInst(InsertPt, ICmpInst::ICMP_EQ, LIC, Val);
+  else if (Val != ConstantInt::getTrue(Val->getContext()))
+    // We want to enter the new loop when the condition is true.
+    std::swap(TrueDest, FalseDest);
+
+  // Insert the new branch.
+  BranchInst *BI = BranchInst::Create(TrueDest, FalseDest, BranchVal, InsertPt);
+
+  // If either edge is critical, split it. This helps preserve LoopSimplify
+  // form for enclosing loops.
+  SplitCriticalEdge(BI, 0, this, false, false, true);
+  SplitCriticalEdge(BI, 1, this, false, false, true);
+}
+
+/// UnswitchTrivialCondition - Given a loop that has a trivial unswitchable
+/// condition in it (a cond branch from its header block to its latch block,
+/// where the path through the loop that doesn't execute its body has no
+/// side-effects), unswitch it.  This doesn't involve any code duplication, just
+/// moving the conditional branch outside of the loop and updating loop info.
+void LoopUnswitch::UnswitchTrivialCondition(Loop *L, Value *Cond,
+                                            Constant *Val,
+                                            BasicBlock *ExitBlock) {
+  DEBUG(dbgs() << "loop-unswitch: Trivial-Unswitch loop %"
+        << loopHeader->getName() << " [" << L->getBlocks().size()
+        << " blocks] in Function " << L->getHeader()->getParent()->getName()
+        << " on cond: " << *Val << " == " << *Cond << "\n");
+
+  // First step, split the preheader, so that we know that there is a safe place
+  // to insert the conditional branch.  We will change loopPreheader to have a
+  // conditional branch on Cond.
+  BasicBlock *NewPH = SplitEdge(loopPreheader, loopHeader, this);
+
+  // Now that we have a place to insert the conditional branch, create a place
+  // to branch to: this is the exit block out of the loop that we should
+  // short-circuit to.
+
+  // Split this block now, so that the loop maintains its exit block, and so
+  // that the jump from the preheader can execute the contents of the exit block
+  // without actually branching to it (the exit block should be dominated by the
+  // loop header, not the preheader).
+  assert(!L->contains(ExitBlock) && "Exit block is in the loop?");
+  BasicBlock *NewExit = SplitBlock(ExitBlock, ExitBlock->begin(), this);
+
+  // Okay, now we have a position to branch from and a position to branch to,
+  // insert the new conditional branch.
+  EmitPreheaderBranchOnCondition(Cond, Val, NewExit, NewPH,
+                                 loopPreheader->getTerminator());
+  LPM->deleteSimpleAnalysisValue(loopPreheader->getTerminator(), L);
+  loopPreheader->getTerminator()->eraseFromParent();
+
+  // We need to reprocess this loop, it could be unswitched again.
+  redoLoop = true;
+
+  // Now that we know that the loop is never entered when this condition is a
+  // particular value, rewrite the loop with this info.  We know that this will
+  // at least eliminate the old branch.
+  RewriteLoopBodyWithConditionConstant(L, Cond, Val, false);
+  ++NumTrivial;
+}
+
+/// SplitExitEdges - Split all of the edges from inside the loop to their exit
+/// blocks.  Update the appropriate Phi nodes as we do so.
 void LoopUnswitch::SplitExitEdges(Loop *L,
                                const SmallVectorImpl<BasicBlock *> &ExitBlocks){
 
@@ -981,31 +762,36 @@ void LoopUnswitch::SplitExitEdges(Loop *L,
 
     // Although SplitBlockPredecessors doesn't preserve loop-simplify in
     // general, if we call it on all predecessors of all exits then it does.
-    SplitBlockPredecessors(ExitBlock, Preds, ".us-lcssa", DT, LI,
-                           /*PreserveLCSSA*/ true);
+    if (!ExitBlock->isLandingPad()) {
+      SplitBlockPredecessors(ExitBlock, Preds, ".us-lcssa", this);
+    } else {
+      SmallVector<BasicBlock*, 2> NewBBs;
+      SplitLandingPadPredecessors(ExitBlock, Preds, ".us-lcssa", ".us-lcssa",
+                                  this, NewBBs);
+    }
   }
 }
 
-/// We determined that the loop is profitable to unswitch when LIC equal Val.
-/// Split it into loop versions and test the condition outside of either loop.
-/// Return the loops created as Out1/Out2.
+/// UnswitchNontrivialCondition - We determined that the loop is profitable
+/// to unswitch when LIC equal Val.  Split it into loop versions and test the
+/// condition outside of either loop.  Return the loops created as Out1/Out2.
 void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
-                                               Loop *L, TerminatorInst *TI) {
+                                               Loop *L) {
   Function *F = loopHeader->getParent();
   DEBUG(dbgs() << "loop-unswitch: Unswitching loop %"
         << loopHeader->getName() << " [" << L->getBlocks().size()
         << " blocks] in Function " << F->getName()
         << " when '" << *Val << "' == " << *LIC << "\n");
 
-  if (auto *SEWP = getAnalysisIfAvailable<ScalarEvolutionWrapperPass>())
-    SEWP->getSE().forgetLoop(L);
+  if (ScalarEvolution *SE = getAnalysisIfAvailable<ScalarEvolution>())
+    SE->forgetLoop(L);
 
   LoopBlocks.clear();
   NewBlocks.clear();
 
   // First step, split the preheader and exit blocks, and add these blocks to
   // the LoopBlocks list.
-  BasicBlock *NewPreheader = SplitEdge(loopPreheader, loopHeader, DT, LI);
+  BasicBlock *NewPreheader = SplitEdge(loopPreheader, loopHeader, this);
   LoopBlocks.push_back(NewPreheader);
 
   // We want the loop to come after the preheader, but before the exit blocks.
@@ -1040,9 +826,8 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
 
   // Splice the newly inserted blocks into the function right before the
   // original preheader.
-  F->getBasicBlockList().splice(NewPreheader->getIterator(),
-                                F->getBasicBlockList(),
-                                NewBlocks[0]->getIterator(), F->end());
+  F->getBasicBlockList().splice(NewPreheader, F->getBasicBlockList(),
+                                NewBlocks[0], F->end());
 
   // Now we create the new Loop object for the versioned loop.
   Loop *NewLoop = CloneLoop(L, L->getParentLoop(), VMap, LI, LPM);
@@ -1055,14 +840,14 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
   if (ParentLoop) {
     // Make sure to add the cloned preheader and exit blocks to the parent loop
     // as well.
-    ParentLoop->addBasicBlockToLoop(NewBlocks[0], *LI);
+    ParentLoop->addBasicBlockToLoop(NewBlocks[0], LI->getBase());
   }
 
   for (unsigned i = 0, e = ExitBlocks.size(); i != e; ++i) {
     BasicBlock *NewExit = cast<BasicBlock>(VMap[ExitBlocks[i]]);
     // The new exit block should be in the same loop as the old one.
     if (Loop *ExitBBLoop = LI->getLoopFor(ExitBlocks[i]))
-      ExitBBLoop->addBasicBlockToLoop(NewExit, *LI);
+      ExitBBLoop->addBasicBlockToLoop(NewExit, LI->getBase());
 
     assert(NewExit->getTerminator()->getNumSuccessors() == 1 &&
            "Exit block should have been split to have one successor!");
@@ -1080,7 +865,7 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
 
     if (LandingPadInst *LPad = NewExit->getLandingPadInst()) {
       PHINode *PN = PHINode::Create(LPad->getType(), 0, "",
-                                    &*ExitSucc->getFirstInsertionPt());
+                                    ExitSucc->getFirstInsertionPt());
 
       for (pred_iterator I = pred_begin(ExitSucc), E = pred_end(ExitSucc);
            I != E; ++I) {
@@ -1093,15 +878,10 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
   }
 
   // Rewrite the code to refer to itself.
-  for (unsigned i = 0, e = NewBlocks.size(); i != e; ++i) {
-    for (Instruction &I : *NewBlocks[i]) {
-      RemapInstruction(&I, VMap,
-                       RF_NoModuleLevelChanges | RF_IgnoreMissingLocals);
-      if (auto *II = dyn_cast<IntrinsicInst>(&I))
-        if (II->getIntrinsicID() == Intrinsic::assume)
-          AC->registerAssumption(II);
-    }
-  }
+  for (unsigned i = 0, e = NewBlocks.size(); i != e; ++i)
+    for (BasicBlock::iterator I = NewBlocks[i]->begin(),
+           E = NewBlocks[i]->end(); I != E; ++I)
+      RemapInstruction(I, VMap,RF_NoModuleLevelChanges|RF_IgnoreMissingEntries);
 
   // Rewrite the original preheader to select between versions of the loop.
   BranchInst *OldBR = cast<BranchInst>(loopPreheader->getTerminator());
@@ -1109,8 +889,7 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
          "Preheader splitting did not work correctly!");
 
   // Emit the new branch that selects between the two versions of this loop.
-  EmitPreheaderBranchOnCondition(LIC, Val, NewBlocks[0], LoopBlocks[0], OldBR,
-                                 TI);
+  EmitPreheaderBranchOnCondition(LIC, Val, NewBlocks[0], LoopBlocks[0], OldBR);
   LPM->deleteSimpleAnalysisValue(OldBR, L);
   OldBR->eraseFromParent();
 
@@ -1135,7 +914,8 @@ void LoopUnswitch::UnswitchNontrivialCondition(Value *LIC, Constant *Val,
     RewriteLoopBodyWithConditionConstant(NewLoop, LICHandle, Val, true);
 }
 
-/// Remove all instances of I from the worklist vector specified.
+/// RemoveFromWorklist - Remove all instances of I from the worklist vector
+/// specified.
 static void RemoveFromWorklist(Instruction *I,
                                std::vector<Instruction*> &Worklist) {
 
@@ -1143,7 +923,7 @@ static void RemoveFromWorklist(Instruction *I,
                  Worklist.end());
 }
 
-/// When we find that I really equals V, remove I from the
+/// ReplaceUsesOfWith - When we find that I really equals V, remove I from the
 /// program, replacing all uses with V and update the worklist.
 static void ReplaceUsesOfWith(Instruction *I, Value *V,
                               std::vector<Instruction*> &Worklist,
@@ -1156,8 +936,9 @@ static void ReplaceUsesOfWith(Instruction *I, Value *V,
       Worklist.push_back(Use);
 
   // Add users to the worklist which may be simplified now.
-  for (User *U : I->users())
-    Worklist.push_back(cast<Instruction>(U));
+  for (Value::use_iterator UI = I->use_begin(), E = I->use_end();
+       UI != E; ++UI)
+    Worklist.push_back(cast<Instruction>(*UI));
   LPM->deleteSimpleAnalysisValue(I, L);
   RemoveFromWorklist(I, Worklist);
   I->replaceAllUsesWith(V);
@@ -1165,9 +946,128 @@ static void ReplaceUsesOfWith(Instruction *I, Value *V,
   ++NumSimplify;
 }
 
-/// We know either that the value LIC has the value specified by Val in the
-/// specified loop, or we know it does NOT have that value.
-/// Rewrite any uses of LIC or of properties correlated to it.
+/// RemoveBlockIfDead - If the specified block is dead, remove it, update loop
+/// information, and remove any dead successors it has.
+///
+void LoopUnswitch::RemoveBlockIfDead(BasicBlock *BB,
+                                     std::vector<Instruction*> &Worklist,
+                                     Loop *L) {
+  if (pred_begin(BB) != pred_end(BB)) {
+    // This block isn't dead, since an edge to BB was just removed, see if there
+    // are any easy simplifications we can do now.
+    if (BasicBlock *Pred = BB->getSinglePredecessor()) {
+      // If it has one pred, fold phi nodes in BB.
+      while (PHINode *PN = dyn_cast<PHINode>(BB->begin()))
+        ReplaceUsesOfWith(PN, PN->getIncomingValue(0), Worklist, L, LPM);
+
+      // If this is the header of a loop and the only pred is the latch, we now
+      // have an unreachable loop.
+      if (Loop *L = LI->getLoopFor(BB))
+        if (loopHeader == BB && L->contains(Pred)) {
+          // Remove the branch from the latch to the header block, this makes
+          // the header dead, which will make the latch dead (because the header
+          // dominates the latch).
+          LPM->deleteSimpleAnalysisValue(Pred->getTerminator(), L);
+          Pred->getTerminator()->eraseFromParent();
+          new UnreachableInst(BB->getContext(), Pred);
+
+          // The loop is now broken, remove it from LI.
+          RemoveLoopFromHierarchy(L);
+
+          // Reprocess the header, which now IS dead.
+          RemoveBlockIfDead(BB, Worklist, L);
+          return;
+        }
+
+      // If pred ends in a uncond branch, add uncond branch to worklist so that
+      // the two blocks will get merged.
+      if (BranchInst *BI = dyn_cast<BranchInst>(Pred->getTerminator()))
+        if (BI->isUnconditional())
+          Worklist.push_back(BI);
+    }
+    return;
+  }
+
+  DEBUG(dbgs() << "Nuking dead block: " << *BB);
+
+  // Remove the instructions in the basic block from the worklist.
+  for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+    RemoveFromWorklist(I, Worklist);
+
+    // Anything that uses the instructions in this basic block should have their
+    // uses replaced with undefs.
+    // If I is not void type then replaceAllUsesWith undef.
+    // This allows ValueHandlers and custom metadata to adjust itself.
+    if (!I->getType()->isVoidTy())
+      I->replaceAllUsesWith(UndefValue::get(I->getType()));
+  }
+
+  // If this is the edge to the header block for a loop, remove the loop and
+  // promote all subloops.
+  if (Loop *BBLoop = LI->getLoopFor(BB)) {
+    if (BBLoop->getLoopLatch() == BB) {
+      RemoveLoopFromHierarchy(BBLoop);
+      if (currentLoop == BBLoop) {
+        currentLoop = 0;
+        redoLoop = false;
+      }
+    }
+  }
+
+  // Remove the block from the loop info, which removes it from any loops it
+  // was in.
+  LI->removeBlock(BB);
+
+  // Remove phi node entries in successors for this block.
+  TerminatorInst *TI = BB->getTerminator();
+  SmallVector<BasicBlock*, 4> Succs;
+  for (unsigned i = 0, e = TI->getNumSuccessors(); i != e; ++i) {
+    Succs.push_back(TI->getSuccessor(i));
+    TI->getSuccessor(i)->removePredecessor(BB);
+  }
+
+  // Unique the successors, remove anything with multiple uses.
+  array_pod_sort(Succs.begin(), Succs.end());
+  Succs.erase(std::unique(Succs.begin(), Succs.end()), Succs.end());
+
+  // Remove the basic block, including all of the instructions contained in it.
+  LPM->deleteSimpleAnalysisValue(BB, L);
+  BB->eraseFromParent();
+  // Remove successor blocks here that are not dead, so that we know we only
+  // have dead blocks in this list.  Nondead blocks have a way of becoming dead,
+  // then getting removed before we revisit them, which is badness.
+  //
+  for (unsigned i = 0; i != Succs.size(); ++i)
+    if (pred_begin(Succs[i]) != pred_end(Succs[i])) {
+      // One exception is loop headers.  If this block was the preheader for a
+      // loop, then we DO want to visit the loop so the loop gets deleted.
+      // We know that if the successor is a loop header, that this loop had to
+      // be the preheader: the case where this was the latch block was handled
+      // above and headers can only have two predecessors.
+      if (!LI->isLoopHeader(Succs[i])) {
+        Succs.erase(Succs.begin()+i);
+        --i;
+      }
+    }
+
+  for (unsigned i = 0, e = Succs.size(); i != e; ++i)
+    RemoveBlockIfDead(Succs[i], Worklist, L);
+}
+
+/// RemoveLoopFromHierarchy - We have discovered that the specified loop has
+/// become unwrapped, either because the backedge was deleted, or because the
+/// edge into the header was removed.  If the edge into the header from the
+/// latch block was removed, the loop is unwrapped but subloops are still alive,
+/// so they just reparent loops.  If the loops are actually dead, they will be
+/// removed later.
+void LoopUnswitch::RemoveLoopFromHierarchy(Loop *L) {
+  LPM->deleteLoopFromQueue(L);
+  RemoveLoopFromWorklist(L);
+}
+
+// RewriteLoopBodyWithConditionConstant - We know either that the value LIC has
+// the value specified by Val in the specified loop, or we know it does NOT have
+// that value.  Rewrite any uses of LIC or of properties correlated to it.
 void LoopUnswitch::RewriteLoopBodyWithConditionConstant(Loop *L, Value *LIC,
                                                         Constant *Val,
                                                         bool IsEqual) {
@@ -1196,15 +1096,17 @@ void LoopUnswitch::RewriteLoopBodyWithConditionConstant(Loop *L, Value *LIC,
       Replacement = ConstantInt::get(Type::getInt1Ty(Val->getContext()),
                                      !cast<ConstantInt>(Val)->getZExtValue());
 
-    for (User *U : LIC->users()) {
-      Instruction *UI = dyn_cast<Instruction>(U);
-      if (!UI || !L->contains(UI))
+    for (Value::use_iterator UI = LIC->use_begin(), E = LIC->use_end();
+         UI != E; ++UI) {
+      Instruction *U = dyn_cast<Instruction>(*UI);
+      if (!U || !L->contains(U))
         continue;
-      Worklist.push_back(UI);
+      Worklist.push_back(U);
     }
 
-    for (Instruction *UI : Worklist)
-      UI->replaceUsesOfWith(LIC, Replacement);
+    for (std::vector<Instruction*>::iterator UI = Worklist.begin(),
+         UE = Worklist.end(); UI != UE; ++UI)
+      (*UI)->replaceUsesOfWith(LIC, Replacement);
 
     SimplifyCode(Worklist, L);
     return;
@@ -1213,19 +1115,20 @@ void LoopUnswitch::RewriteLoopBodyWithConditionConstant(Loop *L, Value *LIC,
   // Otherwise, we don't know the precise value of LIC, but we do know that it
   // is certainly NOT "Val".  As such, simplify any uses in the loop that we
   // can.  This case occurs when we unswitch switch statements.
-  for (User *U : LIC->users()) {
-    Instruction *UI = dyn_cast<Instruction>(U);
-    if (!UI || !L->contains(UI))
+  for (Value::use_iterator UI = LIC->use_begin(), E = LIC->use_end();
+       UI != E; ++UI) {
+    Instruction *U = dyn_cast<Instruction>(*UI);
+    if (!U || !L->contains(U))
       continue;
 
-    Worklist.push_back(UI);
+    Worklist.push_back(U);
 
     // TODO: We could do other simplifications, for example, turning
     // 'icmp eq LIC, Val' -> false.
 
     // If we know that LIC is not Val, use this info to simplify code.
-    SwitchInst *SI = dyn_cast<SwitchInst>(UI);
-    if (!SI || !isa<ConstantInt>(Val)) continue;
+    SwitchInst *SI = dyn_cast<SwitchInst>(U);
+    if (SI == 0 || !isa<ConstantInt>(Val)) continue;
 
     SwitchInst::CaseIt DeadCase = SI->findCaseValue(cast<ConstantInt>(Val));
     // Default case is live for multiple values.
@@ -1252,7 +1155,7 @@ void LoopUnswitch::RewriteLoopBodyWithConditionConstant(Loop *L, Value *LIC,
     // and hooked up so as to preserve the loop structure, because
     // trying to update it is complicated.  So instead we preserve the
     // loop structure and put the block on a dead code path.
-    SplitEdge(Switch, SISucc, DT, LI);
+    SplitEdge(Switch, SISucc, this);
     // Compute the successors instead of relying on the return value
     // of SplitEdge, since it may have split the switch successor
     // after PHI nodes.
@@ -1277,22 +1180,23 @@ void LoopUnswitch::RewriteLoopBodyWithConditionConstant(Loop *L, Value *LIC,
     // domtree here -- instead we force it to do a full recomputation
     // after the pass is complete -- but we do need to inform it of
     // new blocks.
-    DT->addNewBlock(Abort, NewSISucc);
+    if (DT)
+      DT->addNewBlock(Abort, NewSISucc);
   }
 
   SimplifyCode(Worklist, L);
 }
 
-/// Now that we have simplified some instructions in the loop, walk over it and
-/// constant prop, dce, and fold control flow where possible. Note that this is
-/// effectively a very simple loop-structure-aware optimizer. During processing
-/// of this loop, L could very well be deleted, so it must not be used.
+/// SimplifyCode - Okay, now that we have simplified some instructions in the
+/// loop, walk over it and constant prop, dce, and fold control flow where
+/// possible.  Note that this is effectively a very simple loop-structure-aware
+/// optimizer.  During processing of this loop, L could very well be deleted, so
+/// it must not be used.
 ///
 /// FIXME: When the loop optimizer is more mature, separate this out to a new
 /// pass.
 ///
 void LoopUnswitch::SimplifyCode(std::vector<Instruction*> &Worklist, Loop *L) {
-  const DataLayout &DL = L->getHeader()->getModule()->getDataLayout();
   while (!Worklist.empty()) {
     Instruction *I = Worklist.back();
     Worklist.pop_back();
@@ -1315,7 +1219,7 @@ void LoopUnswitch::SimplifyCode(std::vector<Instruction*> &Worklist, Loop *L) {
     // See if instruction simplification can hack this up.  This is common for
     // things like "select false, X, Y" after unswitching made the condition be
     // 'false'.  TODO: update the domtree properly so we can pass it here.
-    if (Value *V = SimplifyInstruction(I, DL))
+    if (Value *V = SimplifyInstruction(I))
       if (LI->replacementPreservesLCSSAForm(I, V)) {
         ReplaceUsesOfWith(I, V, Worklist, L, LPM);
         continue;
@@ -1344,8 +1248,8 @@ void LoopUnswitch::SimplifyCode(std::vector<Instruction*> &Worklist, Loop *L) {
         Succ->replaceAllUsesWith(Pred);
 
         // Move all of the successor contents from Succ to Pred.
-        Pred->getInstList().splice(BI->getIterator(), Succ->getInstList(),
-                                   Succ->begin(), Succ->end());
+        Pred->getInstList().splice(BI, Succ->getInstList(), Succ->begin(),
+                                   Succ->end());
         LPM->deleteSimpleAnalysisValue(BI, L);
         BI->eraseFromParent();
         RemoveFromWorklist(BI, Worklist);
@@ -1358,6 +1262,23 @@ void LoopUnswitch::SimplifyCode(std::vector<Instruction*> &Worklist, Loop *L) {
         continue;
       }
 
+      if (ConstantInt *CB = dyn_cast<ConstantInt>(BI->getCondition())){
+        // Conditional branch.  Turn it into an unconditional branch, then
+        // remove dead blocks.
+        continue;  // FIXME: Enable.
+
+        DEBUG(dbgs() << "Folded branch: " << *BI);
+        BasicBlock *DeadSucc = BI->getSuccessor(CB->getZExtValue());
+        BasicBlock *LiveSucc = BI->getSuccessor(!CB->getZExtValue());
+        DeadSucc->removePredecessor(BI->getParent(), true);
+        Worklist.push_back(BranchInst::Create(LiveSucc, BI));
+        LPM->deleteSimpleAnalysisValue(BI, L);
+        BI->eraseFromParent();
+        RemoveFromWorklist(BI, Worklist);
+        ++NumSimplify;
+
+        RemoveBlockIfDead(DeadSucc, Worklist, L);
+      }
       continue;
     }
   }

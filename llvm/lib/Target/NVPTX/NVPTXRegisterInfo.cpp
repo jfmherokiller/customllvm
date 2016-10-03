@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "nvptx-reg-info"
+
 #include "NVPTXRegisterInfo.h"
 #include "NVPTX.h"
 #include "NVPTXSubtarget.h"
@@ -23,8 +25,6 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "nvptx-reg-info"
-
 namespace llvm {
 std::string getNVPTXRegClassName(TargetRegisterClass const *RC) {
   if (RC == &NVPTX::Float32RegsRegClass) {
@@ -33,29 +33,11 @@ std::string getNVPTXRegClassName(TargetRegisterClass const *RC) {
   if (RC == &NVPTX::Float64RegsRegClass) {
     return ".f64";
   } else if (RC == &NVPTX::Int64RegsRegClass) {
-    // We use untyped (.b) integer registers here as NVCC does.
-    // Correctness of generated code does not depend on register type,
-    // but using .s/.u registers runs into ptxas bug that prevents
-    // assembly of otherwise valid PTX into SASS. Despite PTX ISA
-    // specifying only argument size for fp16 instructions, ptxas does
-    // not allow using .s16 or .u16 arguments for .fp16
-    // instructions. At the same time it allows using .s32/.u32
-    // arguments for .fp16v2 instructions:
-    //
-    //   .reg .b16 rb16
-    //   .reg .s16 rs16
-    //   add.f16 rb16,rb16,rb16; // OK
-    //   add.f16 rs16,rs16,rs16; // Arguments mismatch for instruction 'add'
-    // but:
-    //   .reg .b32 rb32
-    //   .reg .s32 rs32
-    //   add.f16v2 rb32,rb32,rb32; // OK
-    //   add.f16v2 rs32,rs32,rs32; // OK
-    return ".b64";
+    return ".s64";
   } else if (RC == &NVPTX::Int32RegsRegClass) {
-    return ".b32";
+    return ".s32";
   } else if (RC == &NVPTX::Int16RegsRegClass) {
-    return ".b16";
+    return ".s16";
   } else if (RC == &NVPTX::Int1RegsRegClass) {
     return ".pred";
   } else if (RC == &NVPTX::SpecialRegsRegClass) {
@@ -71,9 +53,9 @@ std::string getNVPTXRegClassStr(TargetRegisterClass const *RC) {
     return "%f";
   }
   if (RC == &NVPTX::Float64RegsRegClass) {
-    return "%fd";
+    return "%fl";
   } else if (RC == &NVPTX::Int64RegsRegClass) {
-    return "%rd";
+    return "%rl";
   } else if (RC == &NVPTX::Int32RegsRegClass) {
     return "%r";
   } else if (RC == &NVPTX::Int16RegsRegClass) {
@@ -89,16 +71,24 @@ std::string getNVPTXRegClassStr(TargetRegisterClass const *RC) {
 }
 }
 
-NVPTXRegisterInfo::NVPTXRegisterInfo() : NVPTXGenRegisterInfo(0) {}
+NVPTXRegisterInfo::NVPTXRegisterInfo(const NVPTXSubtarget &st)
+    : NVPTXGenRegisterInfo(0), Is64Bit(st.is64Bit()) {}
 
 #define GET_REGINFO_TARGET_DESC
 #include "NVPTXGenRegisterInfo.inc"
 
 /// NVPTX Callee Saved Registers
-const MCPhysReg *
-NVPTXRegisterInfo::getCalleeSavedRegs(const MachineFunction *) const {
-  static const MCPhysReg CalleeSavedRegs[] = { 0 };
+const uint16_t *
+NVPTXRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
+  static const uint16_t CalleeSavedRegs[] = { 0 };
   return CalleeSavedRegs;
+}
+
+// NVPTX Callee Saved Reg Classes
+const TargetRegisterClass *const *
+NVPTXRegisterInfo::getCalleeSavedRegClasses(const MachineFunction *MF) const {
+  static const TargetRegisterClass *const CalleeSavedRegClasses[] = { 0 };
+  return CalleeSavedRegClasses;
 }
 
 BitVector NVPTXRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
@@ -115,7 +105,7 @@ void NVPTXRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
 
   MachineFunction &MF = *MI.getParent()->getParent();
-  int Offset = MF.getFrameInfo().getObjectOffset(FrameIndex) +
+  int Offset = MF.getFrameInfo()->getObjectOffset(FrameIndex) +
                MI.getOperand(FIOperandNum + 1).getImm();
 
   // Using I0 as the frame pointer
@@ -123,6 +113,12 @@ void NVPTXRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
   MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Offset);
 }
 
+int NVPTXRegisterInfo::getDwarfRegNum(unsigned RegNum, bool isEH) const {
+  return 0;
+}
+
 unsigned NVPTXRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   return NVPTX::VRFrame;
 }
+
+unsigned NVPTXRegisterInfo::getRARegister() const { return 0; }

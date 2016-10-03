@@ -9,7 +9,14 @@
 
 exception Error of string
 
-let () = Callback.register_exception "Llvm_linker.Error" (Error "")
+external register_exns : exn -> unit = "llvm_register_linker_exns"
+let _ = register_exns (Error "")
 
-external link_modules' : Llvm.llmodule -> Llvm.llmodule -> unit
-                       = "llvm_link_modules"
+module Mode = struct
+  type t =
+  | DestroySource
+  | PreserveSource
+end
+
+external link_modules : Llvm.llmodule -> Llvm.llmodule -> Mode.t -> unit
+                      = "llvm_link_modules"

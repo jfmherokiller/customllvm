@@ -14,17 +14,10 @@
 
 #include "Unix.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/Demangle/Demangle.h"
-#include "llvm/Support/Format.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/FileUtilities.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Mutex.h"
-#include "llvm/Support/Program.h"
-#include "llvm/Support/UniqueLock.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 #include <string>
+#include <vector>
 #if HAVE_EXECINFO_H
 # include <execinfo.h>         // For backtrace().
 #endif
@@ -34,39 +27,27 @@
 #if HAVE_SYS_STAT_H
 #include <sys/stat.h>
 #endif
+#if HAVE_CXXABI_H
+#include <cxxabi.h>
+#endif
 #if HAVE_DLFCN_H
 #include <dlfcn.h>
 #endif
 #if HAVE_MACH_MACH_H
 #include <mach/mach.h>
 #endif
-#if HAVE_LINK_H
-#include <link.h>
-#endif
-#ifdef HAVE__UNWIND_BACKTRACE
-// FIXME: We should be able to use <unwind.h> for any target that has an
-// _Unwind_Backtrace function, but on FreeBSD the configure test passes
-// despite the function not existing, and on Android, <unwind.h> conflicts
-// with <link.h>.
-#ifdef __GLIBC__
-#include <unwind.h>
-#else
-#undef HAVE__UNWIND_BACKTRACE
-#endif
-#endif
 
 using namespace llvm;
 
 static RETSIGTYPE SignalHandler(int Sig);  // defined below.
 
-static ManagedStatic<SmartMutex<true> > SignalsMutex;
+static SmartMutex<true> SignalsMutex;
 
 /// InterruptFunction - The function to call if ctrl-c is pressed.
-static void (*InterruptFunction)() = nullptr;
+static void (*InterruptFunction)() = 0;
 
-static ManagedStatic<std::vector<std::string>> FilesToRemove;
-
-static StringRef Argv0;
+static std::vector<std::string> FilesToRemove;
+static std::vector<std::pair<void(*)(void*), void*> > CallBacksToRun;
 
 // IntSigs - Signals that represent requested termination. There's no bug
 // or failure, or if there is, it's not our direct responsibility. For whatever
@@ -74,6 +55,7 @@ static StringRef Argv0;
 static const int IntSigs[] = {
   SIGHUP, SIGINT, SIGPIPE, SIGTERM, SIGUSR1, SIGUSR2
 };
+static const int *const IntSigsEnd = array_endof(IntSigs);
 
 // KillSigs - Signals that represent that we have a bug, and our prompt
 // termination has been ordered.
@@ -92,22 +74,24 @@ static const int KillSigs[] = {
   , SIGEMT
 #endif
 };
+static const int *const KillSigsEnd = array_endof(KillSigs);
 
 static unsigned NumRegisteredSignals = 0;
 static struct {
   struct sigaction SA;
   int SigNo;
-} RegisteredSignalInfo[array_lengthof(IntSigs) + array_lengthof(KillSigs)];
+} RegisteredSignalInfo[(sizeof(IntSigs)+sizeof(KillSigs))/sizeof(KillSigs[0])];
 
 
 static void RegisterHandler(int Signal) {
-  assert(NumRegisteredSignals < array_lengthof(RegisteredSignalInfo) &&
+  assert(NumRegisteredSignals <
+         sizeof(RegisteredSignalInfo)/sizeof(RegisteredSignalInfo[0]) &&
          "Out of space for signal handlers!");
 
   struct sigaction NewHandler;
 
   NewHandler.sa_handler = SignalHandler;
-  NewHandler.sa_flags = SA_NODEFER | SA_RESETHAND | SA_ONSTACK;
+  NewHandler.sa_flags = SA_NODEFER|SA_RESETHAND;
   sigemptyset(&NewHandler.sa_mask);
 
   // Install the new handler, save the old one in RegisteredSignalInfo.
@@ -117,60 +101,19 @@ static void RegisterHandler(int Signal) {
   ++NumRegisteredSignals;
 }
 
-#if defined(HAVE_SIGALTSTACK)
-// Hold onto both the old and new alternate signal stack so that it's not
-// reported as a leak. We don't make any attempt to remove our alt signal
-// stack if we remove our signal handlers; that can't be done reliably if
-// someone else is also trying to do the same thing.
-static stack_t OldAltStack;
-static void* NewAltStackPointer;
-
-static void CreateSigAltStack() {
-  const size_t AltStackSize = MINSIGSTKSZ + 64 * 1024;
-
-  // If we're executing on the alternate stack, or we already have an alternate
-  // signal stack that we're happy with, there's nothing for us to do. Don't
-  // reduce the size, some other part of the process might need a larger stack
-  // than we do.
-  if (sigaltstack(nullptr, &OldAltStack) != 0 ||
-      OldAltStack.ss_flags & SS_ONSTACK ||
-      (OldAltStack.ss_sp && OldAltStack.ss_size >= AltStackSize))
-    return;
-
-  stack_t AltStack = {};
-  AltStack.ss_sp = reinterpret_cast<char *>(malloc(AltStackSize));
-  NewAltStackPointer = AltStack.ss_sp; // Save to avoid reporting a leak.
-  AltStack.ss_size = AltStackSize;
-  if (sigaltstack(&AltStack, &OldAltStack) != 0)
-    free(AltStack.ss_sp);
-}
-#else
-static void CreateSigAltStack() {}
-#endif
-
 static void RegisterHandlers() {
-  // We need to dereference the signals mutex during handler registration so
-  // that we force its construction. This is to prevent the first use being
-  // during handling an actual signal because you can't safely call new in a
-  // signal handler.
-  *SignalsMutex;
-
   // If the handlers are already registered, we're done.
   if (NumRegisteredSignals != 0) return;
 
-  // Create an alternate stack for signal handling. This is necessary for us to
-  // be able to reliably handle signals due to stack overflow.
-  CreateSigAltStack();
-
-  for (auto S : IntSigs) RegisterHandler(S);
-  for (auto S : KillSigs) RegisterHandler(S);
+  std::for_each(IntSigs, IntSigsEnd, RegisterHandler);
+  std::for_each(KillSigs, KillSigsEnd, RegisterHandler);
 }
 
 static void UnregisterHandlers() {
   // Restore all of the signal handlers to how they were before we showed up.
   for (unsigned i = 0, e = NumRegisteredSignals; i != e; ++i)
     sigaction(RegisteredSignalInfo[i].SigNo,
-              &RegisteredSignalInfo[i].SA, nullptr);
+              &RegisteredSignalInfo[i].SA, 0);
   NumRegisteredSignals = 0;
 }
 
@@ -180,16 +123,13 @@ static void UnregisterHandlers() {
 /// NB: This must be an async signal safe function. It cannot allocate or free
 /// memory, even in debug builds.
 static void RemoveFilesToRemove() {
-  // Avoid constructing ManagedStatic in the signal handler.
-  // If FilesToRemove is not constructed, there are no files to remove.
-  if (!FilesToRemove.isConstructed())
-    return;
-
   // We avoid iterators in case of debug iterators that allocate or release
   // memory.
-  std::vector<std::string>& FilesToRemoveRef = *FilesToRemove;
-  for (unsigned i = 0, e = FilesToRemoveRef.size(); i != e; ++i) {
-    const char *path = FilesToRemoveRef[i].c_str();
+  for (unsigned i = 0, e = FilesToRemove.size(); i != e; ++i) {
+    // We rely on a std::string implementation for which repeated calls to
+    // 'c_str()' don't allocate memory. We pre-call 'c_str()' on all of these
+    // strings to try to ensure this is safe.
+    const char *path = FilesToRemove[i].c_str();
 
     // Get the status so we can determine if it's a file or directory. If we
     // can't stat the file, ignore it.
@@ -202,7 +142,7 @@ static void RemoveFilesToRemove() {
     // super-user permissions.
     if (!S_ISREG(buf.st_mode))
       continue;
-
+  
     // Otherwise, remove the file. We ignore any errors here as there is nothing
     // else we can do.
     unlink(path);
@@ -220,30 +160,30 @@ static RETSIGTYPE SignalHandler(int Sig) {
   // Unmask all potentially blocked kill signals.
   sigset_t SigMask;
   sigfillset(&SigMask);
-  sigprocmask(SIG_UNBLOCK, &SigMask, nullptr);
+  sigprocmask(SIG_UNBLOCK, &SigMask, 0);
 
-  {
-    unique_lock<SmartMutex<true>> Guard(*SignalsMutex);
-    RemoveFilesToRemove();
+  SignalsMutex.acquire();
+  RemoveFilesToRemove();
 
-    if (std::find(std::begin(IntSigs), std::end(IntSigs), Sig)
-        != std::end(IntSigs)) {
-      if (InterruptFunction) {
-        void (*IF)() = InterruptFunction;
-        Guard.unlock();
-        InterruptFunction = nullptr;
-        IF();        // run the interrupt function.
-        return;
-      }
-
-      Guard.unlock();
-      raise(Sig);   // Execute the default handler.
+  if (std::find(IntSigs, IntSigsEnd, Sig) != IntSigsEnd) {
+    if (InterruptFunction) {
+      void (*IF)() = InterruptFunction;
+      SignalsMutex.release();
+      InterruptFunction = 0;
+      IF();        // run the interrupt function.
       return;
-   }
+    }
+
+    SignalsMutex.release();
+    raise(Sig);   // Execute the default handler.
+    return;
   }
 
+  SignalsMutex.release();
+
   // Otherwise if it is a fault (like SEGV) run any handler.
-  llvm::sys::RunSignalHandlers();
+  for (unsigned i = 0, e = CallBacksToRun.size(); i != e; ++i)
+    CallBacksToRun[i].first(CallBacksToRun[i].second);
 
 #ifdef __s390__
   // On S/390, certain signals are delivered with PSW Address pointing to
@@ -256,25 +196,37 @@ static RETSIGTYPE SignalHandler(int Sig) {
 }
 
 void llvm::sys::RunInterruptHandlers() {
-  sys::SmartScopedLock<true> Guard(*SignalsMutex);
+  SignalsMutex.acquire();
   RemoveFilesToRemove();
+  SignalsMutex.release();
 }
 
 void llvm::sys::SetInterruptFunction(void (*IF)()) {
-  {
-    sys::SmartScopedLock<true> Guard(*SignalsMutex);
-    InterruptFunction = IF;
-  }
+  SignalsMutex.acquire();
+  InterruptFunction = IF;
+  SignalsMutex.release();
   RegisterHandlers();
 }
 
 // RemoveFileOnSignal - The public API
 bool llvm::sys::RemoveFileOnSignal(StringRef Filename,
                                    std::string* ErrMsg) {
-  {
-    sys::SmartScopedLock<true> Guard(*SignalsMutex);
-    FilesToRemove->push_back(Filename);
-  }
+  SignalsMutex.acquire();
+  std::string *OldPtr = FilesToRemove.empty() ? 0 : &FilesToRemove[0];
+  FilesToRemove.push_back(Filename);
+
+  // We want to call 'c_str()' on every std::string in this vector so that if
+  // the underlying implementation requires a re-allocation, it happens here
+  // rather than inside of the signal handler. If we see the vector grow, we
+  // have to call it on every entry. If it remains in place, we only need to
+  // call it on the latest one.
+  if (OldPtr == &FilesToRemove[0])
+    FilesToRemove.back().c_str();
+  else
+    for (unsigned i = 0, e = FilesToRemove.size(); i != e; ++i)
+      FilesToRemove[i].c_str();
+
+  SignalsMutex.release();
 
   RegisterHandlers();
   return false;
@@ -282,136 +234,43 @@ bool llvm::sys::RemoveFileOnSignal(StringRef Filename,
 
 // DontRemoveFileOnSignal - The public API
 void llvm::sys::DontRemoveFileOnSignal(StringRef Filename) {
-  sys::SmartScopedLock<true> Guard(*SignalsMutex);
+  SignalsMutex.acquire();
   std::vector<std::string>::reverse_iterator RI =
-      find(reverse(*FilesToRemove), Filename);
-  std::vector<std::string>::iterator I = FilesToRemove->end();
-  if (RI != FilesToRemove->rend())
-    I = FilesToRemove->erase(RI.base()-1);
+    std::find(FilesToRemove.rbegin(), FilesToRemove.rend(), Filename);
+  std::vector<std::string>::iterator I = FilesToRemove.end();
+  if (RI != FilesToRemove.rend())
+    I = FilesToRemove.erase(RI.base()-1);
+
+  // We need to call c_str() on every element which would have been moved by
+  // the erase. These elements, in a C++98 implementation where c_str()
+  // requires a reallocation on the first call may have had the call to c_str()
+  // made on insertion become invalid by being copied down an element.
+  for (std::vector<std::string>::iterator E = FilesToRemove.end(); I != E; ++I)
+    I->c_str();
+
+  SignalsMutex.release();
 }
 
 /// AddSignalHandler - Add a function to be called when a signal is delivered
 /// to the process.  The handler can have a cookie passed to it to identify
 /// what instance of the handler it is.
 void llvm::sys::AddSignalHandler(void (*FnPtr)(void *), void *Cookie) {
-  CallBacksToRun->push_back(std::make_pair(FnPtr, Cookie));
+  CallBacksToRun.push_back(std::make_pair(FnPtr, Cookie));
   RegisterHandlers();
 }
 
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES) && HAVE_LINK_H &&    \
-    (defined(__linux__) || defined(__FreeBSD__) ||                             \
-     defined(__FreeBSD_kernel__) || defined(__NetBSD__))
-struct DlIteratePhdrData {
-  void **StackTrace;
-  int depth;
-  bool first;
-  const char **modules;
-  intptr_t *offsets;
-  const char *main_exec_name;
-};
-
-static int dl_iterate_phdr_cb(dl_phdr_info *info, size_t size, void *arg) {
-  DlIteratePhdrData *data = (DlIteratePhdrData*)arg;
-  const char *name = data->first ? data->main_exec_name : info->dlpi_name;
-  data->first = false;
-  for (int i = 0; i < info->dlpi_phnum; i++) {
-    const auto *phdr = &info->dlpi_phdr[i];
-    if (phdr->p_type != PT_LOAD)
-      continue;
-    intptr_t beg = info->dlpi_addr + phdr->p_vaddr;
-    intptr_t end = beg + phdr->p_memsz;
-    for (int j = 0; j < data->depth; j++) {
-      if (data->modules[j])
-        continue;
-      intptr_t addr = (intptr_t)data->StackTrace[j];
-      if (beg <= addr && addr < end) {
-        data->modules[j] = name;
-        data->offsets[j] = addr - info->dlpi_addr;
-      }
-    }
-  }
-  return 0;
-}
-
-/// If this is an ELF platform, we can find all loaded modules and their virtual
-/// addresses with dl_iterate_phdr.
-static bool findModulesAndOffsets(void **StackTrace, int Depth,
-                                  const char **Modules, intptr_t *Offsets,
-                                  const char *MainExecutableName,
-                                  StringSaver &StrPool) {
-  DlIteratePhdrData data = {StackTrace, Depth,   true,
-                            Modules,    Offsets, MainExecutableName};
-  dl_iterate_phdr(dl_iterate_phdr_cb, &data);
-  return true;
-}
-#else
-/// This platform does not have dl_iterate_phdr, so we do not yet know how to
-/// find all loaded DSOs.
-static bool findModulesAndOffsets(void **StackTrace, int Depth,
-                                  const char **Modules, intptr_t *Offsets,
-                                  const char *MainExecutableName,
-                                  StringSaver &StrPool) {
-  return false;
-}
-#endif // defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES) && ...
-
-#if defined(ENABLE_BACKTRACES) && defined(HAVE__UNWIND_BACKTRACE)
-static int unwindBacktrace(void **StackTrace, int MaxEntries) {
-  if (MaxEntries < 0)
-    return 0;
-
-  // Skip the first frame ('unwindBacktrace' itself).
-  int Entries = -1;
-
-  auto HandleFrame = [&](_Unwind_Context *Context) -> _Unwind_Reason_Code {
-    // Apparently we need to detect reaching the end of the stack ourselves.
-    void *IP = (void *)_Unwind_GetIP(Context);
-    if (!IP)
-      return _URC_END_OF_STACK;
-
-    assert(Entries < MaxEntries && "recursively called after END_OF_STACK?");
-    if (Entries >= 0)
-      StackTrace[Entries] = IP;
-
-    if (++Entries == MaxEntries)
-      return _URC_END_OF_STACK;
-    return _URC_NO_REASON;
-  };
-
-  _Unwind_Backtrace(
-      [](_Unwind_Context *Context, void *Handler) {
-        return (*static_cast<decltype(HandleFrame) *>(Handler))(Context);
-      },
-      static_cast<void *>(&HandleFrame));
-  return std::max(Entries, 0);
-}
-#endif
 
 // PrintStackTrace - In the case of a program crash or fault, print out a stack
 // trace so that the user has an indication of why and where we died.
 //
 // On glibc systems we have the 'backtrace' function, which works nicely, but
 // doesn't demangle symbols.
-void llvm::sys::PrintStackTrace(raw_ostream &OS) {
-#if defined(ENABLE_BACKTRACES)
-  static void *StackTrace[256];
-  int depth = 0;
-#if defined(HAVE_BACKTRACE)
+void llvm::sys::PrintStackTrace(FILE *FD) {
+#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
+  static void* StackTrace[256];
   // Use backtrace() to output a backtrace on Linux systems with glibc.
-  if (!depth)
-    depth = backtrace(StackTrace, static_cast<int>(array_lengthof(StackTrace)));
-#endif
-#if defined(HAVE__UNWIND_BACKTRACE)
-  // Try _Unwind_Backtrace() if backtrace() failed.
-  if (!depth)
-    depth = unwindBacktrace(StackTrace,
+  int depth = backtrace(StackTrace,
                         static_cast<int>(array_lengthof(StackTrace)));
-#endif
-  if (!depth)
-    return;
-
-  if (printSymbolizedStackTrace(Argv0, StackTrace, depth, OS))
-    return;
 #if HAVE_DLFCN_H && __GNUG__
   int width = 0;
   for (int i = 0; i < depth; ++i) {
@@ -420,8 +279,8 @@ void llvm::sys::PrintStackTrace(raw_ostream &OS) {
     const char* name = strrchr(dlinfo.dli_fname, '/');
 
     int nwidth;
-    if (!name) nwidth = strlen(dlinfo.dli_fname);
-    else       nwidth = strlen(name) - 1;
+    if (name == NULL) nwidth = strlen(dlinfo.dli_fname);
+    else              nwidth = strlen(name) - 1;
 
     if (nwidth > width) width = nwidth;
   }
@@ -430,54 +289,53 @@ void llvm::sys::PrintStackTrace(raw_ostream &OS) {
     Dl_info dlinfo;
     dladdr(StackTrace[i], &dlinfo);
 
-    OS << format("%-2d", i);
+    fprintf(FD, "%-2d", i);
 
     const char* name = strrchr(dlinfo.dli_fname, '/');
-    if (!name) OS << format(" %-*s", width, dlinfo.dli_fname);
-    else       OS << format(" %-*s", width, name+1);
+    if (name == NULL) fprintf(FD, " %-*s", width, dlinfo.dli_fname);
+    else              fprintf(FD, " %-*s", width, name+1);
 
-    OS << format(" %#0*lx", (int)(sizeof(void*) * 2) + 2,
-                 (unsigned long)StackTrace[i]);
+    fprintf(FD, " %#0*lx",
+            (int)(sizeof(void*) * 2) + 2, (unsigned long)StackTrace[i]);
 
-    if (dlinfo.dli_sname != nullptr) {
-      OS << ' ';
+    if (dlinfo.dli_sname != NULL) {
+      fputc(' ', FD);
+#  if HAVE_CXXABI_H
       int res;
-      char* d = itaniumDemangle(dlinfo.dli_sname, nullptr, nullptr, &res);
-      if (!d) OS << dlinfo.dli_sname;
-      else    OS << d;
+      char* d = abi::__cxa_demangle(dlinfo.dli_sname, NULL, NULL, &res);
+#  else
+      char* d = NULL;
+#  endif
+      if (d == NULL) fputs(dlinfo.dli_sname, FD);
+      else           fputs(d, FD);
       free(d);
 
       // FIXME: When we move to C++11, use %t length modifier. It's not in
       // C++03 and causes gcc to issue warnings. Losing the upper 32 bits of
       // the stack offset for a stack dump isn't likely to cause any problems.
-      OS << format(" + %u",(unsigned)((char*)StackTrace[i]-
-                                      (char*)dlinfo.dli_saddr));
+      fprintf(FD, " + %u",(unsigned)((char*)StackTrace[i]-
+                                     (char*)dlinfo.dli_saddr));
     }
-    OS << '\n';
+    fputc('\n', FD);
   }
-#elif defined(HAVE_BACKTRACE)
+#else
   backtrace_symbols_fd(StackTrace, depth, STDERR_FILENO);
 #endif
 #endif
 }
 
 static void PrintStackTraceSignalHandler(void *) {
-  PrintStackTrace(llvm::errs());
+  PrintStackTrace(stderr);
 }
-
-void llvm::sys::DisableSystemDialogsOnCrash() {}
 
 /// PrintStackTraceOnErrorSignal - When an error signal (such as SIGABRT or
 /// SIGSEGV) is delivered to the process, print a stack trace and then exit.
-void llvm::sys::PrintStackTraceOnErrorSignal(StringRef Argv0,
-                                             bool DisableCrashReporting) {
-  ::Argv0 = Argv0;
-
-  AddSignalHandler(PrintStackTraceSignalHandler, nullptr);
+void llvm::sys::PrintStackTraceOnErrorSignal() {
+  AddSignalHandler(PrintStackTraceSignalHandler, 0);
 
 #if defined(__APPLE__) && defined(ENABLE_CRASH_OVERRIDES)
   // Environment variable to disable any kind of crash dialog.
-  if (DisableCrashReporting || getenv("LLVM_DISABLE_CRASH_REPORT")) {
+  if (getenv("LLVM_DISABLE_CRASH_REPORT")) {
     mach_port_t self = mach_task_self();
 
     exception_mask_t mask = EXC_MASK_CRASH;
@@ -491,3 +349,42 @@ void llvm::sys::PrintStackTraceOnErrorSignal(StringRef Argv0,
   }
 #endif
 }
+
+
+/***/
+
+// On Darwin, raise sends a signal to the main thread instead of the current
+// thread. This has the unfortunate effect that assert() and abort() will end up
+// bypassing our crash recovery attempts. We work around this for anything in
+// the same linkage unit by just defining our own versions of the assert handler
+// and abort.
+
+#if defined(__APPLE__) && defined(ENABLE_CRASH_OVERRIDES)
+
+#include <signal.h>
+#include <pthread.h>
+
+int raise(int sig) {
+  return pthread_kill(pthread_self(), sig);
+}
+
+void __assert_rtn(const char *func,
+                  const char *file,
+                  int line,
+                  const char *expr) {
+  if (func)
+    fprintf(stderr, "Assertion failed: (%s), function %s, file %s, line %d.\n",
+            expr, func, file, line);
+  else
+    fprintf(stderr, "Assertion failed: (%s), file %s, line %d.\n",
+            expr, file, line);
+  abort();
+}
+
+void abort() {
+  raise(SIGABRT);
+  usleep(1000);
+  __builtin_trap();
+}
+
+#endif

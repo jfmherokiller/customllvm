@@ -30,4 +30,4 @@ foo:
 // CHECK-NEXT:     )
 // CHECK-NEXT:   }
 // CHECK:        Symbol {
-// CHECK:          Name: foo
+// CHECK:          Name: foo (5)

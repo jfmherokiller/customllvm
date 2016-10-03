@@ -1,5 +1,4 @@
-; RUN: llc -verify-machineinstrs -mcpu=pwr7 -O0 -fast-isel=false -mattr=-vsx < %s | FileCheck %s
-; RUN: llc -verify-machineinstrs -mcpu=pwr7 -O0 -fast-isel=false -mattr=+vsx < %s | FileCheck -check-prefix=CHECK-VSX %s
+; RUN: llc -mcpu=pwr7 -O0 -fast-isel=false < %s | FileCheck %s
 
 ; Verify internal alignment of long double in a struct.  The double
 ; argument comes in in GPR3; GPR4 is skipped; GPRs 5 and 6 contain
@@ -13,24 +12,15 @@ target triple = "powerpc64-unknown-linux-gnu"
 
 define ppc_fp128 @test(%struct.S* byval %x) nounwind {
 entry:
-  %b = getelementptr inbounds %struct.S, %struct.S* %x, i32 0, i32 1
-  %0 = load ppc_fp128, ppc_fp128* %b, align 16
+  %b = getelementptr inbounds %struct.S* %x, i32 0, i32 1
+  %0 = load ppc_fp128* %b, align 16
   ret ppc_fp128 %0
 }
 
-; CHECK-DAG: std 6, 72(1)
-; CHECK-DAG: std 5, 64(1)
-; CHECK-DAG: std 4, 56(1)
-; CHECK-DAG: std 3, 48(1)
+; CHECK: std 6, 72(1)
+; CHECK: std 5, 64(1)
+; CHECK: std 4, 56(1)
+; CHECK: std 3, 48(1)
 ; CHECK: lfd 1, 64(1)
 ; CHECK: lfd 2, 72(1)
 
-; CHECK-VSX-DAG: std 6, 72(1)
-; CHECK-VSX-DAG: std 5, 64(1)
-; CHECK-VSX-DAG: std 4, 56(1)
-; CHECK-VSX-DAG: std 3, 48(1)
-; CHECK-VSX: li 3, 16
-; CHECK-VSX: addi 4, 1, 48
-; CHECK-VSX: lxsdx 1, 4, 3
-; CHECK-VSX: li 3, 24
-; CHECK-VSX: lxsdx 2, 4, 3

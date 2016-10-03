@@ -1,7 +1,5 @@
 @ RUN: llvm-mc %s -triple=armv7-unknown-linux-gnueabi -filetype=obj -o - \
-@ RUN:   | llvm-readobj -s -sd -sr > %t
-@ RUN: FileCheck %s < %t
-@ RUN: FileCheck --check-prefix=RELOC %s < %t
+@ RUN:   | llvm-readobj -s -sd -sr | FileCheck %s
 
 @ Check the .personality directive.
 
@@ -34,28 +32,19 @@ func1:
 @ CHECK:     0000: 00000000 B0B0B000                    |........|
 @ CHECK:   )
 @ CHECK: }
-
-@ RELOC: Section {
-@ RELOC:   Name: .rel.ARM.extab.TEST1
-@ RELOC:   Relocations [
-@ RELOC:     0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
-@ RELOC:   ]
-@ RELOC: }
-
+@ CHECK:   Relocations [
+@ CHECK:     0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
+@ CHECK:   ]
 @ CHECK: Section {
 @ CHECK:   Name: .ARM.exidx.TEST1
 @ CHECK:   SectionData (
 @ CHECK:     0000: 00000000 00000000                    |........|
 @ CHECK:   )
 @ CHECK: }
-
-@ RELOC: Section {
-@ RELOC:   Name: .rel.ARM.exidx.TEST1
-@ RELOC:   Relocations [
-@ RELOC:     0x0 R_ARM_PREL31 .TEST1 0x0
-@ RELOC:     0x4 R_ARM_PREL31 .ARM.extab.TEST1 0x0
-@ RELOC:   ]
-@ RELOC: }
+@ CHECK:   Relocations [
+@ CHECK:     0x0 R_ARM_PREL31 .TEST1 0x0
+@ CHECK:     0x4 R_ARM_PREL31 .ARM.extab.TEST1 0x0
+@ CHECK:   ]
 
 
 @-------------------------------------------------------------------------------
@@ -85,25 +74,16 @@ func2:
 @ CHECK:     0000: 00000000 B0B0B000                    |........|
 @ CHECK:   )
 @ CHECK: }
-
-@ RELOC: Section {
-@ RELOC:   Name: .rel.ARM.extab.TEST2
-@ RELOC:   Relocations [
-@ RELOC:     0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
-@ RELOC:   ]
-@ RELOC: }
-
+@ CHECK:   Relocations [
+@ CHECK:     0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
+@ CHECK:   ]
 @ CHECK: Section {
 @ CHECK:   Name: .ARM.exidx.TEST2
 @ CHECK:   SectionData (
 @ CHECK:     0000: 00000000 00000000                    |........|
 @ CHECK:   )
 @ CHECK: }
-
-@ RELOC: Section {
-@ RELOC:   Name: .rel.ARM.exidx.TEST2
-@ RELOC:   Relocations [
-@ RELOC:     0x0 R_ARM_PREL31 .TEST2 0x0
-@ RELOC:     0x4 R_ARM_PREL31 .ARM.extab.TEST2 0x0
-@ RELOC:   ]
-@ RELOC: }
+@ CHECK:   Relocations [
+@ CHECK:     0x0 R_ARM_PREL31 .TEST2 0x0
+@ CHECK:     0x4 R_ARM_PREL31 .ARM.extab.TEST2 0x0
+@ CHECK:   ]

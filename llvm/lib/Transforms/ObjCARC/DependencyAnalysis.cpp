@@ -20,45 +20,43 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "objc-arc-dependency"
 #include "ObjCARC.h"
 #include "DependencyAnalysis.h"
 #include "ProvenanceAnalysis.h"
-#include "llvm/IR/CFG.h"
+#include "llvm/Support/CFG.h"
 
 using namespace llvm;
 using namespace llvm::objcarc;
 
-#define DEBUG_TYPE "objc-arc-dependency"
-
 /// Test whether the given instruction can result in a reference count
 /// modification (positive or negative) for the pointer's object.
-bool llvm::objcarc::CanAlterRefCount(const Instruction *Inst, const Value *Ptr,
-                                     ProvenanceAnalysis &PA,
-                                     ARCInstKind Class) {
+bool
+llvm::objcarc::CanAlterRefCount(const Instruction *Inst, const Value *Ptr,
+                                ProvenanceAnalysis &PA,
+                                InstructionClass Class) {
   switch (Class) {
-  case ARCInstKind::Autorelease:
-  case ARCInstKind::AutoreleaseRV:
-  case ARCInstKind::IntrinsicUser:
-  case ARCInstKind::User:
+  case IC_Autorelease:
+  case IC_AutoreleaseRV:
+  case IC_IntrinsicUser:
+  case IC_User:
     // These operations never directly modify a reference count.
     return false;
   default: break;
   }
 
-  ImmutableCallSite CS(Inst);
+  ImmutableCallSite CS = static_cast<const Value *>(Inst);
   assert(CS && "Only calls can alter reference counts!");
 
   // See if AliasAnalysis can help us with the call.
-  FunctionModRefBehavior MRB = PA.getAA()->getModRefBehavior(CS);
+  AliasAnalysis::ModRefBehavior MRB = PA.getAA()->getModRefBehavior(CS);
   if (AliasAnalysis::onlyReadsMemory(MRB))
     return false;
   if (AliasAnalysis::onlyAccessesArgPointees(MRB)) {
-    const DataLayout &DL = Inst->getModule()->getDataLayout();
     for (ImmutableCallSite::arg_iterator I = CS.arg_begin(), E = CS.arg_end();
          I != E; ++I) {
       const Value *Op = *I;
-      if (IsPotentialRetainableObjPtr(Op, *PA.getAA()) &&
-          PA.related(Ptr, Op, DL))
+      if (IsPotentialRetainableObjPtr(Op, *PA.getAA()) && PA.related(Ptr, Op))
         return true;
     }
     return false;
@@ -68,28 +66,14 @@ bool llvm::objcarc::CanAlterRefCount(const Instruction *Inst, const Value *Ptr,
   return true;
 }
 
-bool llvm::objcarc::CanDecrementRefCount(const Instruction *Inst,
-                                         const Value *Ptr,
-                                         ProvenanceAnalysis &PA,
-                                         ARCInstKind Class) {
-  // First perform a quick check if Class can not touch ref counts.
-  if (!CanDecrementRefCount(Class))
-    return false;
-
-  // Otherwise, just use CanAlterRefCount for now.
-  return CanAlterRefCount(Inst, Ptr, PA, Class);
-}
-
 /// Test whether the given instruction can "use" the given pointer's object in a
 /// way that requires the reference count to be positive.
-bool llvm::objcarc::CanUse(const Instruction *Inst, const Value *Ptr,
-                           ProvenanceAnalysis &PA, ARCInstKind Class) {
-  // ARCInstKind::Call operations (as opposed to
-  // ARCInstKind::CallOrUser) never "use" objc pointers.
-  if (Class == ARCInstKind::Call)
+bool
+llvm::objcarc::CanUse(const Instruction *Inst, const Value *Ptr,
+                      ProvenanceAnalysis &PA, InstructionClass Class) {
+  // IC_Call operations (as opposed to IC_CallOrUser) never "use" objc pointers.
+  if (Class == IC_Call)
     return false;
-
-  const DataLayout &DL = Inst->getModule()->getDataLayout();
 
   // Consider various instructions which may have pointer arguments which are
   // not "uses".
@@ -99,31 +83,29 @@ bool llvm::objcarc::CanUse(const Instruction *Inst, const Value *Ptr,
     // of any other dynamic reference-counted pointers.
     if (!IsPotentialRetainableObjPtr(ICI->getOperand(1), *PA.getAA()))
       return false;
-  } else if (auto CS = ImmutableCallSite(Inst)) {
+  } else if (ImmutableCallSite CS = static_cast<const Value *>(Inst)) {
     // For calls, just check the arguments (and not the callee operand).
     for (ImmutableCallSite::arg_iterator OI = CS.arg_begin(),
          OE = CS.arg_end(); OI != OE; ++OI) {
       const Value *Op = *OI;
-      if (IsPotentialRetainableObjPtr(Op, *PA.getAA()) &&
-          PA.related(Ptr, Op, DL))
+      if (IsPotentialRetainableObjPtr(Op, *PA.getAA()) && PA.related(Ptr, Op))
         return true;
     }
     return false;
   } else if (const StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
     // Special-case stores, because we don't care about the stored value, just
     // the store address.
-    const Value *Op = GetUnderlyingObjCPtr(SI->getPointerOperand(), DL);
+    const Value *Op = GetUnderlyingObjCPtr(SI->getPointerOperand());
     // If we can't tell what the underlying object was, assume there is a
     // dependence.
-    return IsPotentialRetainableObjPtr(Op, *PA.getAA()) &&
-           PA.related(Op, Ptr, DL);
+    return IsPotentialRetainableObjPtr(Op, *PA.getAA()) && PA.related(Op, Ptr);
   }
 
   // Check each operand for a match.
   for (User::const_op_iterator OI = Inst->op_begin(), OE = Inst->op_end();
        OI != OE; ++OI) {
     const Value *Op = *OI;
-    if (IsPotentialRetainableObjPtr(Op, *PA.getAA()) && PA.related(Ptr, Op, DL))
+    if (IsPotentialRetainableObjPtr(Op, *PA.getAA()) && PA.related(Ptr, Op))
       return true;
   }
   return false;
@@ -140,11 +122,11 @@ llvm::objcarc::Depends(DependenceKind Flavor, Instruction *Inst,
 
   switch (Flavor) {
   case NeedsPositiveRetainCount: {
-    ARCInstKind Class = GetARCInstKind(Inst);
+    InstructionClass Class = GetInstructionClass(Inst);
     switch (Class) {
-    case ARCInstKind::AutoreleasepoolPop:
-    case ARCInstKind::AutoreleasepoolPush:
-    case ARCInstKind::None:
+    case IC_AutoreleasepoolPop:
+    case IC_AutoreleasepoolPush:
+    case IC_None:
       return false;
     default:
       return CanUse(Inst, Arg, PA, Class);
@@ -152,10 +134,10 @@ llvm::objcarc::Depends(DependenceKind Flavor, Instruction *Inst,
   }
 
   case AutoreleasePoolBoundary: {
-    ARCInstKind Class = GetARCInstKind(Inst);
+    InstructionClass Class = GetInstructionClass(Inst);
     switch (Class) {
-    case ARCInstKind::AutoreleasepoolPop:
-    case ARCInstKind::AutoreleasepoolPush:
+    case IC_AutoreleasepoolPop:
+    case IC_AutoreleasepoolPush:
       // These mark the end and begin of an autorelease pool scope.
       return true;
     default:
@@ -165,13 +147,13 @@ llvm::objcarc::Depends(DependenceKind Flavor, Instruction *Inst,
   }
 
   case CanChangeRetainCount: {
-    ARCInstKind Class = GetARCInstKind(Inst);
+    InstructionClass Class = GetInstructionClass(Inst);
     switch (Class) {
-    case ARCInstKind::AutoreleasepoolPop:
+    case IC_AutoreleasepoolPop:
       // Conservatively assume this can decrement any count.
       return true;
-    case ARCInstKind::AutoreleasepoolPush:
-    case ARCInstKind::None:
+    case IC_AutoreleasepoolPush:
+    case IC_None:
       return false;
     default:
       return CanAlterRefCount(Inst, Arg, PA, Class);
@@ -179,28 +161,28 @@ llvm::objcarc::Depends(DependenceKind Flavor, Instruction *Inst,
   }
 
   case RetainAutoreleaseDep:
-    switch (GetBasicARCInstKind(Inst)) {
-    case ARCInstKind::AutoreleasepoolPop:
-    case ARCInstKind::AutoreleasepoolPush:
+    switch (GetBasicInstructionClass(Inst)) {
+    case IC_AutoreleasepoolPop:
+    case IC_AutoreleasepoolPush:
       // Don't merge an objc_autorelease with an objc_retain inside a different
       // autoreleasepool scope.
       return true;
-    case ARCInstKind::Retain:
-    case ARCInstKind::RetainRV:
+    case IC_Retain:
+    case IC_RetainRV:
       // Check for a retain of the same pointer for merging.
-      return GetArgRCIdentityRoot(Inst) == Arg;
+      return GetObjCArg(Inst) == Arg;
     default:
       // Nothing else matters for objc_retainAutorelease formation.
       return false;
     }
 
   case RetainAutoreleaseRVDep: {
-    ARCInstKind Class = GetBasicARCInstKind(Inst);
+    InstructionClass Class = GetBasicInstructionClass(Inst);
     switch (Class) {
-    case ARCInstKind::Retain:
-    case ARCInstKind::RetainRV:
+    case IC_Retain:
+    case IC_RetainRV:
       // Check for a retain of the same pointer for merging.
-      return GetArgRCIdentityRoot(Inst) == Arg;
+      return GetObjCArg(Inst) == Arg;
     default:
       // Anything that can autorelease interrupts
       // retainAutoreleaseReturnValue formation.
@@ -209,7 +191,7 @@ llvm::objcarc::Depends(DependenceKind Flavor, Instruction *Inst,
   }
 
   case RetainRVDep:
-    return CanInterruptRV(GetBasicARCInstKind(Inst));
+    return CanInterruptRV(GetBasicInstructionClass(Inst));
   }
 
   llvm_unreachable("Invalid dependence flavor");
@@ -223,10 +205,10 @@ void
 llvm::objcarc::FindDependencies(DependenceKind Flavor,
                                 const Value *Arg,
                                 BasicBlock *StartBB, Instruction *StartInst,
-                                SmallPtrSetImpl<Instruction *> &DependingInsts,
-                                SmallPtrSetImpl<const BasicBlock *> &Visited,
+                                SmallPtrSet<Instruction *, 4> &DependingInsts,
+                                SmallPtrSet<const BasicBlock *, 4> &Visited,
                                 ProvenanceAnalysis &PA) {
-  BasicBlock::iterator StartPos = StartInst->getIterator();
+  BasicBlock::iterator StartPos = StartInst;
 
   SmallVector<std::pair<BasicBlock *, BasicBlock::iterator>, 4> Worklist;
   Worklist.push_back(std::make_pair(StartBB, StartPos));
@@ -241,18 +223,18 @@ llvm::objcarc::FindDependencies(DependenceKind Flavor,
         pred_iterator PI(LocalStartBB), PE(LocalStartBB, false);
         if (PI == PE)
           // If we've reached the function entry, produce a null dependence.
-          DependingInsts.insert(nullptr);
+          DependingInsts.insert(0);
         else
           // Add the predecessors to the worklist.
           do {
             BasicBlock *PredBB = *PI;
-            if (Visited.insert(PredBB).second)
+            if (Visited.insert(PredBB))
               Worklist.push_back(std::make_pair(PredBB, PredBB->end()));
           } while (++PI != PE);
         break;
       }
 
-      Instruction *Inst = &*--LocalStartPos;
+      Instruction *Inst = --LocalStartPos;
       if (Depends(Flavor, Inst, Arg, PA)) {
         DependingInsts.insert(Inst);
         break;
@@ -263,7 +245,9 @@ llvm::objcarc::FindDependencies(DependenceKind Flavor,
   // Determine whether the original StartBB post-dominates all of the blocks we
   // visited. If not, insert a sentinal indicating that most optimizations are
   // not safe.
-  for (const BasicBlock *BB : Visited) {
+  for (SmallPtrSet<const BasicBlock *, 4>::const_iterator I = Visited.begin(),
+       E = Visited.end(); I != E; ++I) {
+    const BasicBlock *BB = *I;
     if (BB == StartBB)
       continue;
     const TerminatorInst *TI = cast<TerminatorInst>(&BB->back());

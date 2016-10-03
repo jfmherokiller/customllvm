@@ -56,7 +56,7 @@ GENERAL OPTIONS
  Search for :file:`{NAME}.cfg` and :file:`{NAME}.site.cfg` when searching for
  test suites, instead of :file:`lit.cfg` and :file:`lit.site.cfg`.
 
-.. option:: -D NAME, -D NAME=VALUE, --param NAME, --param NAME=VALUE
+.. option:: --param NAME, --param NAME=VALUE
 
  Add a user defined parameter ``NAME`` with the given ``VALUE`` (or the empty
  string if not given).  The meaning and use of these parameters is test suite
@@ -80,22 +80,9 @@ OUTPUT OPTIONS
  Show more information on test failures, for example the entire test output
  instead of just the test result.
 
-.. option:: -a, --show-all
-
- Show more information about all tests, for example the entire test
- commandline and output.
-
 .. option:: --no-progress-bar
 
  Do not use curses based progress bar.
-
-.. option:: --show-unsupported
-
- Show the names of unsupported tests.
-
-.. option:: --show-xfail
-
- Show the names of tests that were expected to fail.
 
 .. _execution-options:
 
@@ -166,7 +153,7 @@ ADDITIONAL OPTIONS
 
 .. option:: --show-tests
 
- List all of the discovered tests and exit.
+ List all of the the discovered tests and exit.
 
 EXIT STATUS
 -----------
@@ -275,7 +262,7 @@ Once a test suite is discovered, its config file is loaded.  Config files
 themselves are Python modules which will be executed.  When the config file is
 executed, two important global variables are predefined:
 
-**lit_config**
+**lit**
 
  The global **lit** configuration object (a *LitConfig* instance), which defines
  the builtin test formats, global configuration parameters, and other helper
@@ -320,12 +307,17 @@ executed, two important global variables are predefined:
  **root** The root configuration.  This is the top-most :program:`lit` configuration in
  the project.
 
+ **on_clone** The config is actually cloned for every subdirectory inside a test
+ suite, to allow local configuration on a per-directory basis.  The *on_clone*
+ variable can be set to a Python function which will be called whenever a
+ configuration is cloned (for a subdirectory).  The function should takes three
+ arguments: (1) the parent configuration, (2) the new configuration (which the
+ *on_clone* function will generally modify), and (3) the test path to the new
+ directory being scanned.
+
  **pipefail** Normally a test using a shell pipe fails if any of the commands
  on the pipe fail. If this is not desired, setting this variable to false
  makes the test fail only if the last command in the pipe fails.
-
- **available_features** A set of features that can be used in `XFAIL`,
- `REQUIRES`, and `UNSUPPORTED` directives.
 
 TEST DISCOVERY
 ~~~~~~~~~~~~~~
@@ -349,7 +341,7 @@ LOCAL CONFIGURATION FILES
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 When :program:`lit` loads a subdirectory in a test suite, it instantiates a
-local test configuration by cloning the configuration for the parent directory
+local test configuration by cloning the configuration for the parent direction
 --- the root of this configuration chain will always be a test suite.  Once the
 test configuration is cloned :program:`lit` checks for a *lit.local.cfg* file
 in the subdirectory.  If present, this file will be loaded and can be used to
@@ -357,35 +349,6 @@ specialize the configuration for each individual directory.  This facility can
 be used to define subdirectories of optional tests, or to change other
 configuration parameters --- for example, to change the test format, or the
 suffixes which identify test files.
-
-PRE-DEFINED SUBSTITUTIONS
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-:program:`lit` provides various patterns that can be used with the RUN command.
-These are defined in TestRunner.py.
-
- ========== ==============
-  Macro      Substitution
- ========== ==============
- %s         source path (path to the file currently being run)
- %S         source dir (directory of the file currently being run)
- %p         same as %S
- %{pathsep} path separator
- %t         temporary file name unique to the test
- %T         temporary directory unique to the test
- %%         %
- %/s        same as %s but replace all / with \\
- %/S        same as %S but replace all / with \\
- %/p        same as %p but replace all / with \\
- %/t        same as %t but replace all / with \\
- %/T        same as %T but replace all / with \\
- ========== ==============
-
-Further substitution patterns might be defined by each test module.
-See the modules :ref:`local-configuration-files`.
-
-More information on the testing infrastucture can be found in the
-:doc:`../TestingGuide`.
 
 TEST RUN OUTPUT FORMAT
 ~~~~~~~~~~~~~~~~~~~~~~

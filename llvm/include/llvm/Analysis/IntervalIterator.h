@@ -34,8 +34,8 @@
 #define LLVM_ANALYSIS_INTERVALITERATOR_H
 
 #include "llvm/Analysis/IntervalPartition.h"
-#include "llvm/IR/CFG.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Support/CFG.h"
 #include <algorithm>
 #include <set>
 #include <vector>
@@ -78,7 +78,7 @@ inline void addNodeToInterval(Interval *Int, BasicBlock *BB) {
 //
 inline void addNodeToInterval(Interval *Int, Interval *I) {
   // Add all of the nodes in I as new nodes in Int.
-  Int->Nodes.insert(Int->Nodes.end(), I->Nodes.begin(), I->Nodes.end());
+  copy(I->Nodes.begin(), I->Nodes.end(), back_inserter(Int->Nodes));
 }
 
 
@@ -94,6 +94,7 @@ class IntervalIterator {
   bool IOwnMem;     // If True, delete intervals when done with them
                     // See file header for conditions of use
 public:
+  typedef IntervalIterator<NodeTy, OrigContainer_t> _Self;
   typedef std::forward_iterator_tag iterator_category;
 
   IntervalIterator() {} // End iterator, empty stack
@@ -104,12 +105,6 @@ public:
     }
   }
 
-  IntervalIterator(IntervalIterator &&x)
-      : IntStack(std::move(x.IntStack)), Visited(std::move(x.Visited)),
-        OrigContainer(x.OrigContainer), IOwnMem(x.IOwnMem) {
-    x.IOwnMem = false;
-  }
-
   IntervalIterator(IntervalPartition &IP, bool OwnMemory) : IOwnMem(OwnMemory) {
     OrigContainer = &IP;
     if (!ProcessInterval(IP.getRootInterval())) {
@@ -117,7 +112,7 @@ public:
     }
   }
 
-  ~IntervalIterator() {
+  inline ~IntervalIterator() {
     if (IOwnMem)
       while (!IntStack.empty()) {
         delete operator*();
@@ -125,17 +120,15 @@ public:
       }
   }
 
-  bool operator==(const IntervalIterator &x) const {
-    return IntStack == x.IntStack;
-  }
-  bool operator!=(const IntervalIterator &x) const { return !(*this == x); }
+  inline bool operator==(const _Self& x) const { return IntStack == x.IntStack;}
+  inline bool operator!=(const _Self& x) const { return !operator==(x); }
 
-  const Interval *operator*() const { return IntStack.back().first; }
-  Interval *operator*() { return IntStack.back().first; }
-  const Interval *operator->() const { return operator*(); }
-  Interval *operator->() { return operator*(); }
+  inline const Interval *operator*() const { return IntStack.back().first; }
+  inline       Interval *operator*()       { return IntStack.back().first; }
+  inline const Interval *operator->() const { return operator*(); }
+  inline       Interval *operator->()       { return operator*(); }
 
-  IntervalIterator &operator++() { // Preincrement
+  _Self& operator++() {  // Preincrement
     assert(!IntStack.empty() && "Attempting to use interval iterator at end!");
     do {
       // All of the intervals on the stack have been visited.  Try visiting
@@ -157,10 +150,8 @@ public:
 
     return *this;
   }
-  IntervalIterator operator++(int) { // Postincrement
-    IntervalIterator tmp = *this;
-    ++*this;
-    return tmp;
+  inline _Self operator++(int) { // Postincrement
+    _Self tmp = *this; ++*this; return tmp;
   }
 
 private:
@@ -174,10 +165,10 @@ private:
   //
   bool ProcessInterval(NodeTy *Node) {
     BasicBlock *Header = getNodeHeader(Node);
-    if (!Visited.insert(Header).second)
-      return false;
+    if (Visited.count(Header)) return false;
 
     Interval *Int = new Interval(Header);
+    Visited.insert(Header);   // The header has now been visited!
 
     // Check all of our successors to see if they are in the interval...
     for (typename GT::ChildIteratorType I = GT::child_begin(Node),

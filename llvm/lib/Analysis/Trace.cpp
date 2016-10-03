@@ -16,6 +16,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/Trace.h"
+#include "llvm/Assembly/Writer.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,7 +37,7 @@ void Trace::print(raw_ostream &O) const {
   O << "; Trace from function " << F->getName() << ", blocks:\n";
   for (const_iterator i = begin(), e = end(); i != e; ++i) {
     O << "; ";
-    (*i)->printAsOperand(O, true, getModule());
+    WriteAsOperand(O, *i, true, getModule());
     O << "\n";
   }
   O << "; Trace parent function: \n" << *F;
@@ -46,7 +47,7 @@ void Trace::print(raw_ostream &O) const {
 /// dump - Debugger convenience method; writes trace to standard error
 /// output stream.
 ///
-LLVM_DUMP_METHOD void Trace::dump() const {
+void Trace::dump() const {
   print(dbgs());
 }
 #endif

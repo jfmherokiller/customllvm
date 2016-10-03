@@ -1,6 +1,8 @@
-; RUN: %lli %s > /dev/null
+; RUN: %lli_mcjit %s > /dev/null
 
 ; Testcase distilled from 256.bzip2.
+
+target datalayout = "e-p:32:32"
 
 define i32 @main() {
 entry:

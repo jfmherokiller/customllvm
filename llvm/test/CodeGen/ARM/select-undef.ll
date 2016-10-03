@@ -1,5 +1,4 @@
-; RUN: llc -mtriple=arm-eabi -mcpu=swift -verify-machineinstrs %s -o /dev/null
-
+; RUN: llc < %s -march=arm -mcpu=swift -verify-machineinstrs
 define i32 @func(i32 %arg0, i32 %arg1) {
 entry:
   %cmp = icmp slt i32 %arg0, 10

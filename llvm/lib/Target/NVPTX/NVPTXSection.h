@@ -11,31 +11,36 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_NVPTX_NVPTXSECTION_H
-#define LLVM_LIB_TARGET_NVPTX_NVPTXSECTION_H
+#ifndef LLVM_NVPTXSECTION_H
+#define LLVM_NVPTXSECTION_H
 
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/MC/MCSection.h"
+#include <vector>
 
 namespace llvm {
-/// Represents a section in PTX PTX does not have sections. We create this class
-/// in order to use the ASMPrint interface.
+/// NVPTXSection - Represents a section in PTX
+/// PTX does not have sections. We create this class in order to use
+/// the ASMPrint interface.
 ///
-class NVPTXSection final : public MCSection {
-  virtual void anchor();
+class NVPTXSection : public MCSection {
+
 public:
-  NVPTXSection(SectionVariant V, SectionKind K) : MCSection(V, K, nullptr) {}
+  NVPTXSection(SectionVariant V, SectionKind K) : MCSection(V, K) {}
   ~NVPTXSection() {}
 
   /// Override this as NVPTX has its own way of printing switching
   /// to a section.
-  void PrintSwitchToSection(const MCAsmInfo &MAI,
-                            raw_ostream &OS,
-                            const MCExpr *Subsection) const override {}
+  virtual void PrintSwitchToSection(const MCAsmInfo &MAI,
+                                    raw_ostream &OS,
+                                    const MCExpr *Subsection) const {}
 
   /// Base address of PTX sections is zero.
-  bool UseCodeAlign() const override { return false; }
-  bool isVirtualSection() const override { return false; }
+  virtual bool isBaseAddressKnownZero() const { return true; }
+  virtual bool UseCodeAlign() const { return false; }
+  virtual bool isVirtualSection() const { return false; }
+  virtual std::string getLabelBeginName() const { return ""; }
+  virtual std::string getLabelEndName() const { return ""; }
 };
 
 } // end namespace llvm

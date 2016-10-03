@@ -7,13 +7,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/X86MCTargetDesc.h"
+#include "X86.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 Target llvm::TheX86_32Target, llvm::TheX86_64Target;
 
-extern "C" void LLVMInitializeX86TargetInfo() {
+extern "C" void LLVMInitializeX86TargetInfo() { 
   RegisterTarget<Triple::x86, /*HasJIT=*/true>
     X(TheX86_32Target, "x86", "32-bit X86: Pentium-Pro and above");
 

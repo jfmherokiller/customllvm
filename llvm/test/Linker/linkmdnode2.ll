@@ -2,7 +2,7 @@
 ;
 ; RUN: true
 
-!22 = !{i32 42, !"foobar"}
+!22 = metadata !{i32 42, metadata !"foobar"}
 
 declare i8 @llvm.something(metadata %a)
 define void @foo1() {
@@ -18,5 +18,5 @@ define void @test() {
   ret void, !abc !0
 }
 
-!0 = !{!0, i32 42 }
+!0 = metadata !{metadata !0, i32 42 }
 

@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_MIPS_MIPSSEFRAMELOWERING_H
-#define LLVM_LIB_TARGET_MIPS_MIPSSEFRAMELOWERING_H
+#ifndef MIPSSE_FRAMEINFO_H
+#define MIPSSE_FRAMEINFO_H
 
 #include "MipsFrameLowering.h"
 
@@ -20,33 +20,30 @@ namespace llvm {
 
 class MipsSEFrameLowering : public MipsFrameLowering {
 public:
-  explicit MipsSEFrameLowering(const MipsSubtarget &STI);
+  explicit MipsSEFrameLowering(const MipsSubtarget &STI)
+    : MipsFrameLowering(STI, STI.stackAlignment()) {}
 
   /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
   /// the function.
-  void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
-  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+  void emitPrologue(MachineFunction &MF) const;
+  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const;
 
-  int getFrameIndexReference(const MachineFunction &MF, int FI,
-                             unsigned &FrameReg) const override;
+  void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                     MachineBasicBlock &MBB,
+                                     MachineBasicBlock::iterator I) const;
 
   bool spillCalleeSavedRegisters(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MI,
                                  const std::vector<CalleeSavedInfo> &CSI,
-                                 const TargetRegisterInfo *TRI) const override;
+                                 const TargetRegisterInfo *TRI) const;
 
-  bool hasReservedCallFrame(const MachineFunction &MF) const override;
+  bool hasReservedCallFrame(const MachineFunction &MF) const;
 
-  void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
-                            RegScavenger *RS) const override;
+  void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
+                                            RegScavenger *RS) const;
   unsigned ehDataReg(unsigned I) const;
-
-private:
-  void emitInterruptEpilogueStub(MachineFunction &MF,
-                                 MachineBasicBlock &MBB) const;
-  void emitInterruptPrologueStub(MachineFunction &MF,
-                                 MachineBasicBlock &MBB) const;
 };
+
 } // End llvm namespace
 
 #endif

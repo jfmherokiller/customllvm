@@ -1,6 +1,6 @@
-; RUN: llc -verify-machineinstrs -mcpu=pwr6 -mattr=+altivec < %s | FileCheck %s
+; RUN: llc -mcpu=pwr6 -mattr=+altivec < %s | FileCheck %s
 
-; Check vector comparisons using altivec. For non-native types, just basic
+; Check vector comparisons using altivec. For non native types, just basic
 ; comparison instruction check is done. For altivec supported type (16i8,
 ; 8i16, 4i32, and 4f32) all the comparisons operators (==, !=, >, >=, <, <=)
 ; are checked.
@@ -24,7 +24,7 @@ define <4 x i8> @v4si8_cmp(<4 x i8> %x, <4 x i8> %y) nounwind readnone {
   ret <4 x i8> %sext
 }
 ; CHECK-LABEL: v4si8_cmp:
-; CHECK: vcmpequb {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
+; CHECK: vcmpequw {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
 
 
 define <8 x i8> @v8si8_cmp(<8 x i8> %x, <8 x i8> %y) nounwind readnone {
@@ -33,10 +33,10 @@ define <8 x i8> @v8si8_cmp(<8 x i8> %x, <8 x i8> %y) nounwind readnone {
   ret <8 x i8> %sext
 }
 ; CHECK-LABEL: v8si8_cmp:
-; CHECK: vcmpequb {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
+; CHECK: vcmpequh {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
 
 
-; Additional tests for v16i8 since it is a altivec native type
+; Adicional tests for v16i8 since it is a altivec native type
 
 define <16 x i8> @v16si8_cmp_eq(<16 x i8> %x, <16 x i8> %y) nounwind readnone {
   %cmp = icmp eq <16 x i8> %x, %y
@@ -63,8 +63,9 @@ entry:
   ret <16 x i8> %sext
 }
 ; CHECK-LABEL:      v16si8_cmp_le:
-; CHECK:      vcmpgtsb [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequb [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtsb [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <16 x i8> @v16ui8_cmp_le(<16 x i8> %x, <16 x i8> %y) nounwind readnone {
 entry:
@@ -73,8 +74,9 @@ entry:
   ret <16 x i8> %sext
 }
 ; CHECK-LABEL:      v16ui8_cmp_le:
-; CHECK:      vcmpgtub [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequb [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtub [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <16 x i8> @v16si8_cmp_lt(<16 x i8> %x, <16 x i8> %y) nounwind readnone {
 entry:
@@ -119,8 +121,9 @@ entry:
   ret <16 x i8> %sext
 }
 ; CHECK-LABEL:      v16si8_cmp_ge:
-; CHECK:      vcmpgtsb [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequb [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtsb [[RCMPGT:[0-9]+]], 2, 3
+; CHECK-NEXT: vor      2, [[RCMPGT]], [[RCMPEQ]]
 
 define <16 x i8> @v16ui8_cmp_ge(<16 x i8> %x, <16 x i8> %y) nounwind readnone {
 entry:
@@ -129,8 +132,9 @@ entry:
   ret <16 x i8> %sext
 }
 ; CHECK-LABEL:      v16ui8_cmp_ge:
-; CHECK:      vcmpgtub [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequb [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtub [[RCMPGT:[0-9]+]], 2, 3
+; CHECK-NEXT: vor      2, [[RCMPGT]], [[RCMPEQ]]
 
 
 define <32 x i8> @v32si8_cmp(<32 x i8> %x, <32 x i8> %y) nounwind readnone {
@@ -158,10 +162,10 @@ define <4 x i16> @v4si16_cmp(<4 x i16> %x, <4 x i16> %y) nounwind readnone {
   ret <4 x i16> %sext
 }
 ; CHECK-LABEL: v4si16_cmp:
-; CHECK: vcmpequh {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
+; CHECK: vcmpequw {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
 
 
-; Additional tests for v8i16 since it is an altivec native type
+; Adicional tests for v8i16 since it is an altivec native type
 
 define <8 x i16> @v8si16_cmp_eq(<8 x i16> %x, <8 x i16> %y) nounwind readnone {
 entry:
@@ -189,8 +193,9 @@ entry:
   ret <8 x i16> %sext
 }
 ; CHECK-LABEL:      v8si16_cmp_le:
-; CHECK:      vcmpgtsh [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequh [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtsh [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <8 x i16> @v8ui16_cmp_le(<8 x i16> %x, <8 x i16> %y) nounwind readnone {
 entry:
@@ -199,8 +204,9 @@ entry:
   ret <8 x i16> %sext
 }
 ; CHECK-LABEL:      v8ui16_cmp_le:
-; CHECK:      vcmpgtuh [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequh [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtuh [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <8 x i16> @v8si16_cmp_lt(<8 x i16> %x, <8 x i16> %y) nounwind readnone {
 entry:
@@ -245,8 +251,9 @@ entry:
   ret <8 x i16> %sext
 }
 ; CHECK-LABEL:      v8si16_cmp_ge:
-; CHECK:      vcmpgtsh [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequh [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtsh [[RCMPGT:[0-9]+]], 2, 3
+; CHECK-NEXT: vor      2, [[RCMPGT]], [[RCMPEQ]]
 
 define <8 x i16> @v8ui16_cmp_ge(<8 x i16> %x, <8 x i16> %y) nounwind readnone {
 entry:
@@ -255,8 +262,9 @@ entry:
   ret <8 x i16> %sext
 }
 ; CHECK-LABEL:      v8ui16_cmp_ge:
-; CHECK:      vcmpgtuh [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequh [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtuh [[RCMPGT:[0-9]+]], 2, 3
+; CHECK-NEXT: vor      2, [[RCMPGT]], [[RCMPEQ]]
 
 
 define <16 x i16> @v16si16_cmp(<16 x i16> %x, <16 x i16> %y) nounwind readnone {
@@ -290,7 +298,7 @@ define <2 x i32> @v2si32_cmp(<2 x i32> %x, <2 x i32> %y) nounwind readnone {
 ; CHECK: vcmpequw {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
 
 
-; Additional tests for v4si32 since it is an altivec native type
+; Adicional tests for v4si32 since it is an altivec native type
 
 define <4 x i32> @v4si32_cmp_eq(<4 x i32> %x, <4 x i32> %y) nounwind readnone {
 entry:
@@ -318,8 +326,9 @@ entry:
   ret <4 x i32> %sext
 }
 ; CHECK-LABEL:      v4si32_cmp_le:
-; CHECK:      vcmpgtsw [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequw [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtsw [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <4 x i32> @v4ui32_cmp_le(<4 x i32> %x, <4 x i32> %y) nounwind readnone {
 entry:
@@ -328,8 +337,9 @@ entry:
   ret <4 x i32> %sext
 }
 ; CHECK-LABEL:      v4ui32_cmp_le:
-; CHECK:      vcmpgtuw [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequw [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtuw [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <4 x i32> @v4si32_cmp_lt(<4 x i32> %x, <4 x i32> %y) nounwind readnone {
 entry:
@@ -374,8 +384,9 @@ entry:
   ret <4 x i32> %sext
 }
 ; CHECK-LABEL:      v4si32_cmp_ge:
-; CHECK:      vcmpgtsw [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequw [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtsw [[RCMPGT:[0-9]+]], 2, 3
+; CHECK-NEXT: vor      2, [[RCMPGT]], [[RCMPEQ]]
 
 define <4 x i32> @v4ui32_cmp_ge(<4 x i32> %x, <4 x i32> %y) nounwind readnone {
 entry:
@@ -384,8 +395,9 @@ entry:
   ret <4 x i32> %sext
 }
 ; CHECK-LABEL:      v4ui32_cmp_ge:
-; CHECK:      vcmpgtuw [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
+; CHECK:      vcmpequw [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtuw [[RCMPGT:[0-9]+]], 2, 3
+; CHECK-NEXT: vor      2, [[RCMPGT]], [[RCMPEQ]]
 
 
 define <8 x i32> @v8si32_cmp(<8 x i32> %x, <8 x i32> %y) nounwind readnone {
@@ -437,7 +449,7 @@ entry:
 ; CHECK: vcmpeqfp {{[0-9]+}}, {{[0-9]+}}, {{[0-9]+}}
 
 
-; Additional tests for v4f32 since it is a altivec native type
+; Adicional tests for v4f32 since it is a altivec native type
 
 define <4 x float> @v4f32_cmp_eq(<4 x float> %x, <4 x float> %y) nounwind readnone {
 entry:
@@ -468,7 +480,9 @@ entry:
   ret <4 x float> %0
 }
 ; CHECK-LABEL:      v4f32_cmp_le:
-; CHECK: vcmpgefp 2, 3, 2
+; CHECK:      vcmpeqfp [[RCMPEQ:[0-9]+]], 2, 3
+; CHECK-NEXT: vcmpgtfp [[RCMPLE:[0-9]+]], 3, 2
+; CHECK-NEXT: vor      2, [[RCMPLE]], [[RCMPEQ]]
 
 define <4 x float> @v4f32_cmp_lt(<4 x float> %x, <4 x float> %y) nounwind readnone {
 entry:
@@ -499,50 +513,6 @@ entry:
 }
 ; CHECK-LABEL: v4f32_cmp_gt:
 ; CHECK: vcmpgtfp 2, 2, 3
-
-define <4 x float> @v4f32_cmp_ule(<4 x float> %x, <4 x float> %y) nounwind readnone {
-entry:
-  %cmp = fcmp ule <4 x float> %x, %y
-  %sext = sext <4 x i1> %cmp to <4 x i32>
-  %0 = bitcast <4 x i32> %sext to <4 x float>
-  ret <4 x float> %0
-}
-; CHECK-LABEL: v4f32_cmp_ule:
-; CHECK:      vcmpgtfp [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
-
-define <4 x float> @v4f32_cmp_ult(<4 x float> %x, <4 x float> %y) nounwind readnone {
-entry:
-  %cmp = fcmp ult <4 x float> %x, %y
-  %sext = sext <4 x i1> %cmp to <4 x i32>
-  %0 = bitcast <4 x i32> %sext to <4 x float>
-  ret <4 x float> %0
-}
-; CHECK-LABEL: v4f32_cmp_ult:
-; CHECK:      vcmpgefp [[RET:[0-9]+]], 2, 3
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
-
-define <4 x float> @v4f32_cmp_uge(<4 x float> %x, <4 x float> %y) nounwind readnone {
-entry:
-  %cmp = fcmp uge <4 x float> %x, %y
-  %sext = sext <4 x i1> %cmp to <4 x i32>
-  %0 = bitcast <4 x i32> %sext to <4 x float>
-  ret <4 x float> %0
-}
-; CHECK-LABEL: v4f32_cmp_uge:
-; CHECK:      vcmpgtfp [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
-
-define <4 x float> @v4f32_cmp_ugt(<4 x float> %x, <4 x float> %y) nounwind readnone {
-entry:
-  %cmp = fcmp ugt <4 x float> %x, %y
-  %sext = sext <4 x i1> %cmp to <4 x i32>
-  %0 = bitcast <4 x i32> %sext to <4 x float>
-  ret <4 x float> %0
-}
-; CHECK-LABEL: v4f32_cmp_ugt:
-; CHECK:      vcmpgefp [[RET:[0-9]+]], 3, 2
-; CHECK-NEXT: vnor     2, [[RET]], [[RET]]
 
 
 define <8 x float> @v8f32_cmp(<8 x float> %x, <8 x float> %y) nounwind readnone {

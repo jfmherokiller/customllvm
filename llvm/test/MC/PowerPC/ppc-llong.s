@@ -3,8 +3,6 @@
 # RUN: llvm-readobj -s -sd | FileCheck %s
 # RUN: llvm-mc -triple powerpc64-unknown-unknown -filetype=obj %s | \
 # RUN: llvm-readobj -s -sd | FileCheck %s
-# RUN: llvm-mc -triple powerpc64le-unknown-unknown -filetype=obj %s | \
-# RUN: llvm-readobj -s -sd | FileCheck %s
 
 .data
 .llong 0
@@ -21,7 +19,7 @@
 # CHECK-NEXT:     Size: 8
 # CHECK-NEXT:     Link: 0
 # CHECK-NEXT:     Info: 0
-# CHECK-NEXT:     AddressAlignment:
+# CHECK-NEXT:     AddressAlignment: 4
 # CHECK-NEXT:     EntrySize: 0
 # CHECK-NEXT:     SectionData (
 # CHECK-NEXT:       0000: 00000000 00000000

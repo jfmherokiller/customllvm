@@ -7,103 +7,56 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This library implements the functionality defined in llvm/AsmParser/Parser.h
+// This library implements the functionality defined in llvm/Assembly/Parser.h
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/AsmParser/Parser.h"
+#include "llvm/Assembly/Parser.h"
 #include "LLParser.h"
-#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/system_error.h"
 #include <cstring>
-#include <system_error>
 using namespace llvm;
 
-bool llvm::parseAssemblyInto(MemoryBufferRef F, Module &M, SMDiagnostic &Err,
-                             SlotMapping *Slots) {
+Module *llvm::ParseAssembly(MemoryBuffer *F,
+                            Module *M,
+                            SMDiagnostic &Err,
+                            LLVMContext &Context) {
   SourceMgr SM;
-  std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(F);
-  SM.AddNewSourceBuffer(std::move(Buf), SMLoc());
+  SM.AddNewSourceBuffer(F, SMLoc());
 
-  return LLParser(F.getBuffer(), SM, Err, &M, Slots).Run();
+  // If we are parsing into an existing module, do it.
+  if (M)
+    return LLParser(F, SM, Err, M).Run() ? 0 : M;
+
+  // Otherwise create a new module.
+  OwningPtr<Module> M2(new Module(F->getBufferIdentifier(), Context));
+  if (LLParser(F, SM, Err, M2.get()).Run())
+    return 0;
+  return M2.take();
 }
 
-std::unique_ptr<Module> llvm::parseAssembly(MemoryBufferRef F,
-                                            SMDiagnostic &Err,
-                                            LLVMContext &Context,
-                                            SlotMapping *Slots) {
-  std::unique_ptr<Module> M =
-      make_unique<Module>(F.getBufferIdentifier(), Context);
-
-  if (parseAssemblyInto(F, *M, Err, Slots))
-    return nullptr;
-
-  return M;
-}
-
-std::unique_ptr<Module> llvm::parseAssemblyFile(StringRef Filename,
-                                                SMDiagnostic &Err,
-                                                LLVMContext &Context,
-                                                SlotMapping *Slots) {
-  ErrorOr<std::unique_ptr<MemoryBuffer>> FileOrErr =
-      MemoryBuffer::getFileOrSTDIN(Filename);
-  if (std::error_code EC = FileOrErr.getError()) {
+Module *llvm::ParseAssemblyFile(const std::string &Filename, SMDiagnostic &Err,
+                                LLVMContext &Context) {
+  OwningPtr<MemoryBuffer> File;
+  if (error_code ec = MemoryBuffer::getFileOrSTDIN(Filename, File)) {
     Err = SMDiagnostic(Filename, SourceMgr::DK_Error,
-                       "Could not open input file: " + EC.message());
-    return nullptr;
+                       "Could not open input file: " + ec.message());
+    return 0;
   }
 
-  return parseAssembly(FileOrErr.get()->getMemBufferRef(), Err, Context, Slots);
+  return ParseAssembly(File.take(), 0, Err, Context);
 }
 
-std::unique_ptr<Module> llvm::parseAssemblyString(StringRef AsmString,
-                                                  SMDiagnostic &Err,
-                                                  LLVMContext &Context,
-                                                  SlotMapping *Slots) {
-  MemoryBufferRef F(AsmString, "<string>");
-  return parseAssembly(F, Err, Context, Slots);
-}
+Module *llvm::ParseAssemblyString(const char *AsmString, Module *M,
+                                  SMDiagnostic &Err, LLVMContext &Context) {
+  MemoryBuffer *F =
+    MemoryBuffer::getMemBuffer(StringRef(AsmString, strlen(AsmString)),
+                               "<string>");
 
-Constant *llvm::parseConstantValue(StringRef Asm, SMDiagnostic &Err,
-                                   const Module &M, const SlotMapping *Slots) {
-  SourceMgr SM;
-  std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(Asm);
-  SM.AddNewSourceBuffer(std::move(Buf), SMLoc());
-  Constant *C;
-  if (LLParser(Asm, SM, Err, const_cast<Module *>(&M))
-          .parseStandaloneConstantValue(C, Slots))
-    return nullptr;
-  return C;
-}
-
-Type *llvm::parseType(StringRef Asm, SMDiagnostic &Err, const Module &M,
-                      const SlotMapping *Slots) {
-  unsigned Read;
-  Type *Ty = parseTypeAtBeginning(Asm, Read, Err, M, Slots);
-  if (!Ty)
-    return nullptr;
-  if (Read != Asm.size()) {
-    SourceMgr SM;
-    std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(Asm);
-    SM.AddNewSourceBuffer(std::move(Buf), SMLoc());
-    Err = SM.GetMessage(SMLoc::getFromPointer(Asm.begin() + Read),
-                        SourceMgr::DK_Error, "expected end of string");
-    return nullptr;
-  }
-  return Ty;
-}
-Type *llvm::parseTypeAtBeginning(StringRef Asm, unsigned &Read,
-                                 SMDiagnostic &Err, const Module &M,
-                                 const SlotMapping *Slots) {
-  SourceMgr SM;
-  std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(Asm);
-  SM.AddNewSourceBuffer(std::move(Buf), SMLoc());
-  Type *Ty;
-  if (LLParser(Asm, SM, Err, const_cast<Module *>(&M))
-          .parseTypeAtBeginning(Ty, Read, Slots))
-    return nullptr;
-  return Ty;
+  return ParseAssembly(F, M, Err, Context);
 }

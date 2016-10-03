@@ -11,52 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCTARGETDESC_H
-#define LLVM_LIB_TARGET_HEXAGON_MCTARGETDESC_HEXAGONMCTARGETDESC_H
-
-#include <cstdint>
-
-#include "llvm/Support/CommandLine.h"
+#ifndef HEXAGONMCTARGETDESC_H
+#define HEXAGONMCTARGETDESC_H
 
 namespace llvm {
-struct InstrItinerary;
-struct InstrStage;
-class MCAsmBackend;
-class MCCodeEmitter;
-class MCContext;
-class MCInstrInfo;
-class MCObjectWriter;
-class MCRegisterInfo;
 class MCSubtargetInfo;
-class MCTargetOptions;
 class Target;
-class Triple;
-class StringRef;
-class raw_ostream;
-class raw_pwrite_stream;
 
 extern Target TheHexagonTarget;
-extern cl::opt<bool> HexagonDisableCompound;
-extern cl::opt<bool> HexagonDisableDuplex;
-extern const InstrStage HexagonStages[];
-
-MCInstrInfo *createHexagonMCInstrInfo();
-
-MCCodeEmitter *createHexagonMCCodeEmitter(const MCInstrInfo &MCII,
-                                          const MCRegisterInfo &MRI,
-                                          MCContext &MCT);
-
-MCAsmBackend *createHexagonAsmBackend(const Target &T,
-                                      const MCRegisterInfo &MRI,
-                                      const Triple &TT, StringRef CPU,
-                                      const MCTargetOptions &Options);
-
-MCObjectWriter *createHexagonELFObjectWriter(raw_pwrite_stream &OS,
-                                             uint8_t OSABI, StringRef CPU);
-
-namespace Hexagon_MC {
-  StringRef selectHexagonCPU(const Triple &TT, StringRef CPU);
-}
 
 } // End llvm namespace
 

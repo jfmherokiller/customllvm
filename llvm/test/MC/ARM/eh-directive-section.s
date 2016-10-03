@@ -1,7 +1,5 @@
 @ RUN: llvm-mc %s -triple=armv7-unknown-linux-gnueabi -filetype=obj -o - \
-@ RUN:   | llvm-readobj -s -sd -sr -t > %t
-@ RUN: FileCheck %s < %t
-@ RUN: FileCheck --check-prefix=RELOC %s < %t
+@ RUN:   | llvm-readobj -s -sd -sr -t | FileCheck %s
 
 @ Check the combination of .section, .fnstart, and .fnend directives.
 
@@ -50,8 +48,8 @@ func2:
 @-------------------------------------------------------------------------------
 @ CHECK: Sections [
 @ CHECK:   Section {
-@ CHECK:     Index: 3
-@ CHECK-NEXT:     Name: .TEST1
+@ CHECK:     Index: 4
+@ CHECK:     Name: .TEST1
 @ CHECK:     SectionData (
 @ CHECK:       0000: 1EFF2FE1                             |../.|
 @ CHECK:     )
@@ -66,13 +64,9 @@ func2:
 @ CHECK:       0000: 00000000 B0B0B000                    |........|
 @ CHECK:     )
 @ CHECK:   }
-
-@ RELOC:   Section {
-@ RELOC:     Name: .rel.ARM.extab.TEST1
-@ RELOC:     Relocations [
-@ RELOC:       0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
-@ RELOC:     ]
-@ RELOC:   }
+@ CHECK:     Relocations [
+@ CHECK:       0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
+@ CHECK:     ]
 
 
 @-------------------------------------------------------------------------------
@@ -84,7 +78,7 @@ func2:
 @-------------------------------------------------------------------------------
 @ This section should linked with .TEST1 section.
 @-------------------------------------------------------------------------------
-@ CHECK:     Link: 3
+@ CHECK:     Link: 4
 
 @-------------------------------------------------------------------------------
 @ The first word should be relocated to the code address in .TEST1 section.
@@ -95,22 +89,18 @@ func2:
 @ CHECK:       0000: 00000000 00000000                    |........|
 @ CHECK:     )
 @ CHECK:   }
-
-@ RELOC:   Section {
-@ RELOC:     Name: .rel.ARM.exidx.TEST1
-@ RELOC:     Relocations [
-@ RELOC:       0x0 R_ARM_PREL31 .TEST1 0x0
-@ RELOC:       0x4 R_ARM_PREL31 .ARM.extab.TEST1 0x0
-@ RELOC:     ]
-@ RELOC:   }
+@ CHECK:     Relocations [
+@ CHECK:       0x0 R_ARM_PREL31 .TEST1 0x0
+@ CHECK:       0x4 R_ARM_PREL31 .ARM.extab.TEST1 0x0
+@ CHECK:     ]
 
 
 @-------------------------------------------------------------------------------
 @ Check the TEST2 section (without the dot in the beginning)
 @-------------------------------------------------------------------------------
 @ CHECK:   Section {
-@ CHECK:     Index: 8
-@ CHECK-NEXT:     Name: TEST2
+@ CHECK:     Index: 9
+@ CHECK:     Name: TEST2
 @ CHECK:     SectionData (
 @ CHECK:       0000: 1EFF2FE1                             |../.|
 @ CHECK:     )
@@ -125,13 +115,9 @@ func2:
 @ CHECK:       0000: 00000000 B0B0B000                    |........|
 @ CHECK:     )
 @ CHECK:   }
-
-@ RELOC:   Section {
-@ RELOC:     Name: .rel.ARM.extabTEST2
-@ RELOC:     Relocations [
-@ RELOC:       0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
-@ RELOC:     ]
-@ RELOC:   }
+@ CHECK:     Relocations [
+@ CHECK:       0x0 R_ARM_PREL31 __gxx_personality_v0 0x0
+@ CHECK:     ]
 
 
 @-------------------------------------------------------------------------------
@@ -143,7 +129,7 @@ func2:
 @-------------------------------------------------------------------------------
 @ This section should linked with TEST2 section.
 @-------------------------------------------------------------------------------
-@ CHECK:     Link: 8
+@ CHECK:     Link: 9
 
 @-------------------------------------------------------------------------------
 @ The first word should be relocated to the code address in TEST2 section.
@@ -154,14 +140,11 @@ func2:
 @ CHECK:       0000: 00000000 00000000                    |........|
 @ CHECK:     )
 @ CHECK:   }
-
-@ RELOC:   Section {
-@ RELOC:     Name: .rel.ARM.exidxTEST2
-@ RELOC:     Relocations [
-@ RELOC:       0x0 R_ARM_PREL31 TEST2 0x0
-@ RELOC:       0x4 R_ARM_PREL31 .ARM.extabTEST2 0x0
-@ RELOC:     ]
-@ RELOC:   }
+@ CHECK: ]
+@ CHECK:     Relocations [
+@ CHECK:       0x0 R_ARM_PREL31 TEST2 0x0
+@ CHECK:       0x4 R_ARM_PREL31 .ARM.extabTEST2 0x0
+@ CHECK:     ]
 
 
 
@@ -171,10 +154,10 @@ func2:
 @ CHECK: Symbols [
 @ CHECK:   Symbol {
 @ CHECK:     Name: func1
-@ CHECK:     Section: .TEST1
+@ CHECK:     Section: .TEST1 (0x4)
 @ CHECK:   }
 @ CHECK:   Symbol {
 @ CHECK:     Name: func2
-@ CHECK:     Section: TEST2
+@ CHECK:     Section: TEST2 (0x9)
 @ CHECK:   }
 @ CHECK: ]

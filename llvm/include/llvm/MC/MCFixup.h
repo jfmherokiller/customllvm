@@ -10,7 +10,6 @@
 #ifndef LLVM_MC_MCFIXUP_H
 #define LLVM_MC_MCFIXUP_H
 
-#include "llvm/MC/MCExpr.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SMLoc.h"
@@ -19,7 +18,7 @@
 namespace llvm {
 class MCExpr;
 
-/// \brief Extensible enumeration to represent the type of a fixup.
+/// MCFixupKind - Extensible enumeration to represent the type of a fixup.
 enum MCFixupKind {
   FK_Data_1 = 0, ///< A one-byte fixup.
   FK_Data_2,     ///< A two-byte fixup.
@@ -33,10 +32,6 @@ enum MCFixupKind {
   FK_GPRel_2,    ///< A two-byte gp relative fixup.
   FK_GPRel_4,    ///< A four-byte gp relative fixup.
   FK_GPRel_8,    ///< A eight-byte gp relative fixup.
-  FK_DTPRel_4,   ///< A four-byte dtp relative fixup.
-  FK_DTPRel_8,   ///< A eight-byte dtp relative fixup.
-  FK_TPRel_4,    ///< A four-byte tp relative fixup.
-  FK_TPRel_8,    ///< A eight-byte tp relative fixup.
   FK_SecRel_1,   ///< A one-byte section relative fixup.
   FK_SecRel_2,   ///< A two-byte section relative fixup.
   FK_SecRel_4,   ///< A four-byte section relative fixup.
@@ -49,7 +44,7 @@ enum MCFixupKind {
   MaxTargetFixupKind = (1 << 8)
 };
 
-/// \brief Encode information on a single operation to perform on a byte
+/// MCFixup - Encode information on a single operation to perform on a byte
 /// sequence (e.g., an encoded instruction) which requires assemble- or run-
 /// time patching.
 ///
@@ -79,7 +74,7 @@ class MCFixup {
   /// The source location which gave rise to the fixup, if any.
   SMLoc Loc;
 public:
-  static MCFixup create(uint32_t Offset, const MCExpr *Value,
+  static MCFixup Create(uint32_t Offset, const MCExpr *Value,
                         MCFixupKind Kind, SMLoc Loc = SMLoc()) {
     assert(unsigned(Kind) < MaxTargetFixupKind && "Kind out of range!");
     MCFixup FI;
@@ -97,8 +92,8 @@ public:
 
   const MCExpr *getValue() const { return Value; }
 
-  /// \brief Return the generic fixup kind for a value with the given size. It
-  /// is an error to pass an unsupported size.
+  /// getKindForSize - Return the generic fixup kind for a value with the given
+  /// size. It is an error to pass an unsupported size.
   static MCFixupKind getKindForSize(unsigned Size, bool isPCRel) {
     switch (Size) {
     default: llvm_unreachable("Invalid generic fixup size!");

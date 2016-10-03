@@ -14,12 +14,11 @@
 #ifndef LLVM_ADT_STRINGEXTRAS_H
 #define LLVM_ADT_STRINGEXTRAS_H
 
+#include <iterator>
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/DataTypes.h"
-#include <iterator>
 
 namespace llvm {
-class raw_ostream;
 template<typename T> class SmallVectorImpl;
 
 /// hexdigit - Return the hexadecimal character for the
@@ -27,11 +26,6 @@ template<typename T> class SmallVectorImpl;
 static inline char hexdigit(unsigned X, bool LowerCase = false) {
   const char HexChar = LowerCase ? 'a' : 'A';
   return X < 10 ? '0' + X : HexChar + X - 10;
-}
-
-/// Construct a string ref from a boolean.
-static inline StringRef toStringRef(bool B) {
-  return StringRef(B ? "true" : "false");
 }
 
 /// Interpret the given character \p C as a hexadecimal digit and return its
@@ -45,40 +39,39 @@ static inline unsigned hexDigitValue(char C) {
   return -1U;
 }
 
-static inline std::string utohexstr(uint64_t X, bool LowerCase = false) {
-  char Buffer[17];
-  char *BufPtr = std::end(Buffer);
-
-  if (X == 0) *--BufPtr = '0';
+/// utohex_buffer - Emit the specified number into the buffer specified by
+/// BufferEnd, returning a pointer to the start of the string.  This can be used
+/// like this: (note that the buffer must be large enough to handle any number):
+///    char Buffer[40];
+///    printf("0x%s", utohex_buffer(X, Buffer+40));
+///
+/// This should only be used with unsigned types.
+///
+template<typename IntTy>
+static inline char *utohex_buffer(IntTy X, char *BufferEnd) {
+  char *BufPtr = BufferEnd;
+  *--BufPtr = 0;      // Null terminate buffer.
+  if (X == 0) {
+    *--BufPtr = '0';  // Handle special case.
+    return BufPtr;
+  }
 
   while (X) {
     unsigned char Mod = static_cast<unsigned char>(X) & 15;
-    *--BufPtr = hexdigit(Mod, LowerCase);
+    *--BufPtr = hexdigit(Mod);
     X >>= 4;
   }
-
-  return std::string(BufPtr, std::end(Buffer));
+  return BufPtr;
 }
 
-/// Convert buffer \p Input to its hexadecimal representation.
-/// The returned string is double the size of \p Input.
-static inline std::string toHex(StringRef Input) {
-  static const char *const LUT = "0123456789ABCDEF";
-  size_t Length = Input.size();
-
-  std::string Output;
-  Output.reserve(2 * Length);
-  for (size_t i = 0; i < Length; ++i) {
-    const unsigned char c = Input[i];
-    Output.push_back(LUT[c >> 4]);
-    Output.push_back(LUT[c & 15]);
-  }
-  return Output;
+static inline std::string utohexstr(uint64_t X) {
+  char Buffer[17];
+  return utohex_buffer(X, Buffer+17);
 }
 
-static inline std::string utostr(uint64_t X, bool isNeg = false) {
-  char Buffer[21];
-  char *BufPtr = std::end(Buffer);
+static inline std::string utostr_32(uint32_t X, bool isNeg = false) {
+  char Buffer[11];
+  char *BufPtr = Buffer+11;
 
   if (X == 0) *--BufPtr = '0';  // Handle special case...
 
@@ -88,7 +81,23 @@ static inline std::string utostr(uint64_t X, bool isNeg = false) {
   }
 
   if (isNeg) *--BufPtr = '-';   // Add negative sign...
-  return std::string(BufPtr, std::end(Buffer));
+
+  return std::string(BufPtr, Buffer+11);
+}
+
+static inline std::string utostr(uint64_t X, bool isNeg = false) {
+  char Buffer[21];
+  char *BufPtr = Buffer+21;
+
+  if (X == 0) *--BufPtr = '0';  // Handle special case...
+
+  while (X) {
+    *--BufPtr = '0' + char(X % 10);
+    X /= 10;
+  }
+
+  if (isNeg) *--BufPtr = '-';   // Add negative sign...
+  return std::string(BufPtr, Buffer+21);
 }
 
 
@@ -127,7 +136,7 @@ void SplitString(StringRef Source,
 // better: http://eternallyconfuzzled.com/tuts/algorithms/jsw_tut_hashing.aspx
 //   X*33+c -> X*33^c
 static inline unsigned HashString(StringRef Str, unsigned Result = 0) {
-  for (StringRef::size_type i = 0, e = Str.size(); i != e; ++i)
+  for (unsigned i = 0, e = Str.size(); i != e; ++i)
     Result = Result * 33 + (unsigned char)Str[i];
   return Result;
 }
@@ -150,12 +159,6 @@ static inline StringRef getOrdinalSuffix(unsigned Val) {
     }
   }
 }
-
-/// PrintEscapedString - Print each character of the specified string, escaping
-/// it if it is not printable or if it is an escape char.
-void PrintEscapedString(StringRef Name, raw_ostream &Out);
-
-namespace detail {
 
 template <typename IteratorT>
 inline std::string join_impl(IteratorT Begin, IteratorT End,
@@ -191,64 +194,12 @@ inline std::string join_impl(IteratorT Begin, IteratorT End,
   return S;
 }
 
-template <typename Sep>
-inline void join_items_impl(std::string &Result, Sep Separator) {}
-
-template <typename Sep, typename Arg>
-inline void join_items_impl(std::string &Result, Sep Separator,
-                            const Arg &Item) {
-  Result += Item;
-}
-
-template <typename Sep, typename Arg1, typename... Args>
-inline void join_items_impl(std::string &Result, Sep Separator, const Arg1 &A1,
-                            Args &&... Items) {
-  Result += A1;
-  Result += Separator;
-  join_items_impl(Result, Separator, std::forward<Args>(Items)...);
-}
-
-inline size_t join_one_item_size(char C) { return 1; }
-inline size_t join_one_item_size(const char *S) { return S ? ::strlen(S) : 0; }
-
-template <typename T> inline size_t join_one_item_size(const T &Str) {
-  return Str.size();
-}
-
-inline size_t join_items_size() { return 0; }
-
-template <typename A1> inline size_t join_items_size(const A1 &A) {
-  return join_one_item_size(A);
-}
-template <typename A1, typename... Args>
-inline size_t join_items_size(const A1 &A, Args &&... Items) {
-  return join_one_item_size(A) + join_items_size(std::forward<Args>(Items)...);
-}
-}
-
 /// Joins the strings in the range [Begin, End), adding Separator between
 /// the elements.
 template <typename IteratorT>
 inline std::string join(IteratorT Begin, IteratorT End, StringRef Separator) {
   typedef typename std::iterator_traits<IteratorT>::iterator_category tag;
-  return detail::join_impl(Begin, End, Separator, tag());
-}
-
-/// Joins the strings in the parameter pack \p Items, adding \p Separator
-/// between the elements.  All arguments must be implicitly convertible to
-/// std::string, or there should be an overload of std::string::operator+=()
-/// that accepts the argument explicitly.
-template <typename Sep, typename... Args>
-inline std::string join_items(Sep Separator, Args &&... Items) {
-  std::string Result;
-  if (sizeof...(Items) == 0)
-    return Result;
-
-  size_t NS = detail::join_one_item_size(Separator);
-  size_t NI = detail::join_items_size(std::forward<Args>(Items)...);
-  Result.reserve(NI + (sizeof...(Items) - 1) * NS + 1);
-  detail::join_items_impl(Result, Separator, std::forward<Args>(Items)...);
-  return Result;
+  return join_impl(Begin, End, Separator, tag());
 }
 
 } // End llvm namespace

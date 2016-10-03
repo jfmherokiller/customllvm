@@ -48,6 +48,9 @@ public:
     Nodes.push_back(Header);
   }
 
+  inline Interval(const Interval &I) // copy ctor
+    : HeaderNode(I.HeaderNode), Nodes(I.Nodes), Successors(I.Successors) {}
+
   inline BasicBlock *getHeaderNode() const { return HeaderNode; }
 
   /// Nodes - The basic blocks in this interval.
@@ -67,9 +70,8 @@ public:
 
   /// contains - Find out if a basic block is in this interval
   inline bool contains(BasicBlock *BB) const {
-    for (BasicBlock *Node : Nodes)
-      if (Node == BB)
-        return true;
+    for (unsigned i = 0; i < Nodes.size(); ++i)
+      if (Nodes[i] == BB) return true;
     return false;
     // I don't want the dependency on <algorithm>
     //return find(Nodes.begin(), Nodes.end(), BB) != Nodes.end();
@@ -77,9 +79,8 @@ public:
 
   /// isSuccessor - find out if a basic block is a successor of this Interval
   inline bool isSuccessor(BasicBlock *BB) const {
-    for (BasicBlock *Successor : Successors)
-      if (Successor == BB)
-        return true;
+    for (unsigned i = 0; i < Successors.size(); ++i)
+      if (Successors[i] == BB) return true;
     return false;
     // I don't want the dependency on <algorithm>
     //return find(Successors.begin(), Successors.end(), BB) != Successors.end();
@@ -121,22 +122,30 @@ inline Interval::pred_iterator pred_end(Interval *I)   {
 }
 
 template <> struct GraphTraits<Interval*> {
-  typedef Interval *NodeRef;
+  typedef Interval NodeType;
   typedef Interval::succ_iterator ChildIteratorType;
 
-  static NodeRef getEntryNode(Interval *I) { return I; }
+  static NodeType *getEntryNode(Interval *I) { return I; }
 
   /// nodes_iterator/begin/end - Allow iteration over all nodes in the graph
-  static ChildIteratorType child_begin(NodeRef N) { return succ_begin(N); }
-  static ChildIteratorType child_end(NodeRef N) { return succ_end(N); }
+  static inline ChildIteratorType child_begin(NodeType *N) {
+    return succ_begin(N);
+  }
+  static inline ChildIteratorType child_end(NodeType *N) {
+    return succ_end(N);
+  }
 };
 
 template <> struct GraphTraits<Inverse<Interval*> > {
-  typedef Interval *NodeRef;
+  typedef Interval NodeType;
   typedef Interval::pred_iterator ChildIteratorType;
-  static NodeRef getEntryNode(Inverse<Interval *> G) { return G.Graph; }
-  static ChildIteratorType child_begin(NodeRef N) { return pred_begin(N); }
-  static ChildIteratorType child_end(NodeRef N) { return pred_end(N); }
+  static NodeType *getEntryNode(Inverse<Interval *> G) { return G.Graph; }
+  static inline ChildIteratorType child_begin(NodeType *N) {
+    return pred_begin(N);
+  }
+  static inline ChildIteratorType child_end(NodeType *N) {
+    return pred_end(N);
+  }
 };
 
 } // End llvm namespace

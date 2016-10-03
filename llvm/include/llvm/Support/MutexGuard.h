@@ -26,11 +26,11 @@ namespace llvm {
   /// @brief Guard a section of code with a Mutex.
   class MutexGuard {
     sys::Mutex &M;
-    MutexGuard(const MutexGuard &) = delete;
-    void operator=(const MutexGuard &) = delete;
+    MutexGuard(const MutexGuard &) LLVM_DELETED_FUNCTION;
+    void operator=(const MutexGuard &) LLVM_DELETED_FUNCTION;
   public:
-    MutexGuard(sys::Mutex &m) : M(m) { M.lock(); }
-    ~MutexGuard() { M.unlock(); }
+    MutexGuard(sys::Mutex &m) : M(m) { M.acquire(); }
+    ~MutexGuard() { M.release(); }
     /// holds - Returns true if this locker instance holds the specified lock.
     /// This is mostly used in assertions to validate that the correct mutex
     /// is held.

@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_ARM_MCTARGETDESC_ARMMCEXPR_H
-#define LLVM_LIB_TARGET_ARM_MCTARGETDESC_ARMMCEXPR_H
+#ifndef ARMMCEXPR_H
+#define ARMMCEXPR_H
 
 #include "llvm/MC/MCExpr.h"
 
@@ -26,22 +26,22 @@ private:
   const VariantKind Kind;
   const MCExpr *Expr;
 
-  explicit ARMMCExpr(VariantKind Kind, const MCExpr *Expr)
-      : Kind(Kind), Expr(Expr) {}
+  explicit ARMMCExpr(VariantKind _Kind, const MCExpr *_Expr)
+    : Kind(_Kind), Expr(_Expr) {}
 
 public:
   /// @name Construction
   /// @{
 
-  static const ARMMCExpr *create(VariantKind Kind, const MCExpr *Expr,
+  static const ARMMCExpr *Create(VariantKind Kind, const MCExpr *Expr,
                                       MCContext &Ctx);
 
-  static const ARMMCExpr *createUpper16(const MCExpr *Expr, MCContext &Ctx) {
-    return create(VK_ARM_HI16, Expr, Ctx);
+  static const ARMMCExpr *CreateUpper16(const MCExpr *Expr, MCContext &Ctx) {
+    return Create(VK_ARM_HI16, Expr, Ctx);
   }
 
-  static const ARMMCExpr *createLower16(const MCExpr *Expr, MCContext &Ctx) {
-    return create(VK_ARM_LO16, Expr, Ctx);
+  static const ARMMCExpr *CreateLower16(const MCExpr *Expr, MCContext &Ctx) {
+    return Create(VK_ARM_LO16, Expr, Ctx);
   }
 
   /// @}
@@ -56,19 +56,16 @@ public:
 
   /// @}
 
-  void printImpl(raw_ostream &OS, const MCAsmInfo *MAI) const override;
-  bool evaluateAsRelocatableImpl(MCValue &Res,
-                                 const MCAsmLayout *Layout,
-                                 const MCFixup *Fixup) const override {
-    return false;
-  }
-  void visitUsedExpr(MCStreamer &Streamer) const override;
-  MCFragment *findAssociatedFragment() const override {
-    return getSubExpr()->findAssociatedFragment();
+  void PrintImpl(raw_ostream &OS) const;
+  bool EvaluateAsRelocatableImpl(MCValue &Res,
+                                 const MCAsmLayout *Layout) const;
+  void AddValueSymbols(MCAssembler *) const;
+  const MCSection *FindAssociatedSection() const {
+    return getSubExpr()->FindAssociatedSection();
   }
 
   // There are no TLS ARMMCExprs at the moment.
-  void fixELFSymbolsInTLSFixups(MCAssembler &Asm) const override {}
+  void fixELFSymbolsInTLSFixups(MCAssembler &Asm) const {}
 
   static bool classof(const MCExpr *E) {
     return E->getKind() == MCExpr::Target;

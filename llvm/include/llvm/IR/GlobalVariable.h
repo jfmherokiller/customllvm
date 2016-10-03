@@ -22,54 +22,63 @@
 
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/ilist_node.h"
-#include "llvm/IR/GlobalObject.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/OperandTraits.h"
 
 namespace llvm {
 
-class Constant;
-class DIGlobalVariable;
 class Module;
-template <typename ValueSubClass> class SymbolTableListTraits;
+class Constant;
+template<typename ValueSubClass, typename ItemParentClass>
+  class SymbolTableListTraits;
 
-class GlobalVariable : public GlobalObject, public ilist_node<GlobalVariable> {
-  friend class SymbolTableListTraits<GlobalVariable>;
-  void *operator new(size_t, unsigned) = delete;
-  void operator=(const GlobalVariable &) = delete;
-  GlobalVariable(const GlobalVariable &) = delete;
+class GlobalVariable : public GlobalValue, public ilist_node<GlobalVariable> {
+  friend class SymbolTableListTraits<GlobalVariable, Module>;
+  void *operator new(size_t, unsigned) LLVM_DELETED_FUNCTION;
+  void operator=(const GlobalVariable &) LLVM_DELETED_FUNCTION;
+  GlobalVariable(const GlobalVariable &) LLVM_DELETED_FUNCTION;
 
   void setParent(Module *parent);
 
   bool isConstantGlobal : 1;                   // Is this a global constant?
+  unsigned threadLocalMode : 3;                // Is this symbol "Thread Local",
+                                               // if so, what is the desired
+                                               // model?
   bool isExternallyInitializedConstant : 1;    // Is this a global whose value
                                                // can change from its initial
                                                // value before global
                                                // initializers are run?
+
 public:
   // allocate space for exactly one operand
   void *operator new(size_t s) {
     return User::operator new(s, 1);
   }
 
+  enum ThreadLocalMode {
+    NotThreadLocal = 0,
+    GeneralDynamicTLSModel,
+    LocalDynamicTLSModel,
+    InitialExecTLSModel,
+    LocalExecTLSModel
+  };
+
   /// GlobalVariable ctor - If a parent module is specified, the global is
   /// automatically inserted into the end of the specified modules global list.
   GlobalVariable(Type *Ty, bool isConstant, LinkageTypes Linkage,
-                 Constant *Initializer = nullptr, const Twine &Name = "",
+                 Constant *Initializer = 0, const Twine &Name = "",
                  ThreadLocalMode = NotThreadLocal, unsigned AddressSpace = 0,
                  bool isExternallyInitialized = false);
   /// GlobalVariable ctor - This creates a global and inserts it before the
   /// specified other global.
   GlobalVariable(Module &M, Type *Ty, bool isConstant,
                  LinkageTypes Linkage, Constant *Initializer,
-                 const Twine &Name = "", GlobalVariable *InsertBefore = nullptr,
+                 const Twine &Name = "", GlobalVariable *InsertBefore = 0,
                  ThreadLocalMode = NotThreadLocal, unsigned AddressSpace = 0,
                  bool isExternallyInitialized = false);
 
-  ~GlobalVariable() override {
-    dropAllReferences();
-
-    // FIXME: needed by operator delete
-    setGlobalVariableNumOperands(1);
+  ~GlobalVariable() {
+    NumOperands = 1; // FIXME: needed by operator delete
   }
 
   /// Provide fast operand accessors
@@ -97,9 +106,9 @@ public:
   /// unique.
   inline bool hasDefinitiveInitializer() const {
     return hasInitializer() &&
-      // The initializer of a global variable may change to something arbitrary
-      // at link time.
-      !isInterposable() &&
+      // The initializer of a global variable with weak linkage may change at
+      // link time.
+      !mayBeOverridden() &&
       // The initializer of a global variable with the externally_initialized
       // marker may change at runtime before C++ initializers are evaluated.
       !isExternallyInitialized();
@@ -108,13 +117,18 @@ public:
   /// hasUniqueInitializer - Whether the global variable has an initializer, and
   /// any changes made to the initializer will turn up in the final executable.
   inline bool hasUniqueInitializer() const {
-    return
-        // We need to be sure this is the definition that will actually be used
-        isStrongDefinitionForLinker() &&
-        // It is not safe to modify initializers of global variables with the
-        // external_initializer marker since the value may be changed at runtime
-        // before C++ initializers are evaluated.
-        !isExternallyInitialized();
+    return hasInitializer() &&
+      // It's not safe to modify initializers of global variables with weak
+      // linkage, because the linker might choose to discard the initializer and
+      // use the initializer from another instance of the global variable
+      // instead. It is wrong to modify the initializer of a global variable
+      // with *_odr linkage because then different instances of the global may
+      // have different initializers, breaking the One Definition Rule.
+      !isWeakForLinker() &&
+      // It is not safe to modify initializers of global variables with the
+      // external_initializer marker since the value may be changed at runtime
+      // before C++ initializers are evaluated.
+      !isExternallyInitialized();
   }
 
   /// getInitializer - Return the initializer for this global variable.  It is
@@ -141,6 +155,16 @@ public:
   bool isConstant() const { return isConstantGlobal; }
   void setConstant(bool Val) { isConstantGlobal = Val; }
 
+  /// If the value is "Thread Local", its value isn't shared by the threads.
+  bool isThreadLocal() const { return threadLocalMode != NotThreadLocal; }
+  void setThreadLocal(bool Val) {
+    threadLocalMode = Val ? GeneralDynamicTLSModel : NotThreadLocal;
+  }
+  void setThreadLocalMode(ThreadLocalMode Val) { threadLocalMode = Val; }
+  ThreadLocalMode getThreadLocalMode() const {
+    return static_cast<ThreadLocalMode>(threadLocalMode);
+  }
+
   bool isExternallyInitialized() const {
     return isExternallyInitializedConstant;
   }
@@ -150,24 +174,21 @@ public:
 
   /// copyAttributesFrom - copy all additional attributes (those not needed to
   /// create a GlobalVariable) from the GlobalVariable Src to this one.
-  void copyAttributesFrom(const GlobalValue *Src) override;
+  void copyAttributesFrom(const GlobalValue *Src);
 
   /// removeFromParent - This method unlinks 'this' from the containing module,
   /// but does not delete it.
   ///
-  void removeFromParent() override;
+  virtual void removeFromParent();
 
   /// eraseFromParent - This method unlinks 'this' from the containing module
   /// and deletes it.
   ///
-  void eraseFromParent() override;
+  virtual void eraseFromParent();
 
-  /// Drop all references in preparation to destroy the GlobalVariable. This
-  /// drops not only the reference to the initializer but also to any metadata.
-  void dropAllReferences();
-
-  void addDebugInfo(DIGlobalVariable *GV);
-  void getDebugInfo(SmallVectorImpl<DIGlobalVariable *> &GVs) const;
+  /// Override Constant's implementation of this method so we can
+  /// replace constant initializers.
+  virtual void replaceUsesOfWithOnConstant(Value *From, Value *To, Use *U);
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
   static inline bool classof(const Value *V) {

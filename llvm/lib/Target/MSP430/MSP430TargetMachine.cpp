@@ -14,10 +14,8 @@
 #include "MSP430TargetMachine.h"
 #include "MSP430.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
-#include "llvm/CodeGen/TargetPassConfig.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
@@ -26,27 +24,21 @@ extern "C" void LLVMInitializeMSP430Target() {
   RegisterTargetMachine<MSP430TargetMachine> X(TheMSP430Target);
 }
 
-static Reloc::Model getEffectiveRelocModel(Optional<Reloc::Model> RM) {
-  if (!RM.hasValue())
-    return Reloc::Static;
-  return *RM;
-}
-
-MSP430TargetMachine::MSP430TargetMachine(const Target &T, const Triple &TT,
-                                         StringRef CPU, StringRef FS,
+MSP430TargetMachine::MSP430TargetMachine(const Target &T,
+                                         StringRef TT,
+                                         StringRef CPU,
+                                         StringRef FS,
                                          const TargetOptions &Options,
-                                         Optional<Reloc::Model> RM,
-                                         CodeModel::Model CM,
+                                         Reloc::Model RM, CodeModel::Model CM,
                                          CodeGenOpt::Level OL)
-    : LLVMTargetMachine(T, "e-m:e-p:16:16-i32:16:32-a:16-n8:16", TT, CPU, FS,
-                        Options, getEffectiveRelocModel(RM), CM, OL),
-      TLOF(make_unique<TargetLoweringObjectFileELF>()),
-      // FIXME: Check DataLayout string.
-      Subtarget(TT, CPU, FS, *this) {
+  : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+    Subtarget(TT, CPU, FS),
+    // FIXME: Check DataLayout string.
+    DL("e-p:16:16:16-i8:8:8-i16:16:16-i32:16:32-n8:16"),
+    InstrInfo(*this), TLInfo(*this), TSInfo(*this),
+    FrameLowering(Subtarget) {
   initAsmInfo();
 }
-
-MSP430TargetMachine::~MSP430TargetMachine() {}
 
 namespace {
 /// MSP430 Code Generator Pass Configuration Options.
@@ -59,8 +51,8 @@ public:
     return getTM<MSP430TargetMachine>();
   }
 
-  bool addInstSelector() override;
-  void addPreEmitPass() override;
+  virtual bool addInstSelector();
+  virtual bool addPreEmitPass();
 };
 } // namespace
 
@@ -74,7 +66,8 @@ bool MSP430PassConfig::addInstSelector() {
   return false;
 }
 
-void MSP430PassConfig::addPreEmitPass() {
+bool MSP430PassConfig::addPreEmitPass() {
   // Must run branch selection immediately preceding the asm printer.
-  addPass(createMSP430BranchSelectionPass(), false);
+  addPass(createMSP430BranchSelectionPass());
+  return false;
 }

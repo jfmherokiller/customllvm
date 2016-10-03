@@ -15,6 +15,7 @@
 #ifndef LLVM_CODEGEN_MACHINEPOSTDOMINATORS_H
 #define LLVM_CODEGEN_MACHINEPOSTDOMINATORS_H
 
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 
@@ -22,7 +23,7 @@ namespace llvm {
 
 ///
 /// PostDominatorTree Class - Concrete subclass of DominatorTree that is used
-/// to compute the post-dominator tree.
+/// to compute the a post-dominator tree.
 ///
 struct MachinePostDominatorTree : public MachineFunctionPass {
 private:
@@ -33,7 +34,7 @@ public:
 
   MachinePostDominatorTree();
 
-  ~MachinePostDominatorTree() override;
+  ~MachinePostDominatorTree();
 
   FunctionPass *createMachinePostDominatorTreePass();
 
@@ -77,9 +78,9 @@ public:
     return DT->findNearestCommonDominator(A, B);
   }
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-  void print(llvm::raw_ostream &OS, const Module *M = nullptr) const override;
+  virtual bool runOnMachineFunction(MachineFunction &MF);
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
+  virtual void print(llvm::raw_ostream &OS, const Module *M = 0) const;
 };
 } //end of namespace llvm
 

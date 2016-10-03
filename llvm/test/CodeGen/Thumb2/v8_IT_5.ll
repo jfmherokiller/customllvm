@@ -1,15 +1,12 @@
-; RUN: llc < %s -mtriple=thumbv8 -arm-atomic-cfg-tidy=0 | FileCheck %s
-; RUN: llc < %s -mtriple=thumbv7 -arm-atomic-cfg-tidy=0 -arm-restrict-it | FileCheck %s
+; RUN: llc < %s -mtriple=thumbv8 | FileCheck %s
 ; CHECK: it	ne
 ; CHECK-NEXT: cmpne
-; CHECK-NEXT: bne [[JUMPTARGET:.LBB[0-9]+_[0-9]+]]
-; CHECK: cbz
+; CHECK-NEXT: beq
+; CHECK: cmp
+; CHECK-NEXT: beq
 ; CHECK-NEXT: %if.else163
 ; CHECK-NEXT: mov.w
 ; CHECK-NEXT: b
-; CHECK: [[JUMPTARGET]]:{{.*}}%if.else173
-; CHECK-NEXT: mov.w
-; CHECK-NEXT: bx lr
 ; CHECK-NEXT: %if.else145
 ; CHECK-NEXT: mov.w
 
@@ -17,13 +14,31 @@
 
 define i32 @t(i32 %type) optsize {
 entry:
+  br i1 undef, label %if.then, label %if.else
+
+if.then:
+  unreachable
+
+if.else:
+  br i1 undef, label %if.then15, label %if.else18
+
+if.then15:
+  unreachable
+
+if.else18:
   switch i32 %type, label %if.else173 [
-    i32 13, label %if.then115
-    i32 6, label %if.then102
+    i32 3, label %if.then115
+    i32 1, label %if.then102
   ]
 
 if.then102:
- br label %if.then115
+  br i1 undef, label %cond.true10.i, label %t.exit
+
+cond.true10.i:
+  br label %t.exit
+
+t.exit:
+  unreachable
 
 if.then115:
   br i1 undef, label %if.else163, label %if.else145
@@ -44,3 +59,4 @@ if.else173:
 }
 
 declare hidden fastcc %struct.hc* @foo(%struct.hc* nocapture, i32) nounwind optsize
+

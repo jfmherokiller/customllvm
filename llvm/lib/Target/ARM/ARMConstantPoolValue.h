@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_ARM_ARMCONSTANTPOOLVALUE_H
-#define LLVM_LIB_TARGET_ARM_ARMCONSTANTPOOLVALUE_H
+#ifndef LLVM_TARGET_ARM_CONSTANTPOOLVALUE_H
+#define LLVM_TARGET_ARM_CONSTANTPOOLVALUE_H
 
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/Support/Casting.h"
@@ -24,7 +24,6 @@ namespace llvm {
 class BlockAddress;
 class Constant;
 class GlobalValue;
-class GlobalVariable;
 class LLVMContext;
 class MachineBasicBlock;
 
@@ -34,18 +33,16 @@ namespace ARMCP {
     CPExtSymbol,
     CPBlockAddress,
     CPLSDA,
-    CPMachineBasicBlock,
-    CPPromotedGlobal
+    CPMachineBasicBlock
   };
 
   enum ARMCPModifier {
-    no_modifier, /// None
-    TLSGD,       /// Thread Local Storage (General Dynamic Mode)
-    GOT_PREL,    /// Global Offset Table, PC Relative
-    GOTTPOFF,    /// Global Offset Table, Thread Pointer Offset
-    TPOFF,       /// Thread Pointer Offset
-    SECREL,      /// Section Relative (Windows TLS)
-    SBREL,       /// Static Base Relative (RWPI)
+    no_modifier,
+    TLSGD,
+    GOT,
+    GOTOFF,
+    GOTTPOFF,
+    TPOFF
   };
 }
 
@@ -89,7 +86,7 @@ protected:
   }
 
 public:
-  ~ARMConstantPoolValue() override;
+  virtual ~ARMConstantPoolValue();
 
   ARMCP::ARMCPModifier getModifier() const { return Modifier; }
   const char *getModifierText() const;
@@ -105,12 +102,13 @@ public:
   bool isBlockAddress() const { return Kind == ARMCP::CPBlockAddress; }
   bool isLSDA() const { return Kind == ARMCP::CPLSDA; }
   bool isMachineBasicBlock() const{ return Kind == ARMCP::CPMachineBasicBlock; }
-  bool isPromotedGlobal() const{ return Kind == ARMCP::CPPromotedGlobal; }
-  
-  int getExistingMachineCPValue(MachineConstantPool *CP,
-                                unsigned Alignment) override;
 
-  void addSelectionDAGCSEId(FoldingSetNodeID &ID) override;
+  virtual unsigned getRelocationInfo() const { return 2; }
+
+  virtual int getExistingMachineCPValue(MachineConstantPool *CP,
+                                        unsigned Alignment);
+
+  virtual void addSelectionDAGCSEId(FoldingSetNodeID &ID);
 
   /// hasSameValue - Return true if this ARM constpool value can share the same
   /// constantpool entry as another ARM constpool value.
@@ -122,7 +120,7 @@ public:
       this->Modifier == A->Modifier;
   }
 
-  void print(raw_ostream &O) const override;
+  virtual void print(raw_ostream &O) const;
   void print(raw_ostream *O) const { if (O) print(*O); }
   void dump() const;
 };
@@ -136,7 +134,6 @@ inline raw_ostream &operator<<(raw_ostream &O, const ARMConstantPoolValue &V) {
 /// Functions, and BlockAddresses.
 class ARMConstantPoolConstant : public ARMConstantPoolValue {
   const Constant *CVal;         // Constant being loaded.
-  const GlobalVariable *GVar = nullptr;
 
   ARMConstantPoolConstant(const Constant *C,
                           unsigned ID,
@@ -150,14 +147,11 @@ class ARMConstantPoolConstant : public ARMConstantPoolValue {
                           unsigned char PCAdj,
                           ARMCP::ARMCPModifier Modifier,
                           bool AddCurrentAddress);
-  ARMConstantPoolConstant(const GlobalVariable *GV, const Constant *Init);
 
 public:
   static ARMConstantPoolConstant *Create(const Constant *C, unsigned ID);
   static ARMConstantPoolConstant *Create(const GlobalValue *GV,
                                          ARMCP::ARMCPModifier Modifier);
-  static ARMConstantPoolConstant *Create(const GlobalVariable *GV,
-                                         const Constant *Initializer);
   static ARMConstantPoolConstant *Create(const Constant *C, unsigned ID,
                                          ARMCP::ARMCPKind Kind,
                                          unsigned char PCAdj);
@@ -169,26 +163,19 @@ public:
 
   const GlobalValue *getGV() const;
   const BlockAddress *getBlockAddress() const;
-  const GlobalVariable *getPromotedGlobal() const {
-    return dyn_cast_or_null<GlobalVariable>(GVar);
-  }
-  const Constant *getPromotedGlobalInit() const {
-    return CVal;
-  }
 
-  int getExistingMachineCPValue(MachineConstantPool *CP,
-                                unsigned Alignment) override;
+  virtual int getExistingMachineCPValue(MachineConstantPool *CP,
+                                        unsigned Alignment);
 
   /// hasSameValue - Return true if this ARM constpool value can share the same
   /// constantpool entry as another ARM constpool value.
-  bool hasSameValue(ARMConstantPoolValue *ACPV) override;
+  virtual bool hasSameValue(ARMConstantPoolValue *ACPV);
 
-  void addSelectionDAGCSEId(FoldingSetNodeID &ID) override;
+  virtual void addSelectionDAGCSEId(FoldingSetNodeID &ID);
 
-  void print(raw_ostream &O) const override;
+  virtual void print(raw_ostream &O) const;
   static bool classof(const ARMConstantPoolValue *APV) {
-    return APV->isGlobalValue() || APV->isBlockAddress() || APV->isLSDA() ||
-           APV->isPromotedGlobal();
+    return APV->isGlobalValue() || APV->isBlockAddress() || APV->isLSDA();
   }
 
   bool equals(const ARMConstantPoolConstant *A) const {
@@ -211,16 +198,16 @@ public:
 
   const char *getSymbol() const { return S.c_str(); }
 
-  int getExistingMachineCPValue(MachineConstantPool *CP,
-                                unsigned Alignment) override;
+  virtual int getExistingMachineCPValue(MachineConstantPool *CP,
+                                        unsigned Alignment);
 
-  void addSelectionDAGCSEId(FoldingSetNodeID &ID) override;
+  virtual void addSelectionDAGCSEId(FoldingSetNodeID &ID);
 
   /// hasSameValue - Return true if this ARM constpool value can share the same
   /// constantpool entry as another ARM constpool value.
-  bool hasSameValue(ARMConstantPoolValue *ACPV) override;
+  virtual bool hasSameValue(ARMConstantPoolValue *ACPV);
 
-  void print(raw_ostream &O) const override;
+  virtual void print(raw_ostream &O) const;
 
   static bool classof(const ARMConstantPoolValue *ACPV) {
     return ACPV->isExtSymbol();
@@ -247,16 +234,16 @@ public:
 
   const MachineBasicBlock *getMBB() const { return MBB; }
 
-  int getExistingMachineCPValue(MachineConstantPool *CP,
-                                unsigned Alignment) override;
+  virtual int getExistingMachineCPValue(MachineConstantPool *CP,
+                                        unsigned Alignment);
 
-  void addSelectionDAGCSEId(FoldingSetNodeID &ID) override;
+  virtual void addSelectionDAGCSEId(FoldingSetNodeID &ID);
 
   /// hasSameValue - Return true if this ARM constpool value can share the same
   /// constantpool entry as another ARM constpool value.
-  bool hasSameValue(ARMConstantPoolValue *ACPV) override;
+  virtual bool hasSameValue(ARMConstantPoolValue *ACPV);
 
-  void print(raw_ostream &O) const override;
+  virtual void print(raw_ostream &O) const;
 
   static bool classof(const ARMConstantPoolValue *ACPV) {
     return ACPV->isMachineBasicBlock();

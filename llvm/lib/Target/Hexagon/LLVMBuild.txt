@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = AsmParser Disassembler MCTargetDesc TargetInfo
+subdirectories = InstPrinter MCTargetDesc TargetInfo
 
 [component_0]
 type = TargetGroup
@@ -28,18 +28,5 @@ has_asmprinter = 1
 type = Library
 name = HexagonCodeGen
 parent = Hexagon
-required_libraries =
-  Analysis
-  AsmPrinter
-  CodeGen
-  Core
-  HexagonAsmParser
-  HexagonDesc
-  HexagonInfo
-  MC
-  Scalar
-  SelectionDAG
-  Support
-  Target
-  TransformUtils
+required_libraries = AsmPrinter CodeGen Core HexagonAsmPrinter HexagonDesc HexagonInfo MC SelectionDAG Support Target
 add_to_library_groups = Hexagon

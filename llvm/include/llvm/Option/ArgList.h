@@ -11,19 +11,16 @@
 #define LLVM_OPTION_ARGLIST_H
 
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/Twine.h"
-#include "llvm/Option/Arg.h"
 #include "llvm/Option/OptSpecifier.h"
 #include "llvm/Option/Option.h"
 #include <list>
-#include <memory>
 #include <string>
 #include <vector>
 
 namespace llvm {
 namespace opt {
+class Arg;
 class ArgList;
 class Option;
 
@@ -54,10 +51,10 @@ public:
   typedef std::forward_iterator_tag   iterator_category;
   typedef std::ptrdiff_t              difference_type;
 
-  arg_iterator(SmallVectorImpl<Arg *>::const_iterator it, const ArgList &Args,
-               OptSpecifier Id0 = 0U, OptSpecifier Id1 = 0U,
-               OptSpecifier Id2 = 0U)
-      : Current(it), Args(Args), Id0(Id0), Id1(Id1), Id2(Id2) {
+  arg_iterator(SmallVectorImpl<Arg*>::const_iterator it,
+                const ArgList &_Args, OptSpecifier _Id0 = 0U,
+                OptSpecifier _Id1 = 0U, OptSpecifier _Id2 = 0U)
+    : Current(it), Args(_Args), Id0(_Id0), Id1(_Id1), Id2(_Id2) {
     SkipToNextArg();
   }
 
@@ -92,6 +89,10 @@ public:
 /// check for the presence of Arg instances for a particular Option
 /// and to iterate over groups of arguments.
 class ArgList {
+private:
+  ArgList(const ArgList &) LLVM_DELETED_FUNCTION;
+  void operator=(const ArgList &) LLVM_DELETED_FUNCTION;
+
 public:
   typedef SmallVector<Arg*, 16> arglist_type;
   typedef arglist_type::iterator iterator;
@@ -104,25 +105,10 @@ private:
   arglist_type Args;
 
 protected:
-  // Make the default special members protected so they won't be used to slice
-  // derived objects, but can still be used by derived objects to implement
-  // their own special members.
-  ArgList() = default;
-  // Explicit move operations to ensure the container is cleared post-move
-  // otherwise it could lead to a double-delete in the case of moving of an
-  // InputArgList which deletes the contents of the container. If we could fix
-  // up the ownership here (delegate storage/ownership to the derived class so
-  // it can be a container of unique_ptr) this would be simpler.
-  ArgList(ArgList &&RHS) : Args(std::move(RHS.Args)) { RHS.Args.clear(); }
-  ArgList &operator=(ArgList &&RHS) {
-    Args = std::move(RHS.Args);
-    RHS.Args.clear();
-    return *this;
-  }
-  // Protect the dtor to ensure this type is never destroyed polymorphically.
-  ~ArgList() = default;
+  ArgList();
 
 public:
+  virtual ~ArgList();
 
   /// @name Arg Access
   /// @{
@@ -159,12 +145,6 @@ public:
     return arg_iterator(Args.end(), *this);
   }
 
-  iterator_range<arg_iterator> filtered(OptSpecifier Id0 = 0U,
-                                        OptSpecifier Id1 = 0U,
-                                        OptSpecifier Id2 = 0U) const {
-    return make_range(filtered_begin(Id0, Id1, Id2), filtered_end());
-  }
-
   /// @}
   /// @name Arg Removal
   /// @{
@@ -180,27 +160,22 @@ public:
   ///
   /// \p Claim Whether the argument should be claimed, if it exists.
   bool hasArgNoClaim(OptSpecifier Id) const {
-    return getLastArgNoClaim(Id) != nullptr;
+    return getLastArgNoClaim(Id) != 0;
   }
   bool hasArg(OptSpecifier Id) const {
-    return getLastArg(Id) != nullptr;
+    return getLastArg(Id) != 0;
   }
   bool hasArg(OptSpecifier Id0, OptSpecifier Id1) const {
-    return getLastArg(Id0, Id1) != nullptr;
+    return getLastArg(Id0, Id1) != 0;
   }
   bool hasArg(OptSpecifier Id0, OptSpecifier Id1, OptSpecifier Id2) const {
-    return getLastArg(Id0, Id1, Id2) != nullptr;
+    return getLastArg(Id0, Id1, Id2) != 0;
   }
 
   /// getLastArg - Return the last argument matching \p Id, or null.
   ///
   /// \p Claim Whether the argument should be claimed, if it exists.
   Arg *getLastArgNoClaim(OptSpecifier Id) const;
-  Arg *getLastArgNoClaim(OptSpecifier Id0, OptSpecifier Id1) const;
-  Arg *getLastArgNoClaim(OptSpecifier Id0, OptSpecifier Id1,
-                         OptSpecifier Id2) const;
-  Arg *getLastArgNoClaim(OptSpecifier Id0, OptSpecifier Id1, OptSpecifier Id2,
-                         OptSpecifier Id3) const;
   Arg *getLastArg(OptSpecifier Id) const;
   Arg *getLastArg(OptSpecifier Id0, OptSpecifier Id1) const;
   Arg *getLastArg(OptSpecifier Id0, OptSpecifier Id1, OptSpecifier Id2) const;
@@ -259,13 +234,6 @@ public:
   void AddLastArg(ArgStringList &Output, OptSpecifier Id0,
                   OptSpecifier Id1) const;
 
-  /// AddAllArgsExcept - Render all arguments matching any of the given ids
-  /// and not matching any of the excluded ids.
-  void AddAllArgsExcept(ArgStringList &Output, ArrayRef<OptSpecifier> Ids,
-                        ArrayRef<OptSpecifier> ExcludeIds) const;
-  /// AddAllArgs - Render all arguments matching any of the given ids.
-  void AddAllArgs(ArgStringList &Output, ArrayRef<OptSpecifier> Ids) const;
-
   /// AddAllArgs - Render all arguments matching the given ids.
   void AddAllArgs(ArgStringList &Output, OptSpecifier Id0,
                   OptSpecifier Id1 = 0U, OptSpecifier Id2 = 0U) const;
@@ -297,26 +265,26 @@ public:
   /// @name Arg Synthesis
   /// @{
 
-  /// Construct a constant string pointer whose
+  /// MakeArgString - Construct a constant string pointer whose
   /// lifetime will match that of the ArgList.
-  virtual const char *MakeArgStringRef(StringRef Str) const = 0;
-  const char *MakeArgString(const Twine &Str) const {
-    SmallString<256> Buf;
-    return MakeArgStringRef(Str.toStringRef(Buf));
+  virtual const char *MakeArgString(StringRef Str) const = 0;
+  const char *MakeArgString(const char *Str) const {
+    return MakeArgString(StringRef(Str));
   }
+  const char *MakeArgString(std::string Str) const {
+    return MakeArgString(StringRef(Str));
+  }
+  const char *MakeArgString(const Twine &Str) const;
 
   /// \brief Create an arg string for (\p LHS + \p RHS), reusing the
   /// string at \p Index if possible.
   const char *GetOrMakeJoinedArgString(unsigned Index, StringRef LHS,
                                         StringRef RHS) const;
 
-  void print(raw_ostream &O) const;
-  void dump() const;
-
   /// @}
 };
 
-class InputArgList final : public ArgList {
+class InputArgList : public ArgList  {
 private:
   /// List of argument strings used by the contained Args.
   ///
@@ -335,30 +303,15 @@ private:
   /// The number of original input argument strings.
   unsigned NumInputArgStrings;
 
-  /// Release allocated arguments.
-  void releaseMemory();
-
 public:
   InputArgList(const char* const *ArgBegin, const char* const *ArgEnd);
-  InputArgList(InputArgList &&RHS)
-      : ArgList(std::move(RHS)), ArgStrings(std::move(RHS.ArgStrings)),
-        SynthesizedStrings(std::move(RHS.SynthesizedStrings)),
-        NumInputArgStrings(RHS.NumInputArgStrings) {}
-  InputArgList &operator=(InputArgList &&RHS) {
-    releaseMemory();
-    ArgList::operator=(std::move(RHS));
-    ArgStrings = std::move(RHS.ArgStrings);
-    SynthesizedStrings = std::move(RHS.SynthesizedStrings);
-    NumInputArgStrings = RHS.NumInputArgStrings;
-    return *this;
-  }
-  ~InputArgList() { releaseMemory(); }
+  ~InputArgList();
 
-  const char *getArgString(unsigned Index) const override {
+  virtual const char *getArgString(unsigned Index) const {
     return ArgStrings[Index];
   }
 
-  unsigned getNumInputArgStrings() const override {
+  virtual unsigned getNumInputArgStrings() const {
     return NumInputArgStrings;
   }
 
@@ -370,29 +323,29 @@ public:
   unsigned MakeIndex(StringRef String0) const;
   unsigned MakeIndex(StringRef String0, StringRef String1) const;
 
-  using ArgList::MakeArgString;
-  const char *MakeArgStringRef(StringRef Str) const override;
+  virtual const char *MakeArgString(StringRef Str) const;
 
   /// @}
 };
 
 /// DerivedArgList - An ordered collection of driver arguments,
 /// whose storage may be in another argument list.
-class DerivedArgList final : public ArgList {
+class DerivedArgList : public ArgList {
   const InputArgList &BaseArgs;
 
   /// The list of arguments we synthesized.
-  mutable SmallVector<std::unique_ptr<Arg>, 16> SynthesizedArgs;
+  mutable arglist_type SynthesizedArgs;
 
 public:
   /// Construct a new derived arg list from \p BaseArgs.
   DerivedArgList(const InputArgList &BaseArgs);
+  ~DerivedArgList();
 
-  const char *getArgString(unsigned Index) const override {
+  virtual const char *getArgString(unsigned Index) const {
     return BaseArgs.getArgString(Index);
   }
 
-  unsigned getNumInputArgStrings() const override {
+  virtual unsigned getNumInputArgStrings() const {
     return BaseArgs.getNumInputArgStrings();
   }
 
@@ -405,10 +358,11 @@ public:
 
   /// AddSynthesizedArg - Add a argument to the list of synthesized arguments
   /// (to be freed).
-  void AddSynthesizedArg(Arg *A);
+  void AddSynthesizedArg(Arg *A) {
+    SynthesizedArgs.push_back(A);
+  }
 
-  using ArgList::MakeArgString;
-  const char *MakeArgStringRef(StringRef Str) const override;
+  virtual const char *MakeArgString(StringRef Str) const;
 
   /// AddFlagArg - Construct a new FlagArg for the given option \p Id and
   /// append it to the argument list.

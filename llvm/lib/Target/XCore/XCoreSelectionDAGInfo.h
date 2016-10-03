@@ -7,27 +7,23 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines the XCore subclass for SelectionDAGTargetInfo.
+// This file defines the XCore subclass for TargetSelectionDAGInfo.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_XCORE_XCORESELECTIONDAGINFO_H
-#define LLVM_LIB_TARGET_XCORE_XCORESELECTIONDAGINFO_H
+#ifndef XCORESELECTIONDAGINFO_H
+#define XCORESELECTIONDAGINFO_H
 
-#include "llvm/CodeGen/SelectionDAGTargetInfo.h"
+#include "llvm/Target/TargetSelectionDAGInfo.h"
 
 namespace llvm {
 
 class XCoreTargetMachine;
 
-class XCoreSelectionDAGInfo : public SelectionDAGTargetInfo {
+class XCoreSelectionDAGInfo : public TargetSelectionDAGInfo {
 public:
-  SDValue EmitTargetCodeForMemcpy(SelectionDAG &DAG, const SDLoc &dl,
-                                  SDValue Chain, SDValue Op1, SDValue Op2,
-                                  SDValue Op3, unsigned Align, bool isVolatile,
-                                  bool AlwaysInline,
-                                  MachinePointerInfo DstPtrInfo,
-                                  MachinePointerInfo SrcPtrInfo) const override;
+  explicit XCoreSelectionDAGInfo(const XCoreTargetMachine &TM);
+  ~XCoreSelectionDAGInfo();
 };
 
 }

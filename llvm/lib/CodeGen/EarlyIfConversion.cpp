@@ -16,6 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "early-ifcvt"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SetVector.h"
@@ -38,8 +39,6 @@
 #include "llvm/Target/TargetSubtargetInfo.h"
 
 using namespace llvm;
-
-#define DEBUG_TYPE "early-ifcvt"
 
 // Absolute maximum number of instructions allowed per speculated block.
 // This bypasses all other heuristics, so it should be set fairly high.
@@ -153,8 +152,8 @@ private:
 public:
   /// runOnMachineFunction - Initialize per-function data structures.
   void runOnMachineFunction(MachineFunction &MF) {
-    TII = MF.getSubtarget().getInstrInfo();
-    TRI = MF.getSubtarget().getRegisterInfo();
+    TII = MF.getTarget().getInstrInfo();
+    TRI = MF.getTarget().getRegisterInfo();
     MRI = &MF.getRegInfo();
     LiveRegUnits.clear();
     LiveRegUnits.setUniverse(TRI->getNumRegUnits());
@@ -220,32 +219,32 @@ bool SSAIfConv::canSpeculateInstrs(MachineBasicBlock *MBB) {
 
     // We never speculate stores, so an AA pointer isn't necessary.
     bool DontMoveAcrossStore = true;
-    if (!I->isSafeToMove(nullptr, DontMoveAcrossStore)) {
+    if (!I->isSafeToMove(TII, 0, DontMoveAcrossStore)) {
       DEBUG(dbgs() << "Can't speculate: " << *I);
       return false;
     }
 
     // Check for any dependencies on Head instructions.
-    for (const MachineOperand &MO : I->operands()) {
-      if (MO.isRegMask()) {
+    for (MIOperands MO(I); MO.isValid(); ++MO) {
+      if (MO->isRegMask()) {
         DEBUG(dbgs() << "Won't speculate regmask: " << *I);
         return false;
       }
-      if (!MO.isReg())
+      if (!MO->isReg())
         continue;
-      unsigned Reg = MO.getReg();
+      unsigned Reg = MO->getReg();
 
       // Remember clobbered regunits.
-      if (MO.isDef() && TargetRegisterInfo::isPhysicalRegister(Reg))
+      if (MO->isDef() && TargetRegisterInfo::isPhysicalRegister(Reg))
         for (MCRegUnitIterator Units(Reg, TRI); Units.isValid(); ++Units)
           ClobberedRegUnits.set(*Units);
 
-      if (!MO.readsReg() || !TargetRegisterInfo::isVirtualRegister(Reg))
+      if (!MO->readsReg() || !TargetRegisterInfo::isVirtualRegister(Reg))
         continue;
       MachineInstr *DefMI = MRI->getVRegDef(Reg);
       if (!DefMI || DefMI->getParent() != Head)
         continue;
-      if (InsertAfter.insert(DefMI).second)
+      if (InsertAfter.insert(DefMI))
         DEBUG(dbgs() << "BB#" << MBB->getNumber() << " depends on " << *DefMI);
       if (DefMI->isTerminator()) {
         DEBUG(dbgs() << "Can't insert instructions below terminator.\n");
@@ -278,25 +277,25 @@ bool SSAIfConv::findInsertionPoint() {
   while (I != B) {
     --I;
     // Some of the conditional code depends in I.
-    if (InsertAfter.count(&*I)) {
+    if (InsertAfter.count(I)) {
       DEBUG(dbgs() << "Can't insert code after " << *I);
       return false;
     }
 
     // Update live regunits.
-    for (const MachineOperand &MO : I->operands()) {
+    for (MIOperands MO(I); MO.isValid(); ++MO) {
       // We're ignoring regmask operands. That is conservatively correct.
-      if (!MO.isReg())
+      if (!MO->isReg())
         continue;
-      unsigned Reg = MO.getReg();
+      unsigned Reg = MO->getReg();
       if (!TargetRegisterInfo::isPhysicalRegister(Reg))
         continue;
       // I clobbers Reg, so it isn't live before I.
-      if (MO.isDef())
+      if (MO->isDef())
         for (MCRegUnitIterator Units(Reg, TRI); Units.isValid(); ++Units)
           LiveRegUnits.erase(*Units);
       // Unless I reads Reg.
-      if (MO.readsReg())
+      if (MO->readsReg())
         Reads.push_back(Reg);
     }
     // Anything read by I is live before I.
@@ -339,7 +338,7 @@ bool SSAIfConv::findInsertionPoint() {
 ///
 bool SSAIfConv::canConvertIf(MachineBasicBlock *MBB) {
   Head = MBB;
-  TBB = FBB = Tail = nullptr;
+  TBB = FBB = Tail = 0;
 
   if (Head->succ_size() != 2)
     return false;
@@ -386,7 +385,7 @@ bool SSAIfConv::canConvertIf(MachineBasicBlock *MBB) {
 
   // The branch we're looking to eliminate must be analyzable.
   Cond.clear();
-  if (TII->analyzeBranch(*Head, TBB, FBB, Cond)) {
+  if (TII->AnalyzeBranch(*Head, TBB, FBB, Cond)) {
     DEBUG(dbgs() << "Branch not analyzable.\n");
     return false;
   }
@@ -462,9 +461,9 @@ void SSAIfConv::replacePHIInstrs() {
     DEBUG(dbgs() << "If-converting " << *PI.PHI);
     unsigned DstReg = PI.PHI->getOperand(0).getReg();
     TII->insertSelect(*Head, FirstTerm, HeadDL, DstReg, Cond, PI.TReg, PI.FReg);
-    DEBUG(dbgs() << "          --> " << *std::prev(FirstTerm));
+    DEBUG(dbgs() << "          --> " << *llvm::prior(FirstTerm));
     PI.PHI->eraseFromParent();
-    PI.PHI = nullptr;
+    PI.PHI = 0;
   }
 }
 
@@ -479,20 +478,11 @@ void SSAIfConv::rewritePHIOperands() {
   // Convert all PHIs to select instructions inserted before FirstTerm.
   for (unsigned i = 0, e = PHIs.size(); i != e; ++i) {
     PHIInfo &PI = PHIs[i];
-    unsigned DstReg = 0;
-
     DEBUG(dbgs() << "If-converting " << *PI.PHI);
-    if (PI.TReg == PI.FReg) {
-      // We do not need the select instruction if both incoming values are
-      // equal.
-      DstReg = PI.TReg;
-    } else {
-      unsigned PHIDst = PI.PHI->getOperand(0).getReg();
-      DstReg = MRI->createVirtualRegister(MRI->getRegClass(PHIDst));
-      TII->insertSelect(*Head, FirstTerm, HeadDL,
-                         DstReg, Cond, PI.TReg, PI.FReg);
-      DEBUG(dbgs() << "          --> " << *std::prev(FirstTerm));
-    }
+    unsigned PHIDst = PI.PHI->getOperand(0).getReg();
+    unsigned DstReg = MRI->createVirtualRegister(MRI->getRegClass(PHIDst));
+    TII->insertSelect(*Head, FirstTerm, HeadDL, DstReg, Cond, PI.TReg, PI.FReg);
+    DEBUG(dbgs() << "          --> " << *llvm::prior(FirstTerm));
 
     // Rewrite PHI operands TPred -> (DstReg, Head), remove FPred.
     for (unsigned i = PI.PHI->getNumOperands(); i != 1; i -= 2) {
@@ -538,16 +528,16 @@ void SSAIfConv::convertIf(SmallVectorImpl<MachineBasicBlock*> &RemovedBlocks) {
 
   // Fix up the CFG, temporarily leave Head without any successors.
   Head->removeSuccessor(TBB);
-  Head->removeSuccessor(FBB, true);
+  Head->removeSuccessor(FBB);
   if (TBB != Tail)
-    TBB->removeSuccessor(Tail, true);
+    TBB->removeSuccessor(Tail);
   if (FBB != Tail)
-    FBB->removeSuccessor(Tail, true);
+    FBB->removeSuccessor(Tail);
 
   // Fix up Head's terminators.
   // It should become a single branch or a fallthrough.
   DebugLoc HeadDL = Head->getFirstTerminator()->getDebugLoc();
-  TII->removeBranch(*Head);
+  TII->RemoveBranch(*Head);
 
   // Erase the now empty conditional blocks. It is likely that Head can fall
   // through to Tail, and we can join the two blocks.
@@ -574,7 +564,7 @@ void SSAIfConv::convertIf(SmallVectorImpl<MachineBasicBlock*> &RemovedBlocks) {
     // We need a branch to Tail, let code placement work it out later.
     DEBUG(dbgs() << "Converting to unconditional branch.\n");
     SmallVector<MachineOperand, 0> EmptyCond;
-    TII->insertBranch(*Head, Tail, nullptr, EmptyCond, HeadDL);
+    TII->InsertBranch(*Head, Tail, 0, EmptyCond, HeadDL);
     Head->addSuccessor(Tail);
   }
   DEBUG(dbgs() << *Head);
@@ -589,7 +579,7 @@ namespace {
 class EarlyIfConverter : public MachineFunctionPass {
   const TargetInstrInfo *TII;
   const TargetRegisterInfo *TRI;
-  MCSchedModel SchedModel;
+  const MCSchedModel *SchedModel;
   MachineRegisterInfo *MRI;
   MachineDominatorTree *DomTree;
   MachineLoopInfo *Loops;
@@ -600,9 +590,9 @@ class EarlyIfConverter : public MachineFunctionPass {
 public:
   static char ID;
   EarlyIfConverter() : MachineFunctionPass(ID) {}
-  void getAnalysisUsage(AnalysisUsage &AU) const override;
-  bool runOnMachineFunction(MachineFunction &MF) override;
-  const char *getPassName() const override { return "Early If-Conversion"; }
+  void getAnalysisUsage(AnalysisUsage &AU) const;
+  bool runOnMachineFunction(MachineFunction &MF);
+  const char *getPassName() const { return "Early If-Conversion"; }
 
 private:
   bool tryConvertIf(MachineBasicBlock*);
@@ -697,7 +687,7 @@ bool EarlyIfConverter::shouldConvertIf() {
                               FBBTrace.getCriticalPath());
 
   // Set a somewhat arbitrary limit on the critical path extension we accept.
-  unsigned CritLimit = SchedModel.MispredictPenalty/2;
+  unsigned CritLimit = SchedModel->MispredictPenalty/2;
 
   // If-conversion only makes sense when there is unexploited ILP. Compute the
   // maximum-ILP resource length of the trace after if-conversion. Compare it
@@ -718,7 +708,7 @@ bool EarlyIfConverter::shouldConvertIf() {
   // TBB / FBB data dependencies may delay the select even more.
   MachineTraceMetrics::Trace HeadTrace = MinInstr->getTrace(IfConv.Head);
   unsigned BranchDepth =
-      HeadTrace.getInstrCycles(*IfConv.Head->getFirstTerminator()).Depth;
+    HeadTrace.getInstrCycles(IfConv.Head->getFirstTerminator()).Depth;
   DEBUG(dbgs() << "Branch depth: " << BranchDepth << '\n');
 
   // Look at all the tail phis, and compute the critical path extension caused
@@ -726,8 +716,8 @@ bool EarlyIfConverter::shouldConvertIf() {
   MachineTraceMetrics::Trace TailTrace = MinInstr->getTrace(IfConv.Tail);
   for (unsigned i = 0, e = IfConv.PHIs.size(); i != e; ++i) {
     SSAIfConv::PHIInfo &PI = IfConv.PHIs[i];
-    unsigned Slack = TailTrace.getInstrSlack(*PI.PHI);
-    unsigned MaxDepth = Slack + TailTrace.getInstrCycles(*PI.PHI).Depth;
+    unsigned Slack = TailTrace.getInstrSlack(PI.PHI);
+    unsigned MaxDepth = Slack + TailTrace.getInstrCycles(PI.PHI).Depth;
     DEBUG(dbgs() << "Slack " << Slack << ":\t" << *PI.PHI);
 
     // The condition is pulled into the critical path.
@@ -742,7 +732,7 @@ bool EarlyIfConverter::shouldConvertIf() {
     }
 
     // The TBB value is pulled into the critical path.
-    unsigned TDepth = adjCycles(TBBTrace.getPHIDepth(*PI.PHI), PI.TCycles);
+    unsigned TDepth = adjCycles(TBBTrace.getPHIDepth(PI.PHI), PI.TCycles);
     if (TDepth > MaxDepth) {
       unsigned Extra = TDepth - MaxDepth;
       DEBUG(dbgs() << "TBB data adds " << Extra << " cycles.\n");
@@ -753,7 +743,7 @@ bool EarlyIfConverter::shouldConvertIf() {
     }
 
     // The FBB value is pulled into the critical path.
-    unsigned FDepth = adjCycles(FBBTrace.getPHIDepth(*PI.PHI), PI.FCycles);
+    unsigned FDepth = adjCycles(FBBTrace.getPHIDepth(PI.PHI), PI.FCycles);
     if (FDepth > MaxDepth) {
       unsigned Extra = FDepth - MaxDepth;
       DEBUG(dbgs() << "FBB data adds " << Extra << " cycles.\n");
@@ -785,22 +775,15 @@ bool EarlyIfConverter::tryConvertIf(MachineBasicBlock *MBB) {
 bool EarlyIfConverter::runOnMachineFunction(MachineFunction &MF) {
   DEBUG(dbgs() << "********** EARLY IF-CONVERSION **********\n"
                << "********** Function: " << MF.getName() << '\n');
-  if (skipFunction(*MF.getFunction()))
-    return false;
-
-  // Only run if conversion if the target wants it.
-  const TargetSubtargetInfo &STI = MF.getSubtarget();
-  if (!STI.enableEarlyIfConversion())
-    return false;
-
-  TII = STI.getInstrInfo();
-  TRI = STI.getRegisterInfo();
-  SchedModel = STI.getSchedModel();
+  TII = MF.getTarget().getInstrInfo();
+  TRI = MF.getTarget().getRegisterInfo();
+  SchedModel =
+    MF.getTarget().getSubtarget<TargetSubtargetInfo>().getSchedModel();
   MRI = &MF.getRegInfo();
   DomTree = &getAnalysis<MachineDominatorTree>();
   Loops = getAnalysisIfAvailable<MachineLoopInfo>();
   Traces = &getAnalysis<MachineTraceMetrics>();
-  MinInstr = nullptr;
+  MinInstr = 0;
 
   bool Changed = false;
   IfConv.runOnMachineFunction(MF);
@@ -809,8 +792,9 @@ bool EarlyIfConverter::runOnMachineFunction(MachineFunction &MF) {
   // if-conversion in a single pass. The tryConvertIf() function may erase
   // blocks, but only blocks dominated by the head block. This makes it safe to
   // update the dominator tree while the post-order iterator is still active.
-  for (auto DomNode : post_order(DomTree))
-    if (tryConvertIf(DomNode->getBlock()))
+  for (po_iterator<MachineDominatorTree*>
+       I = po_begin(DomTree), E = po_end(DomTree); I != E; ++I)
+    if (tryConvertIf(I->getBlock()))
       Changed = true;
 
   return Changed;

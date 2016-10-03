@@ -10,7 +10,7 @@
 ; CHECK: call void @objc_release(i8* %call) [[NUW]]
 ; CHECK: call void @objc_release(i8* %call) [[NUW]]
 ; CHECK: call void @objc_release(i8* %cond) [[NUW]]
-define void @test0() personality i8* bitcast (i32 (...)* @__objc_personality_v0 to i8*) {
+define void @test0() {
 entry:
   br label %while.body
 
@@ -34,7 +34,7 @@ invoke.cont1:                                     ; preds = %invoke.cont
   br label %while.body
 
 lpad:                                             ; preds = %invoke.cont, %while.body
-  %t4 = landingpad { i8*, i32 }
+  %t4 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__objc_personality_v0 to i8*)
           catch i8* null
   ret void
 }
@@ -45,6 +45,6 @@ declare void @objc_release(i8*)
 declare i8* @objc_retain(i8*)
 declare void @use_pointer(i8*)
 
-!0 = !{}
+!0 = metadata !{}
 
 ; CHECK: attributes [[NUW]] = { nounwind }

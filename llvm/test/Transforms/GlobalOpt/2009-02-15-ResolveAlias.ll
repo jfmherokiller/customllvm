@@ -6,18 +6,18 @@ define internal void @f() {
 	ret void
 }
 
-@a = alias void (), void ()* @f
+@a = alias void ()* @f
 
 define void @g() {
-	call void() @a()
+	call void()* @a()
 	ret void
 }
 
-@b = internal alias  void (),  void ()* @g
+@b = alias internal void ()* @g
 ; CHECK-NOT: @b
 
 define void @h() {
-	call void() @b()
+	call void()* @b()
 ; CHECK: call void @g
 	ret void
 }

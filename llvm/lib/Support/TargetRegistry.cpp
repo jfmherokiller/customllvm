@@ -10,16 +10,17 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <vector>
 using namespace llvm;
 
 // Clients are responsible for avoid race conditions in registration.
-static Target *FirstTarget = nullptr;
+static Target *FirstTarget = 0;
 
-iterator_range<TargetRegistry::iterator> TargetRegistry::targets() {
-  return make_range(iterator(FirstTarget), iterator());
+TargetRegistry::iterator TargetRegistry::begin() {
+  return iterator(FirstTarget);
 }
 
 const Target *TargetRegistry::lookupTarget(const std::string &ArchName,
@@ -28,17 +29,20 @@ const Target *TargetRegistry::lookupTarget(const std::string &ArchName,
   // Allocate target machine.  First, check whether the user has explicitly
   // specified an architecture to compile for. If so we have to look it up by
   // name, because it might be a backend that has no mapping to a target triple.
-  const Target *TheTarget = nullptr;
+  const Target *TheTarget = 0;
   if (!ArchName.empty()) {
-    auto I = find_if(targets(),
-                     [&](const Target &T) { return ArchName == T.getName(); });
-
-    if (I == targets().end()) {
-      Error = "error: invalid target '" + ArchName + "'.\n";
-      return nullptr;
+    for (TargetRegistry::iterator it = TargetRegistry::begin(),
+           ie = TargetRegistry::end(); it != ie; ++it) {
+      if (ArchName == it->getName()) {
+        TheTarget = &*it;
+        break;
+      }
     }
 
-    TheTarget = &*I;
+    if (!TheTarget) {
+      Error = "error: invalid target '" + ArchName + "'.\n";
+      return 0;
+    }
 
     // Adjust the triple to match (if known), otherwise stick with the
     // given triple.
@@ -49,11 +53,11 @@ const Target *TargetRegistry::lookupTarget(const std::string &ArchName,
     // Get the target specific parser.
     std::string TempError;
     TheTarget = TargetRegistry::lookupTarget(TheTriple.getTriple(), TempError);
-    if (!TheTarget) {
+    if (TheTarget == 0) {
       Error = ": error: unable to get target for '"
             + TheTriple.getTriple()
             + "', see --version and --triple.\n";
-      return nullptr;
+      return 0;
     }
   }
 
@@ -63,35 +67,46 @@ const Target *TargetRegistry::lookupTarget(const std::string &ArchName,
 const Target *TargetRegistry::lookupTarget(const std::string &TT,
                                            std::string &Error) {
   // Provide special warning when no targets are initialized.
-  if (targets().begin() == targets().end()) {
+  if (begin() == end()) {
     Error = "Unable to find target for this triple (no targets are registered)";
-    return nullptr;
+    return 0;
   }
-  Triple::ArchType Arch = Triple(TT).getArch();
-  auto ArchMatch = [&](const Target &T) { return T.ArchMatchFn(Arch); };
-  auto I = find_if(targets(), ArchMatch);
-
-  if (I == targets().end()) {
-    Error = "No available targets are compatible with this triple.";
-    return nullptr;
-  }
-
-  auto J = std::find_if(std::next(I), targets().end(), ArchMatch);
-  if (J != targets().end()) {
-    Error = std::string("Cannot choose between targets \"") + I->Name +
-            "\" and \"" + J->Name + "\"";
-    return nullptr;
+  const Target *Best = 0, *EquallyBest = 0;
+  unsigned BestQuality = 0;
+  for (iterator it = begin(), ie = end(); it != ie; ++it) {
+    if (unsigned Qual = it->TripleMatchQualityFn(TT)) {
+      if (!Best || Qual > BestQuality) {
+        Best = &*it;
+        EquallyBest = 0;
+        BestQuality = Qual;
+      } else if (Qual == BestQuality)
+        EquallyBest = &*it;
+    }
   }
 
-  return &*I;
+  if (!Best) {
+    Error = "No available targets are compatible with this triple, "
+      "see -version for the available targets.";
+    return 0;
+  }
+
+  // Otherwise, take the best target, but make sure we don't have two equally
+  // good best targets.
+  if (EquallyBest) {
+    Error = std::string("Cannot choose between targets \"") +
+      Best->Name  + "\" and \"" + EquallyBest->Name + "\"";
+    return 0;
+  }
+
+  return Best;
 }
 
 void TargetRegistry::RegisterTarget(Target &T,
                                     const char *Name,
                                     const char *ShortDesc,
-                                    Target::ArchMatchFnTy ArchMatchFn,
+                                    Target::TripleMatchQualityFnTy TQualityFn,
                                     bool HasJIT) {
-  assert(Name && ShortDesc && ArchMatchFn &&
+  assert(Name && ShortDesc && TQualityFn &&
          "Missing required target information!");
 
   // Check if this target has already been initialized, we allow this as a
@@ -105,8 +120,19 @@ void TargetRegistry::RegisterTarget(Target &T,
 
   T.Name = Name;
   T.ShortDesc = ShortDesc;
-  T.ArchMatchFn = ArchMatchFn;
+  T.TripleMatchQualityFn = TQualityFn;
   T.HasJIT = HasJIT;
+}
+
+const Target *TargetRegistry::getClosestTargetForJIT(std::string &Error) {
+  const Target *TheTarget = lookupTarget(sys::getDefaultTargetTriple(), Error);
+
+  if (TheTarget && !TheTarget->hasJIT()) {
+    Error = "No JIT compatible target available for this host";
+    return 0;
+  }
+
+  return TheTarget;
 }
 
 static int TargetArraySortFn(const std::pair<StringRef, const Target *> *LHS,
@@ -117,8 +143,10 @@ static int TargetArraySortFn(const std::pair<StringRef, const Target *> *LHS,
 void TargetRegistry::printRegisteredTargetsForVersion() {
   std::vector<std::pair<StringRef, const Target*> > Targets;
   size_t Width = 0;
-  for (const auto &T : TargetRegistry::targets()) {
-    Targets.push_back(std::make_pair(T.getName(), &T));
+  for (TargetRegistry::iterator I = TargetRegistry::begin(),
+       E = TargetRegistry::end();
+       I != E; ++I) {
+    Targets.push_back(std::make_pair(I->getName(), &*I));
     Width = std::max(Width, Targets.back().first.size());
   }
   array_pod_sort(Targets.begin(), Targets.end(), TargetArraySortFn);

@@ -1,4 +1,4 @@
-(*===-- llvm_analysis.ml - LLVM OCaml Interface ---------------*- OCaml -*-===*
+(*===-- llvm_analysis.ml - LLVM OCaml Interface -----------------*- C++ -*-===*
  *
  *                     The LLVM Compiler Infrastructure
  *

@@ -17,52 +17,47 @@ set -e
 release=""
 rc=""
 rebranch="no"
-projects="llvm cfe test-suite compiler-rt libcxx libcxxabi clang-tools-extra polly lldb lld openmp libunwind"
-dryrun=""
-revision="HEAD"
+projects="llvm cfe dragonegg test-suite compiler-rt libcxx clang-tools-extra polly lldb"
 
 base_url="https://llvm.org/svn/llvm-project"
 
-usage() {
-    echo "usage: `basename $0` -release <num> [-rebranch] [-revision <num>] [-dry-run]"
-    echo "usage: `basename $0` -release <num> -rc <num> [-dry-run]"
+function usage() {
+    echo "usage: `basename $0` -release <num> [-rebranch]"
+    echo "usage: `basename $0` -release <num> -rc <num>"
     echo " "
-    echo "  -release <num>   The version number of the release"
-    echo "  -rc <num>        The release candidate number"
-    echo "  -rebranch        Remove existing branch, if present, before branching"
-    echo "  -final           Tag final release candidate"
-    echo "  -revision <num>  Revision to branch off (default: HEAD)"
-    echo "  -dry-run         Make no changes to the repository, just print the commands"
+    echo "  -release <num>  The version number of the release"
+    echo "  -rc <num>       The release candidate number"
+    echo "  -rebranch       Remove existing branch, if present, before branching"
+    echo "  -final          Tag final release candidate"
 }
 
-tag_version() {
+function tag_version() {
     set -x
     for proj in  $projects; do
-        if svn ls $base_url/$proj/branches/release_$branch_release > /dev/null 2>&1 ; then
+        if svn ls $base_url/$proj/branches/release_$release > /dev/null 2>&1 ; then
             if [ $rebranch = "no" ]; then
                 continue
             fi
-            ${dryrun} svn remove -m "Removing old release_$branch_release branch for rebranching." \
-                $base_url/$proj/branches/release_$branch_release
+            svn remove -m "Removing old release_$release branch for rebranching." \
+                $base_url/$proj/branches/release_$release
         fi
-        ${dryrun} svn copy -m "Creating release_$branch_release branch off revision ${revision}" \
-            -r ${revision} \
+        svn copy -m "Creating release_$release branch" \
             $base_url/$proj/trunk \
-            $base_url/$proj/branches/release_$branch_release
+            $base_url/$proj/branches/release_$release
     done
     set +x
 }
 
-tag_release_candidate() {
+function tag_release_candidate() {
     set -x
     for proj in $projects ; do
-        if ! svn ls $base_url/$proj/tags/RELEASE_$tag_release > /dev/null 2>&1 ; then
-            ${dryrun} svn mkdir -m "Creating release directory for release_$tag_release." $base_url/$proj/tags/RELEASE_$tag_release
+        if ! svn ls $base_url/$proj/tags/RELEASE_$release > /dev/null 2>&1 ; then
+            svn mkdir -m "Creating release directory for release_$release." $base_url/$proj/tags/RELEASE_$release
         fi
-        if ! svn ls $base_url/$proj/tags/RELEASE_$tag_release/$rc > /dev/null 2>&1 ; then
-            ${dryrun} svn copy -m "Creating release candidate $rc from release_$tag_release branch" \
-                $base_url/$proj/branches/release_$branch_release \
-                $base_url/$proj/tags/RELEASE_$tag_release/$rc
+        if ! svn ls $base_url/$proj/tags/RELEASE_$release/$rc > /dev/null 2>&1 ; then
+            svn copy -m "Creating release candidate $rc from release_$release branch" \
+                $base_url/$proj/branches/release_$release \
+                $base_url/$proj/tags/RELEASE_$release/$rc
         fi
     done
     set +x
@@ -84,13 +79,6 @@ while [ $# -gt 0 ]; do
         -final | --final )
             rc="final"
             ;;
-        -revision | --revision )
-            shift
-            revision="$1"
-            ;;
-        -dry-run | --dry-run )
-            dryrun="echo"
-            ;;
         -h | --help | -help )
             usage
             exit 0
@@ -111,19 +99,11 @@ if [ "x$release" = "x" ]; then
     exit 1
 fi
 
-branch_release=`echo $release | sed -e 's,\([0-9]*\.[0-9]*\).*,\1,' | sed -e 's,\.,,g'`
-tag_release=`echo $release | sed -e 's,\.,,g'`
+release=`echo $release | sed -e 's,\.,,g'`
 
 if [ "x$rc" = "x" ]; then
     tag_version
 else
-    if [ "$revision" != "HEAD" ]; then
-        echo "error: cannot use -revision with -rc"
-        echo
-        usage
-        exit 1
-    fi
-
     tag_release_candidate
 fi
 

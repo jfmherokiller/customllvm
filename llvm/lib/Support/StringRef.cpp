@@ -10,6 +10,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/Hashing.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/edit_distance.h"
 #include <bitset>
 
@@ -50,7 +51,7 @@ static int ascii_strncasecmp(const char *LHS, const char *RHS, size_t Length) {
 
 /// compare_lower - Compare strings, ignoring case.
 int StringRef::compare_lower(StringRef RHS) const {
-  if (int Res = ascii_strncasecmp(Data, RHS.Data, std::min(Length, RHS.Length)))
+  if (int Res = ascii_strncasecmp(Data, RHS.Data, min(Length, RHS.Length)))
     return Res;
   if (Length == RHS.Length)
     return 0;
@@ -71,7 +72,7 @@ bool StringRef::endswith_lower(StringRef Suffix) const {
 
 /// compare_numeric - Compare strings, handle embedded numbers.
 int StringRef::compare_numeric(StringRef RHS) const {
-  for (size_t I = 0, E = std::min(Length, RHS.Length); I != E; ++I) {
+  for (size_t I = 0, E = min(Length, RHS.Length); I != E; ++I) {
     // Check for sequences of digits.
     if (ascii_isdigit(Data[I]) && ascii_isdigit(RHS.Data[I])) {
       // The longer sequence of numbers is considered larger.
@@ -105,8 +106,8 @@ unsigned StringRef::edit_distance(llvm::StringRef Other,
                                   bool AllowReplacements,
                                   unsigned MaxEditDistance) const {
   return llvm::ComputeEditDistance(
-      makeArrayRef(data(), size()),
-      makeArrayRef(Other.data(), Other.size()),
+      llvm::ArrayRef<char>(data(), size()),
+      llvm::ArrayRef<char>(Other.data(), Other.size()),
       AllowReplacements, MaxEditDistance);
 }
 
@@ -140,30 +141,20 @@ std::string StringRef::upper() const {
 /// \return - The index of the first occurrence of \arg Str, or npos if not
 /// found.
 size_t StringRef::find(StringRef Str, size_t From) const {
-  if (From > Length)
-    return npos;
-
-  const char *Needle = Str.data();
   size_t N = Str.size();
-  if (N == 0)
-    return From;
-
-  size_t Size = Length - From;
-  if (Size < N)
+  if (N > Length)
     return npos;
-
-  const char *Start = Data + From;
-  const char *Stop = Start + (Size - N + 1);
 
   // For short haystacks or unsupported needles fall back to the naive algorithm
-  if (Size < 16 || N > 255) {
-    do {
-      if (std::memcmp(Start, Needle, N) == 0)
-        return Start - Data;
-      ++Start;
-    } while (Start < Stop);
+  if (Length < 16 || N > 255 || N == 0) {
+    for (size_t e = Length - N + 1, i = min(From, e); i != e; ++i)
+      if (substr(i, N).equals(Str))
+        return i;
     return npos;
   }
+
+  if (From >= Length)
+    return npos;
 
   // Build the bad char heuristic table, with uint8_t to reduce cache thrashing.
   uint8_t BadCharSkip[256];
@@ -171,13 +162,16 @@ size_t StringRef::find(StringRef Str, size_t From) const {
   for (unsigned i = 0; i != N-1; ++i)
     BadCharSkip[(uint8_t)Str[i]] = N-1-i;
 
-  do {
-    if (std::memcmp(Start, Needle, N) == 0)
-      return Start - Data;
+  unsigned Len = Length-From, Pos = From;
+  while (Len >= N) {
+    if (substr(Pos, N).equals(Str)) // See if this is the correct substring.
+      return Pos;
 
     // Otherwise skip the appropriate number of bytes.
-    Start += BadCharSkip[(uint8_t)Start[N-1]];
-  } while (Start < Stop);
+    uint8_t Skip = BadCharSkip[(uint8_t)(*this)[Pos+N-1]];
+    Len -= Skip;
+    Pos += Skip;
+  }
 
   return npos;
 }
@@ -208,7 +202,7 @@ StringRef::size_type StringRef::find_first_of(StringRef Chars,
   for (size_type i = 0; i != Chars.size(); ++i)
     CharBits.set((unsigned char)Chars[i]);
 
-  for (size_type i = std::min(From, Length), e = Length; i != e; ++i)
+  for (size_type i = min(From, Length), e = Length; i != e; ++i)
     if (CharBits.test((unsigned char)Data[i]))
       return i;
   return npos;
@@ -217,7 +211,7 @@ StringRef::size_type StringRef::find_first_of(StringRef Chars,
 /// find_first_not_of - Find the first character in the string that is not
 /// \arg C or npos if not found.
 StringRef::size_type StringRef::find_first_not_of(char C, size_t From) const {
-  for (size_type i = std::min(From, Length), e = Length; i != e; ++i)
+  for (size_type i = min(From, Length), e = Length; i != e; ++i)
     if (Data[i] != C)
       return i;
   return npos;
@@ -233,7 +227,7 @@ StringRef::size_type StringRef::find_first_not_of(StringRef Chars,
   for (size_type i = 0; i != Chars.size(); ++i)
     CharBits.set((unsigned char)Chars[i]);
 
-  for (size_type i = std::min(From, Length), e = Length; i != e; ++i)
+  for (size_type i = min(From, Length), e = Length; i != e; ++i)
     if (!CharBits.test((unsigned char)Data[i]))
       return i;
   return npos;
@@ -249,7 +243,7 @@ StringRef::size_type StringRef::find_last_of(StringRef Chars,
   for (size_type i = 0; i != Chars.size(); ++i)
     CharBits.set((unsigned char)Chars[i]);
 
-  for (size_type i = std::min(From, Length) - 1, e = -1; i != e; --i)
+  for (size_type i = min(From, Length) - 1, e = -1; i != e; --i)
     if (CharBits.test((unsigned char)Data[i]))
       return i;
   return npos;
@@ -258,7 +252,7 @@ StringRef::size_type StringRef::find_last_of(StringRef Chars,
 /// find_last_not_of - Find the last character in the string that is not
 /// \arg C, or npos if not found.
 StringRef::size_type StringRef::find_last_not_of(char C, size_t From) const {
-  for (size_type i = std::min(From, Length) - 1, e = -1; i != e; --i)
+  for (size_type i = min(From, Length) - 1, e = -1; i != e; --i)
     if (Data[i] != C)
       return i;
   return npos;
@@ -274,63 +268,31 @@ StringRef::size_type StringRef::find_last_not_of(StringRef Chars,
   for (size_type i = 0, e = Chars.size(); i != e; ++i)
     CharBits.set((unsigned char)Chars[i]);
 
-  for (size_type i = std::min(From, Length) - 1, e = -1; i != e; --i)
+  for (size_type i = min(From, Length) - 1, e = -1; i != e; --i)
     if (!CharBits.test((unsigned char)Data[i]))
       return i;
   return npos;
 }
 
 void StringRef::split(SmallVectorImpl<StringRef> &A,
-                      StringRef Separator, int MaxSplit,
+                      StringRef Separators, int MaxSplit,
                       bool KeepEmpty) const {
-  StringRef S = *this;
+  StringRef rest = *this;
 
-  // Count down from MaxSplit. When MaxSplit is -1, this will just split
-  // "forever". This doesn't support splitting more than 2^31 times
-  // intentionally; if we ever want that we can make MaxSplit a 64-bit integer
-  // but that seems unlikely to be useful.
-  while (MaxSplit-- != 0) {
-    size_t Idx = S.find(Separator);
-    if (Idx == npos)
-      break;
+  // rest.data() is used to distinguish cases like "a," that splits into
+  // "a" + "" and "a" that splits into "a" + 0.
+  for (int splits = 0;
+       rest.data() != NULL && (MaxSplit < 0 || splits < MaxSplit);
+       ++splits) {
+    std::pair<StringRef, StringRef> p = rest.split(Separators);
 
-    // Push this split.
-    if (KeepEmpty || Idx > 0)
-      A.push_back(S.slice(0, Idx));
-
-    // Jump forward.
-    S = S.slice(Idx + Separator.size(), npos);
+    if (KeepEmpty || p.first.size() != 0)
+      A.push_back(p.first);
+    rest = p.second;
   }
-
-  // Push the tail.
-  if (KeepEmpty || !S.empty())
-    A.push_back(S);
-}
-
-void StringRef::split(SmallVectorImpl<StringRef> &A, char Separator,
-                      int MaxSplit, bool KeepEmpty) const {
-  StringRef S = *this;
-
-  // Count down from MaxSplit. When MaxSplit is -1, this will just split
-  // "forever". This doesn't support splitting more than 2^31 times
-  // intentionally; if we ever want that we can make MaxSplit a 64-bit integer
-  // but that seems unlikely to be useful.
-  while (MaxSplit-- != 0) {
-    size_t Idx = S.find(Separator);
-    if (Idx == npos)
-      break;
-
-    // Push this split.
-    if (KeepEmpty || Idx > 0)
-      A.push_back(S.slice(0, Idx));
-
-    // Jump forward.
-    S = S.slice(Idx + 1, npos);
-  }
-
-  // Push the tail.
-  if (KeepEmpty || !S.empty())
-    A.push_back(S);
+  // If we have a tail left, add it.
+  if (rest.data() != NULL && (rest.size() != 0 || KeepEmpty))
+    A.push_back(rest);
 }
 
 //===----------------------------------------------------------------------===//
@@ -351,15 +313,12 @@ size_t StringRef::count(StringRef Str) const {
 }
 
 static unsigned GetAutoSenseRadix(StringRef &Str) {
-  if (Str.empty())
-    return 10;
-
-  if (Str.startswith("0x") || Str.startswith("0X")) {
+  if (Str.startswith("0x")) {
     Str = Str.substr(2);
     return 16;
   }
   
-  if (Str.startswith("0b") || Str.startswith("0B")) {
+  if (Str.startswith("0b")) {
     Str = Str.substr(2);
     return 2;
   }
@@ -369,16 +328,17 @@ static unsigned GetAutoSenseRadix(StringRef &Str) {
     return 8;
   }
 
-  if (Str[0] == '0' && Str.size() > 1 && ascii_isdigit(Str[1])) {
-    Str = Str.substr(1);
+  if (Str.startswith("0"))
     return 8;
-  }
-
+  
   return 10;
 }
 
-bool llvm::consumeUnsignedInteger(StringRef &Str, unsigned Radix,
-                                  unsigned long long &Result) {
+
+/// GetAsUnsignedInteger - Workhorse method that converts a integer character
+/// sequence of radix up to 36 to an unsigned long long value.
+bool llvm::getAsUnsignedInteger(StringRef Str, unsigned Radix,
+                                unsigned long long &Result) {
   // Autosense radix if not specified.
   if (Radix == 0)
     Radix = GetAutoSenseRadix(Str);
@@ -387,51 +347,44 @@ bool llvm::consumeUnsignedInteger(StringRef &Str, unsigned Radix,
   if (Str.empty()) return true;
 
   // Parse all the bytes of the string given this radix.  Watch for overflow.
-  StringRef Str2 = Str;
   Result = 0;
-  while (!Str2.empty()) {
+  while (!Str.empty()) {
     unsigned CharVal;
-    if (Str2[0] >= '0' && Str2[0] <= '9')
-      CharVal = Str2[0] - '0';
-    else if (Str2[0] >= 'a' && Str2[0] <= 'z')
-      CharVal = Str2[0] - 'a' + 10;
-    else if (Str2[0] >= 'A' && Str2[0] <= 'Z')
-      CharVal = Str2[0] - 'A' + 10;
+    if (Str[0] >= '0' && Str[0] <= '9')
+      CharVal = Str[0]-'0';
+    else if (Str[0] >= 'a' && Str[0] <= 'z')
+      CharVal = Str[0]-'a'+10;
+    else if (Str[0] >= 'A' && Str[0] <= 'Z')
+      CharVal = Str[0]-'A'+10;
     else
-      break;
+      return true;
 
-    // If the parsed value is larger than the integer radix, we cannot
-    // consume any more characters.
+    // If the parsed value is larger than the integer radix, the string is
+    // invalid.
     if (CharVal >= Radix)
-      break;
+      return true;
 
     // Add in this character.
     unsigned long long PrevResult = Result;
-    Result = Result * Radix + CharVal;
+    Result = Result*Radix+CharVal;
 
     // Check for overflow by shifting back and seeing if bits were lost.
-    if (Result / Radix < PrevResult)
+    if (Result/Radix < PrevResult)
       return true;
 
-    Str2 = Str2.substr(1);
+    Str = Str.substr(1);
   }
 
-  // We consider the operation a failure if no characters were consumed
-  // successfully.
-  if (Str.size() == Str2.size())
-    return true;
-
-  Str = Str2;
   return false;
 }
 
-bool llvm::consumeSignedInteger(StringRef &Str, unsigned Radix,
-                                long long &Result) {
+bool llvm::getAsSignedInteger(StringRef Str, unsigned Radix,
+                              long long &Result) {
   unsigned long long ULLVal;
 
   // Handle positive strings first.
   if (Str.empty() || Str.front() != '-') {
-    if (consumeUnsignedInteger(Str, Radix, ULLVal) ||
+    if (getAsUnsignedInteger(Str, Radix, ULLVal) ||
         // Check for value so large it overflows a signed value.
         (long long)ULLVal < 0)
       return true;
@@ -440,39 +393,15 @@ bool llvm::consumeSignedInteger(StringRef &Str, unsigned Radix,
   }
 
   // Get the positive part of the value.
-  StringRef Str2 = Str.drop_front(1);
-  if (consumeUnsignedInteger(Str2, Radix, ULLVal) ||
+  if (getAsUnsignedInteger(Str.substr(1), Radix, ULLVal) ||
       // Reject values so large they'd overflow as negative signed, but allow
       // "-0".  This negates the unsigned so that the negative isn't undefined
       // on signed overflow.
       (long long)-ULLVal > 0)
     return true;
 
-  Str = Str2;
   Result = -ULLVal;
   return false;
-}
-
-/// GetAsUnsignedInteger - Workhorse method that converts a integer character
-/// sequence of radix up to 36 to an unsigned long long value.
-bool llvm::getAsUnsignedInteger(StringRef Str, unsigned Radix,
-                                unsigned long long &Result) {
-  if (consumeUnsignedInteger(Str, Radix, Result))
-    return true;
-
-  // For getAsUnsignedInteger, we require the whole string to be consumed or
-  // else we consider it a failure.
-  return !Str.empty();
-}
-
-bool llvm::getAsSignedInteger(StringRef Str, unsigned Radix,
-                              long long &Result) {
-  if (consumeSignedInteger(Str, Radix, Result))
-    return true;
-
-  // For getAsSignedInteger, we require the whole string to be consumed or else
-  // we consider it a failure.
-  return !Str.empty();
 }
 
 bool StringRef::getAsInteger(unsigned Radix, APInt &Result) const {

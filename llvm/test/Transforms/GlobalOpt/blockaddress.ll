@@ -13,9 +13,6 @@ define void @f() {
 }
 
 define void @g() {
-entry:
-  br label %here
-
 ; CHECK-LABEL: @g(
 
 here:

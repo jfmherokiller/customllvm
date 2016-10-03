@@ -17,7 +17,6 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/GraphWriter.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
@@ -42,7 +41,9 @@ bool EdgeBundles::runOnMachineFunction(MachineFunction &mf) {
   EC.clear();
   EC.grow(2 * MF->getNumBlockIDs());
 
-  for (const auto &MBB : *MF) {
+  for (MachineFunction::const_iterator I = MF->begin(), E = MF->end(); I != E;
+       ++I) {
+    const MachineBasicBlock &MBB = *I;
     unsigned OutE = 2 * MBB.getNumber() + 1;
     // Join the outgoing bundle with the ingoing bundles of all successors.
     for (MachineBasicBlock::const_succ_iterator SI = MBB.succ_begin(),
@@ -58,8 +59,8 @@ bool EdgeBundles::runOnMachineFunction(MachineFunction &mf) {
   Blocks.resize(getNumBundles());
 
   for (unsigned i = 0, e = MF->getNumBlockIDs(); i != e; ++i) {
-    unsigned b0 = getBundle(i, false);
-    unsigned b1 = getBundle(i, true);
+    unsigned b0 = getBundle(i, 0);
+    unsigned b1 = getBundle(i, 1);
     Blocks[b0].push_back(i);
     if (b1 != b0)
       Blocks[b1].push_back(i);
@@ -68,33 +69,29 @@ bool EdgeBundles::runOnMachineFunction(MachineFunction &mf) {
   return false;
 }
 
-/// Specialize WriteGraph, the standard implementation won't work.
-namespace llvm {
+/// view - Visualize the annotated bipartite CFG with Graphviz.
+void EdgeBundles::view() const {
+  ViewGraph(*this, "EdgeBundles");
+}
 
-template<>
-raw_ostream &WriteGraph<>(raw_ostream &O, const EdgeBundles &G,
-                          bool ShortNames,
-                          const Twine &Title) {
+/// Specialize WriteGraph, the standard implementation won't work.
+raw_ostream &llvm::WriteGraph(raw_ostream &O, const EdgeBundles &G,
+                              bool ShortNames,
+                              const Twine &Title) {
   const MachineFunction *MF = G.getMachineFunction();
 
   O << "digraph {\n";
-  for (const auto &MBB : *MF) {
-    unsigned BB = MBB.getNumber();
+  for (MachineFunction::const_iterator I = MF->begin(), E = MF->end();
+       I != E; ++I) {
+    unsigned BB = I->getNumber();
     O << "\t\"BB#" << BB << "\" [ shape=box ]\n"
       << '\t' << G.getBundle(BB, false) << " -> \"BB#" << BB << "\"\n"
       << "\t\"BB#" << BB << "\" -> " << G.getBundle(BB, true) << '\n';
-    for (MachineBasicBlock::const_succ_iterator SI = MBB.succ_begin(),
-           SE = MBB.succ_end(); SI != SE; ++SI)
+    for (MachineBasicBlock::const_succ_iterator SI = I->succ_begin(),
+           SE = I->succ_end(); SI != SE; ++SI)
       O << "\t\"BB#" << BB << "\" -> \"BB#" << (*SI)->getNumber()
         << "\" [ color=lightgray ]\n";
   }
   O << "}\n";
   return O;
-}
-
-} // end namespace llvm
-
-/// view - Visualize the annotated bipartite CFG with Graphviz.
-void EdgeBundles::view() const {
-  ViewGraph(*this, "EdgeBundles");
 }

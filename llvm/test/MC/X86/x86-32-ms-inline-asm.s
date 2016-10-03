@@ -90,8 +90,4 @@ _t21:                                   ## @t21
 // CHECK: popal
 // CHECK: # encoding: [0x61]
 
-    fwait
-// CHECK: wait
-// CHECK: # encoding: [0x9b]
-
 	ret

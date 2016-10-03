@@ -12,19 +12,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_POWERPC_PPC_H
-#define LLVM_LIB_TARGET_POWERPC_PPC_H
+#ifndef LLVM_TARGET_POWERPC_H
+#define LLVM_TARGET_POWERPC_H
 
 #include "MCTargetDesc/PPCMCTargetDesc.h"
+#include <string>
 
 // GCC #defines PPC on Linux but we use it as our namespace name
 #undef PPC
 
 namespace llvm {
   class PPCTargetMachine;
-  class PassRegistry;
   class FunctionPass;
   class ImmutablePass;
+  class JITCodeEmitter;
   class MachineInstr;
   class AsmPrinter;
   class MCInst;
@@ -33,24 +34,16 @@ namespace llvm {
 #ifndef NDEBUG
   FunctionPass *createPPCCTRLoopsVerify();
 #endif
-  FunctionPass *createPPCLoopPreIncPrepPass(PPCTargetMachine &TM);
-  FunctionPass *createPPCTOCRegDepsPass();
   FunctionPass *createPPCEarlyReturnPass();
-  FunctionPass *createPPCVSXCopyPass();
-  FunctionPass *createPPCVSXFMAMutatePass();
-  FunctionPass *createPPCVSXSwapRemovalPass();
-  FunctionPass *createPPCMIPeepholePass();
   FunctionPass *createPPCBranchSelectionPass();
-  FunctionPass *createPPCQPXLoadSplatPass();
   FunctionPass *createPPCISelDag(PPCTargetMachine &TM);
-  FunctionPass *createPPCTLSDynamicCallPass();
-  FunctionPass *createPPCBoolRetToIntPass();
+  FunctionPass *createPPCJITCodeEmitterPass(PPCTargetMachine &TM,
+                                            JITCodeEmitter &MCE);
   void LowerPPCMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                     AsmPrinter &AP, bool isDarwin);
 
-  void initializePPCVSXFMAMutatePass(PassRegistry&);
-  void initializePPCBoolRetToIntPass(PassRegistry&);
-  extern char &PPCVSXFMAMutateID;
+  /// \brief Creates an PPC-specific Target Transformation Info pass.
+  ImmutablePass *createPPCTargetTransformInfoPass(const PPCTargetMachine *TM);
 
   namespace PPCII {
     
@@ -59,12 +52,12 @@ namespace llvm {
     //===------------------------------------------------------------------===//
     // PPC Specific MachineOperand flags.
     MO_NO_FLAG,
-
-    /// On a symbol operand "FOO", this indicates that the reference is actually
-    /// to "FOO@plt".  This is used for calls and jumps to external functions on
-    /// for PIC calls on Linux and ELF systems.
-    MO_PLT = 1,
-
+    
+    /// MO_DARWIN_STUB - On a symbol operand "FOO", this indicates that the
+    /// reference is actually to the "FOO$stub" symbol.  This is used for calls
+    /// and jumps to external functions on Tiger and earlier.
+    MO_DARWIN_STUB = 1,
+    
     /// MO_PIC_FLAG - If this bit is set, the symbol reference is relative to
     /// the function's picbase, e.g. lo16(symbol-picbase).
     MO_PIC_FLAG = 2,
@@ -72,7 +65,7 @@ namespace llvm {
     /// MO_NLP_FLAG - If this bit is set, the symbol reference is actually to
     /// the non_lazy_ptr for the global, e.g. lo16(symbol$non_lazy_ptr-picbase).
     MO_NLP_FLAG = 4,
-
+    
     /// MO_NLP_HIDDEN_FLAG - If this bit is set, the symbol reference is to a
     /// symbol with hidden visibility.  This causes a different kind of
     /// non-lazy-pointer to be generated.
@@ -91,11 +84,11 @@ namespace llvm {
     /// These values identify relocations on immediates folded
     /// into memory operations.
     MO_DTPREL_LO = 5 << 4,
-    MO_TLSLD_LO = 6 << 4,
-    MO_TOC_LO = 7 << 4,
+    MO_TLSLD_LO  = 6 << 4,
+    MO_TOC_LO    = 7 << 4,
 
     // Symbol for VK_PPC_TLS fixup attached to an ADD instruction
-    MO_TLS = 8 << 4
+    MO_TLS       = 8 << 4
   };
   } // end namespace PPCII
   

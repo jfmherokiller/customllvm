@@ -12,7 +12,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/ScheduleDAG.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Assembly/Writer.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
@@ -20,6 +22,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include <fstream>
 using namespace llvm;
@@ -42,12 +45,9 @@ namespace llvm {
       return (Node->NumPreds > 10 || Node->NumSuccs > 10);
     }
 
-    static std::string getNodeIdentifierLabel(const SUnit *Node,
-                                              const ScheduleDAG *Graph) {
-      std::string R;
-      raw_string_ostream OS(R);
-      OS << static_cast<const void *>(Node);
-      return R;
+    static bool hasNodeAddressLabel(const SUnit *Node,
+                                    const ScheduleDAG *Graph) {
+      return true;
     }
 
     /// If you want to override the dot attributes printed for a particular

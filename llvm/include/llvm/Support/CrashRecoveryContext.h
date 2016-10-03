@@ -10,11 +10,13 @@
 #ifndef LLVM_SUPPORT_CRASHRECOVERYCONTEXT_H
 #define LLVM_SUPPORT_CRASHRECOVERYCONTEXT_H
 
-#include "llvm/ADT/STLExtras.h"
+#include <string>
 
 namespace llvm {
-class CrashRecoveryContextCleanup;
+class StringRef;
 
+class CrashRecoveryContextCleanup;
+  
 /// \brief Crash recovery helper object.
 ///
 /// This class implements support for running operations in a safe context so
@@ -38,14 +40,16 @@ class CrashRecoveryContextCleanup;
 ///
 ///      ... no crash was detected ...
 ///    }
+///
+/// Crash recovery contexts may not be nested.
 class CrashRecoveryContext {
   void *Impl;
   CrashRecoveryContextCleanup *head;
 
 public:
-  CrashRecoveryContext() : Impl(nullptr), head(nullptr) {}
+  CrashRecoveryContext() : Impl(0), head(0) {}
   ~CrashRecoveryContext();
-
+  
   void registerCleanup(CrashRecoveryContextCleanup *cleanup);
   void unregisterCleanup(CrashRecoveryContextCleanup *cleanup);
 
@@ -69,40 +73,38 @@ public:
   /// \return True if the function completed successfully, and false if the
   /// function crashed (or HandleCrash was called explicitly). Clients should
   /// make as little assumptions as possible about the program state when
-  /// RunSafely has returned false.
-  bool RunSafely(function_ref<void()> Fn);
-  bool RunSafely(void (*Fn)(void*), void *UserData) {
-    return RunSafely([&]() { Fn(UserData); });
-  }
+  /// RunSafely has returned false. Clients can use getBacktrace() to retrieve
+  /// the backtrace of the crash on failures.
+  bool RunSafely(void (*Fn)(void*), void *UserData);
 
   /// \brief Execute the provide callback function (with the given arguments) in
   /// a protected context which is run in another thread (optionally with a
   /// requested stack size).
   ///
   /// See RunSafely() and llvm_execute_on_thread().
-  ///
-  /// On Darwin, if PRIO_DARWIN_BG is set on the calling thread, it will be
-  /// propagated to the new thread as well.
-  bool RunSafelyOnThread(function_ref<void()>, unsigned RequestedStackSize = 0);
   bool RunSafelyOnThread(void (*Fn)(void*), void *UserData,
-                         unsigned RequestedStackSize = 0) {
-    return RunSafelyOnThread([&]() { Fn(UserData); }, RequestedStackSize);
-  }
+                         unsigned RequestedStackSize = 0);
 
   /// \brief Explicitly trigger a crash recovery in the current process, and
   /// return failure from RunSafely(). This function does not return.
   void HandleCrash();
+
+  /// \brief Return a string containing the backtrace where the crash was
+  /// detected; or empty if the backtrace wasn't recovered.
+  ///
+  /// This function is only valid when a crash has been detected (i.e.,
+  /// RunSafely() has returned false.
+  const std::string &getBacktrace() const;
 };
 
 class CrashRecoveryContextCleanup {
 protected:
   CrashRecoveryContext *context;
   CrashRecoveryContextCleanup(CrashRecoveryContext *context)
-      : context(context), cleanupFired(false) {}
-
+    : context(context), cleanupFired(false) {}
 public:
   bool cleanupFired;
-
+  
   virtual ~CrashRecoveryContextCleanup();
   virtual void recoverResources() = 0;
 
@@ -119,16 +121,15 @@ template<typename DERIVED, typename T>
 class CrashRecoveryContextCleanupBase : public CrashRecoveryContextCleanup {
 protected:
   T *resource;
-  CrashRecoveryContextCleanupBase(CrashRecoveryContext *context, T *resource)
-      : CrashRecoveryContextCleanup(context), resource(resource) {}
-
+  CrashRecoveryContextCleanupBase(CrashRecoveryContext *context, T* resource)
+    : CrashRecoveryContextCleanup(context), resource(resource) {}
 public:
   static DERIVED *create(T *x) {
     if (x) {
       if (CrashRecoveryContext *context = CrashRecoveryContext::GetCurrent())
         return new DERIVED(context, x);
     }
-    return nullptr;
+    return 0;
   }
 };
 
@@ -137,9 +138,9 @@ class CrashRecoveryContextDestructorCleanup : public
   CrashRecoveryContextCleanupBase<CrashRecoveryContextDestructorCleanup<T>, T> {
 public:
   CrashRecoveryContextDestructorCleanup(CrashRecoveryContext *context,
-                                        T *resource)
-      : CrashRecoveryContextCleanupBase<
-            CrashRecoveryContextDestructorCleanup<T>, T>(context, resource) {}
+                                        T *resource) 
+    : CrashRecoveryContextCleanupBase<
+        CrashRecoveryContextDestructorCleanup<T>, T>(context, resource) {}
 
   virtual void recoverResources() {
     this->resource->~T();
@@ -154,7 +155,9 @@ public:
     : CrashRecoveryContextCleanupBase<
         CrashRecoveryContextDeleteCleanup<T>, T>(context, resource) {}
 
-  void recoverResources() override { delete this->resource; }
+  virtual void recoverResources() {
+    delete this->resource;
+  }  
 };
 
 template <typename T>
@@ -162,18 +165,19 @@ class CrashRecoveryContextReleaseRefCleanup : public
   CrashRecoveryContextCleanupBase<CrashRecoveryContextReleaseRefCleanup<T>, T>
 {
 public:
-  CrashRecoveryContextReleaseRefCleanup(CrashRecoveryContext *context,
+  CrashRecoveryContextReleaseRefCleanup(CrashRecoveryContext *context, 
                                         T *resource)
     : CrashRecoveryContextCleanupBase<CrashRecoveryContextReleaseRefCleanup<T>,
           T>(context, resource) {}
 
-  void recoverResources() override { this->resource->Release(); }
+  virtual void recoverResources() {
+    this->resource->Release();
+  }
 };
 
 template <typename T, typename Cleanup = CrashRecoveryContextDeleteCleanup<T> >
 class CrashRecoveryContextCleanupRegistrar {
   CrashRecoveryContextCleanup *cleanup;
-
 public:
   CrashRecoveryContextCleanupRegistrar(T *x)
     : cleanup(Cleanup::create(x)) {
@@ -181,14 +185,16 @@ public:
       cleanup->getContext()->registerCleanup(cleanup);
   }
 
-  ~CrashRecoveryContextCleanupRegistrar() { unregister(); }
-
+  ~CrashRecoveryContextCleanupRegistrar() {
+    unregister();
+  }
+  
   void unregister() {
     if (cleanup && !cleanup->cleanupFired)
       cleanup->getContext()->unregisterCleanup(cleanup);
-    cleanup = nullptr;
+    cleanup = 0;
   }
 };
-} // end namespace llvm
+}
 
-#endif // LLVM_SUPPORT_CRASHRECOVERYCONTEXT_H
+#endif

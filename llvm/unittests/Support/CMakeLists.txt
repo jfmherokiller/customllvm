@@ -1,5 +1,6 @@
 set(LLVM_LINK_COMPONENTS
   Support
+  Core
   )
 
 add_llvm_unittest(SupportTests
@@ -7,53 +8,33 @@ add_llvm_unittest(SupportTests
   AllocatorTest.cpp
   ArrayRecyclerTest.cpp
   BlockFrequencyTest.cpp
-  BranchProbabilityTest.cpp
   Casting.cpp
   CommandLineTest.cpp
   CompressionTest.cpp
+  ConstantRangeTest.cpp
   ConvertUTFTest.cpp
   DataExtractorTest.cpp
-  DwarfTest.cpp
-  EndianStreamTest.cpp
   EndianTest.cpp
-  ErrorTest.cpp
   ErrorOrTest.cpp
   FileOutputBufferTest.cpp
-  LEB128Test.cpp
-  LineIteratorTest.cpp
+  LeakDetectorTest.cpp
   LockFileManagerTest.cpp
-  MD5Test.cpp
   ManagedStatic.cpp
   MathExtrasTest.cpp
+  MD5Test.cpp
   MemoryBufferTest.cpp
   MemoryTest.cpp
   Path.cpp
   ProcessTest.cpp
   ProgramTest.cpp
   RegexTest.cpp
-  ReplaceFileTest.cpp
-  ScaledNumberTest.cpp
   SourceMgrTest.cpp
-  SpecialCaseListTest.cpp
-  StreamingMemoryObjectTest.cpp
-  StringPool.cpp
   SwapByteOrderTest.cpp
-  TargetParserTest.cpp
-  ThreadLocalTest.cpp
-  ThreadPool.cpp
-  TimerTest.cpp
   TimeValueTest.cpp
-  TypeNameTest.cpp
-  TrailingObjectsTest.cpp
   UnicodeTest.cpp
+  ValueHandleTest.cpp
   YAMLIOTest.cpp
   YAMLParserTest.cpp
   formatted_raw_ostream_test.cpp
   raw_ostream_test.cpp
-  raw_pwrite_stream_test.cpp
-  raw_sha1_ostream_test.cpp
-  xxhashTest.cpp
   )
-
-# ManagedStatic.cpp uses <pthread>.
-target_link_libraries(SupportTests ${PTHREAD_LIB})

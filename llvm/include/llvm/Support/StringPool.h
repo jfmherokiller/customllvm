@@ -31,6 +31,7 @@
 
 #include "llvm/ADT/StringMap.h"
 #include <cassert>
+#include <new>
 
 namespace llvm {
 
@@ -47,7 +48,7 @@ namespace llvm {
       unsigned Refcount; ///< Number of referencing PooledStringPtrs.
 
     public:
-      PooledString() : Pool(nullptr), Refcount(0) { }
+      PooledString() : Pool(0), Refcount(0) { }
     };
 
     friend class PooledStringPtr;
@@ -80,7 +81,7 @@ namespace llvm {
     entry_t *S;
 
   public:
-    PooledStringPtr() : S(nullptr) {}
+    PooledStringPtr() : S(0) {}
 
     explicit PooledStringPtr(entry_t *E) : S(E) {
       if (S) ++S->getValue().Refcount;
@@ -106,7 +107,7 @@ namespace llvm {
         S->getValue().Pool->InternTable.remove(S);
         S->Destroy();
       }
-      S = nullptr;
+      S = 0;
     }
 
     ~PooledStringPtr() { clear(); }
@@ -127,10 +128,10 @@ namespace llvm {
     }
 
     inline const char *operator*() const { return begin(); }
-    inline explicit operator bool() const { return S != nullptr; }
+    inline operator bool() const { return S != 0; }
 
-    inline bool operator==(const PooledStringPtr &That) const { return S == That.S; }
-    inline bool operator!=(const PooledStringPtr &That) const { return S != That.S; }
+    inline bool operator==(const PooledStringPtr &That) { return S == That.S; }
+    inline bool operator!=(const PooledStringPtr &That) { return S != That.S; }
   };
 
 } // End llvm namespace

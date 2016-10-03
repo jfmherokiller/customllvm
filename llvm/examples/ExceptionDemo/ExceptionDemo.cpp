@@ -48,8 +48,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/IR/Verifier.h"
+#include "llvm/Analysis/Verifier.h"
 #include "llvm/ExecutionEngine/MCJIT.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/DataLayout.h"
@@ -57,8 +56,8 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Target/TargetOptions.h"
@@ -77,7 +76,6 @@
 #include <sstream>
 #include <stdexcept>
 
-#include <inttypes.h>
 
 #ifndef USE_GLOBAL_STR_CONSTS
 #define USE_GLOBAL_STR_CONSTS true
@@ -320,7 +318,7 @@ void printStr(char *toPrint) {
 }
 
 
-/// Deletes the true previously allocated exception whose address
+/// Deletes the true previosly allocated exception whose address
 /// is calculated from the supplied OurBaseException_t::unwindException
 /// member address. Handles (ignores), NULL pointers.
 /// @param expToDelete exception to delete
@@ -570,8 +568,8 @@ static bool handleActionValue(int64_t *resultAction,
   fprintf(stderr,
           "handleActionValue(...): exceptionObject = <%p>, "
           "excp = <%p>.\n",
-          (void*)exceptionObject,
-          (void*)excp);
+          exceptionObject,
+          excp);
 #endif
 
   const uint8_t *actionPos = (uint8_t*) actionEntry,
@@ -589,8 +587,8 @@ static bool handleActionValue(int64_t *resultAction,
 
 #ifdef DEBUG
     fprintf(stderr,
-            "handleActionValue(...):typeOffset: <%" PRIi64 ">, "
-            "actionOffset: <%" PRIi64 ">.\n",
+            "handleActionValue(...):typeOffset: <%lld>, "
+            "actionOffset: <%lld>.\n",
             typeOffset,
             actionOffset);
 #endif
@@ -849,7 +847,7 @@ _Unwind_Reason_Code ourPersonality(int version,
 #ifdef DEBUG
   fprintf(stderr,
           "ourPersonality(...):lsda = <%p>.\n",
-          (void*)lsda);
+          lsda);
 #endif
 
   // The real work of the personality function is captured here
@@ -917,7 +915,7 @@ void generateStringPrint(llvm::LLVMContext &context,
     new llvm::GlobalVariable(module,
                              stringConstant->getType(),
                              true,
-                             llvm::GlobalValue::PrivateLinkage,
+                             llvm::GlobalValue::LinkerPrivateLinkage,
                              stringConstant,
                              "");
   }
@@ -961,7 +959,7 @@ void generateIntegerPrint(llvm::LLVMContext &context,
     new llvm::GlobalVariable(module,
                              stringConstant->getType(),
                              true,
-                             llvm::GlobalValue::PrivateLinkage,
+                             llvm::GlobalValue::LinkerPrivateLinkage,
                              stringConstant,
                              "");
   }
@@ -972,7 +970,7 @@ void generateIntegerPrint(llvm::LLVMContext &context,
 
   llvm::Value *cast = builder.CreateBitCast(stringVar,
                                             builder.getInt8PtrTy());
-  builder.CreateCall(&printFunct, {&toPrint, cast});
+  builder.CreateCall2(&printFunct, &toPrint, cast);
 }
 
 
@@ -1124,11 +1122,14 @@ static llvm::BasicBlock *createCatchBlock(llvm::LLVMContext &context,
 /// @param numExceptionsToCatch length of exceptionTypesToCatch array
 /// @param exceptionTypesToCatch array of type info types to "catch"
 /// @returns generated function
-static llvm::Function *createCatchWrappedInvokeFunction(
-    llvm::Module &module, llvm::IRBuilder<> &builder,
-    llvm::legacy::FunctionPassManager &fpm, llvm::Function &toInvoke,
-    std::string ourId, unsigned numExceptionsToCatch,
-    unsigned exceptionTypesToCatch[]) {
+static
+llvm::Function *createCatchWrappedInvokeFunction(llvm::Module &module,
+                                             llvm::IRBuilder<> &builder,
+                                             llvm::FunctionPassManager &fpm,
+                                             llvm::Function &toInvoke,
+                                             std::string ourId,
+                                             unsigned numExceptionsToCatch,
+                                             unsigned exceptionTypesToCatch[]) {
 
   llvm::LLVMContext &context = module.getContext();
   llvm::Function *toPrint32Int = module.getFunction("print32Int");
@@ -1265,10 +1266,10 @@ static llvm::Function *createCatchWrappedInvokeFunction(
   builder.SetInsertPoint(exceptionBlock);
 
   llvm::Function *personality = module.getFunction("ourPersonality");
-  ret->setPersonalityFn(personality);
 
   llvm::LandingPadInst *caughtResult =
     builder.CreateLandingPad(ourCaughtResultType,
+                             personality,
                              numExceptionsToCatch,
                              "landingPad");
 
@@ -1294,11 +1295,10 @@ static llvm::Function *createCatchWrappedInvokeFunction(
   // (_Unwind_Exception instance). This member tells us whether or not
   // the exception is foreign.
   llvm::Value *unwindExceptionClass =
-      builder.CreateLoad(builder.CreateStructGEP(
-          ourUnwindExceptionType,
-          builder.CreatePointerCast(unwindException,
-                                    ourUnwindExceptionType->getPointerTo()),
-          0));
+    builder.CreateLoad(builder.CreateStructGEP(
+             builder.CreatePointerCast(unwindException,
+                                       ourUnwindExceptionType->getPointerTo()),
+                                               0));
 
   // Branch to the externalExceptionBlock if the exception is foreign or
   // to a catch router if not. Either way the finally block will be run.
@@ -1338,10 +1338,10 @@ static llvm::Function *createCatchWrappedInvokeFunction(
   //
   // Note: Index is not relative to pointer but instead to structure
   //       unlike a true getelementptr (GEP) instruction
-  typeInfoThrown = builder.CreateStructGEP(ourExceptionType, typeInfoThrown, 0);
+  typeInfoThrown = builder.CreateStructGEP(typeInfoThrown, 0);
 
   llvm::Value *typeInfoThrownType =
-      builder.CreateStructGEP(builder.getInt8PtrTy(), typeInfoThrown, 0);
+  builder.CreateStructGEP(typeInfoThrown, 0);
 
   generateIntegerPrint(context,
                        module,
@@ -1389,11 +1389,13 @@ static llvm::Function *createCatchWrappedInvokeFunction(
 /// @param nativeThrowFunct function which will throw a foreign exception
 ///        if the above nativeThrowType matches generated function's arg.
 /// @returns generated function
-static llvm::Function *
-createThrowExceptionFunction(llvm::Module &module, llvm::IRBuilder<> &builder,
-                             llvm::legacy::FunctionPassManager &fpm,
-                             std::string ourId, int32_t nativeThrowType,
-                             llvm::Function &nativeThrowFunct) {
+static
+llvm::Function *createThrowExceptionFunction(llvm::Module &module,
+                                             llvm::IRBuilder<> &builder,
+                                             llvm::FunctionPassManager &fpm,
+                                             std::string ourId,
+                                             int32_t nativeThrowType,
+                                             llvm::Function &nativeThrowFunct) {
   llvm::LLVMContext &context = module.getContext();
   namedValues.clear();
   ArgTypes unwindArgTypes;
@@ -1506,10 +1508,10 @@ static void createStandardUtilityFunctions(unsigned numTypeInfos,
 /// @param nativeThrowFunctName name of external function which will throw
 ///        a foreign exception
 /// @returns outermost generated test function.
-llvm::Function *
-createUnwindExceptionTest(llvm::Module &module, llvm::IRBuilder<> &builder,
-                          llvm::legacy::FunctionPassManager &fpm,
-                          std::string nativeThrowFunctName) {
+llvm::Function *createUnwindExceptionTest(llvm::Module &module,
+                                          llvm::IRBuilder<> &builder,
+                                          llvm::FunctionPassManager &fpm,
+                                          std::string nativeThrowFunctName) {
   // Number of type infos to generate
   unsigned numTypeInfos = 6;
 
@@ -1560,7 +1562,7 @@ createUnwindExceptionTest(llvm::Module &module, llvm::IRBuilder<> &builder,
   return(outerCatchFunct);
 }
 
-namespace {
+
 /// Represents our foreign exceptions
 class OurCppRunException : public std::runtime_error {
 public:
@@ -1575,9 +1577,9 @@ public:
                                  std::runtime_error::operator=(toCopy)));
   }
 
-  ~OurCppRunException(void) throw() override {}
+  ~OurCppRunException (void) throw () {}
 };
-} // end anonymous namespace
+
 
 /// Throws foreign C++ exception.
 /// @param ignoreIt unused parameter that allows function to match implied
@@ -1695,7 +1697,7 @@ static void createStandardUtilityFunctions(unsigned numTypeInfos,
 #ifdef DEBUG
   fprintf(stderr,
           "createStandardUtilityFunctions(...):ourBaseFromUnwindOffset "
-          "= %" PRIi64 ", sizeof(struct OurBaseException_t) - "
+          "= %lld, sizeof(struct OurBaseException_t) - "
           "sizeof(struct _Unwind_Exception) = %lu.\n",
           ourBaseFromUnwindOffset,
           sizeof(struct OurBaseException_t) -
@@ -1951,30 +1953,30 @@ int main(int argc, char *argv[]) {
 
   llvm::InitializeNativeTarget();
   llvm::InitializeNativeTargetAsmPrinter();
-  llvm::LLVMContext Context;
-  llvm::IRBuilder<> theBuilder(Context);
+  llvm::LLVMContext &context = llvm::getGlobalContext();
+  llvm::IRBuilder<> theBuilder(context);
 
   // Make the module, which holds all the code.
-  std::unique_ptr<llvm::Module> Owner =
-      llvm::make_unique<llvm::Module>("my cool jit", Context);
-  llvm::Module *module = Owner.get();
+  llvm::Module *module = new llvm::Module("my cool jit", context);
 
-  std::unique_ptr<llvm::RTDyldMemoryManager> MemMgr(new llvm::SectionMemoryManager());
+  llvm::RTDyldMemoryManager *MemMgr = new llvm::SectionMemoryManager();
 
   // Build engine with JIT
-  llvm::EngineBuilder factory(std::move(Owner));
+  llvm::EngineBuilder factory(module);
   factory.setEngineKind(llvm::EngineKind::JIT);
+  factory.setAllocateGVsWithCode(false);
   factory.setTargetOptions(Opts);
-  factory.setMCJITMemoryManager(std::move(MemMgr));
+  factory.setMCJITMemoryManager(MemMgr);
+  factory.setUseMCJIT(true);
   llvm::ExecutionEngine *executionEngine = factory.create();
 
   {
-    llvm::legacy::FunctionPassManager fpm(module);
+    llvm::FunctionPassManager fpm(module);
 
     // Set up the optimizer pipeline.
     // Start with registering info about how the
     // target lays out data structures.
-    module->setDataLayout(executionEngine->getDataLayout());
+    fpm.add(new llvm::DataLayout(*executionEngine->getDataLayout()));
 
     // Optimizations turned on
 #ifdef ADD_OPT_PASSES

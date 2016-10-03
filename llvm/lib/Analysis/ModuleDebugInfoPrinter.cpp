@@ -17,7 +17,8 @@
 
 #include "llvm/Analysis/Passes.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/IR/DebugInfo.h"
+#include "llvm/Assembly/Writer.h"
+#include "llvm/DebugInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -33,12 +34,12 @@ namespace {
       initializeModuleDebugInfoPrinterPass(*PassRegistry::getPassRegistry());
     }
 
-    bool runOnModule(Module &M) override;
+    virtual bool runOnModule(Module &M);
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesAll();
     }
-    void print(raw_ostream &O, const Module *M) const override;
+    virtual void print(raw_ostream &O, const Module *M) const;
   };
 }
 
@@ -55,72 +56,32 @@ bool ModuleDebugInfoPrinter::runOnModule(Module &M) {
   return false;
 }
 
-static void printFile(raw_ostream &O, StringRef Filename, StringRef Directory,
-                      unsigned Line = 0) {
-  if (Filename.empty())
-    return;
-
-  O << " from ";
-  if (!Directory.empty())
-    O << Directory << "/";
-  O << Filename;
-  if (Line)
-    O << ":" << Line;
-}
-
 void ModuleDebugInfoPrinter::print(raw_ostream &O, const Module *M) const {
-  // Printing the nodes directly isn't particularly helpful (since they
-  // reference other nodes that won't be printed, particularly for the
-  // filenames), so just print a few useful things.
-  for (DICompileUnit *CU : Finder.compile_units()) {
-    O << "Compile unit: ";
-    if (const char *Lang = dwarf::LanguageString(CU->getSourceLanguage()))
-      O << Lang;
-    else
-      O << "unknown-language(" << CU->getSourceLanguage() << ")";
-    printFile(O, CU->getFilename(), CU->getDirectory());
+  for (DebugInfoFinder::iterator I = Finder.compile_unit_begin(),
+       E = Finder.compile_unit_end(); I != E; ++I) {
+    O << "Compile Unit: ";
+    DICompileUnit(*I).print(O);
     O << '\n';
   }
 
-  for (DISubprogram *S : Finder.subprograms()) {
-    O << "Subprogram: " << S->getName();
-    printFile(O, S->getFilename(), S->getDirectory(), S->getLine());
-    if (!S->getLinkageName().empty())
-      O << " ('" << S->getLinkageName() << "')";
+  for (DebugInfoFinder::iterator I = Finder.subprogram_begin(),
+       E = Finder.subprogram_end(); I != E; ++I) {
+    O << "Subprogram: ";
+    DISubprogram(*I).print(O);
     O << '\n';
   }
 
-  for (const DIGlobalVariable *GV : Finder.global_variables()) {
-    O << "Global variable: " << GV->getName();
-    printFile(O, GV->getFilename(), GV->getDirectory(), GV->getLine());
-    if (!GV->getLinkageName().empty())
-      O << " ('" << GV->getLinkageName() << "')";
+  for (DebugInfoFinder::iterator I = Finder.global_variable_begin(),
+       E = Finder.global_variable_end(); I != E; ++I) {
+    O << "GlobalVariable: ";
+    DIGlobalVariable(*I).print(O);
     O << '\n';
   }
 
-  for (const DIType *T : Finder.types()) {
-    O << "Type:";
-    if (!T->getName().empty())
-      O << ' ' << T->getName();
-    printFile(O, T->getFilename(), T->getDirectory(), T->getLine());
-    if (auto *BT = dyn_cast<DIBasicType>(T)) {
-      O << " ";
-      if (const char *Encoding =
-              dwarf::AttributeEncodingString(BT->getEncoding()))
-        O << Encoding;
-      else
-        O << "unknown-encoding(" << BT->getEncoding() << ')';
-    } else {
-      O << ' ';
-      if (const char *Tag = dwarf::TagString(T->getTag()))
-        O << Tag;
-      else
-        O << "unknown-tag(" << T->getTag() << ")";
-    }
-    if (auto *CT = dyn_cast<DICompositeType>(T)) {
-      if (auto *S = CT->getRawIdentifier())
-        O << " (identifier: '" << S->getString() << "')";
-    }
+  for (DebugInfoFinder::iterator I = Finder.type_begin(),
+       E = Finder.type_end(); I != E; ++I) {
+    O << "Type: ";
+    DIType(*I).print(O);
     O << '\n';
   }
 }

@@ -1,6 +1,6 @@
 ; RUN: opt < %s -adce -disable-output
 
-define void @test() personality i32 (...)* @__gxx_personality_v0 {
+define void @test() {
         br i1 false, label %then, label %endif
 
 then:           ; preds = %0
@@ -8,7 +8,7 @@ then:           ; preds = %0
                         to label %invoke_cont unwind label %invoke_catch
 
 invoke_catch:           ; preds = %then
-        %exn = landingpad {i8*, i32}
+        %exn = landingpad {i8*, i32} personality i32 (...)* @__gxx_personality_v0
                  cleanup
         resume { i8*, i32 } %exn
 

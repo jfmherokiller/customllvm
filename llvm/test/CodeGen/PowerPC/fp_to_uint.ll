@@ -1,5 +1,4 @@
-; RUN: llc -verify-machineinstrs < %s -mattr=-vsx -march=ppc32 | grep fctiwz | count 1
-
+; RUN: llc < %s -march=ppc32 | grep fctiwz | count 1
 
 define i16 @foo(float %a) {
 entry:

@@ -1,4 +1,4 @@
-; RUN: llc -mtriple=arm -float-abi=soft -mattr=+vfp2 %s -o - | FileCheck %s
+; RUN: llc < %s -march=arm -mattr=+vfp2 | FileCheck %s
 
 define float @f1(float %a) {
 ; CHECK-LABEL: f1:
@@ -9,7 +9,7 @@ define float @f1(float %a) {
 define float @f2(float* %v, float %u) {
 ; CHECK-LABEL: f2:
 ; CHECK: vldr{{.*}}[
-        %tmp = load float, float* %v           ; <float> [#uses=1]
+        %tmp = load float* %v           ; <float> [#uses=1]
         %tmp1 = fadd float %tmp, %u              ; <float> [#uses=1]
         ret float %tmp1
 }
@@ -17,8 +17,8 @@ define float @f2(float* %v, float %u) {
 define float @f2offset(float* %v, float %u) {
 ; CHECK-LABEL: f2offset:
 ; CHECK: vldr{{.*}}, #4]
-        %addr = getelementptr float, float* %v, i32 1
-        %tmp = load float, float* %addr
+        %addr = getelementptr float* %v, i32 1
+        %tmp = load float* %addr
         %tmp1 = fadd float %tmp, %u
         ret float %tmp1
 }
@@ -26,8 +26,8 @@ define float @f2offset(float* %v, float %u) {
 define float @f2noffset(float* %v, float %u) {
 ; CHECK-LABEL: f2noffset:
 ; CHECK: vldr{{.*}}, #-4]
-        %addr = getelementptr float, float* %v, i32 -1
-        %tmp = load float, float* %addr
+        %addr = getelementptr float* %v, i32 -1
+        %tmp = load float* %addr
         %tmp1 = fadd float %tmp, %u
         ret float %tmp1
 }

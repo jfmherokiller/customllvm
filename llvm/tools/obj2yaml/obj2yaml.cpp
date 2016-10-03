@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Error.h"
 #include "obj2yaml.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Support/CommandLine.h"
@@ -17,46 +17,37 @@
 #include "llvm/Support/Signals.h"
 
 using namespace llvm;
-using namespace llvm::object;
 
-static std::error_code dumpObject(const ObjectFile &Obj) {
-  if (Obj.isCOFF())
-    return coff2yaml(outs(), cast<COFFObjectFile>(Obj));
-  if (Obj.isELF())
-    return elf2yaml(outs(), Obj);
-
-  return obj2yaml_error::unsupported_obj_file_format;
+namespace {
+enum ObjectFileType {
+  coff
+};
 }
 
-static std::error_code dumpInput(StringRef File) {
-  Expected<OwningBinary<Binary>> BinaryOrErr = createBinary(File);
-  if (!BinaryOrErr)
-    return errorToErrorCode(BinaryOrErr.takeError());
-
-  Binary &Binary = *BinaryOrErr.get().getBinary();
-  // Universal MachO is not a subclass of ObjectFile, so it needs to be handled
-  // here with the other binary types.
-  if (Binary.isMachO() || Binary.isMachOUniversalBinary())
-    return macho2yaml(outs(), Binary);
-  // TODO: If this is an archive, then burst it and dump each entry
-  if (ObjectFile *Obj = dyn_cast<ObjectFile>(&Binary))
-    return dumpObject(*Obj);
-
-  return obj2yaml_error::unrecognized_file_format;
-}
+cl::opt<ObjectFileType> InputFormat(
+    cl::desc("Choose input format"),
+    cl::values(clEnumVal(coff, "process COFF object files"), clEnumValEnd));
 
 cl::opt<std::string> InputFilename(cl::Positional, cl::desc("<input file>"),
                                    cl::init("-"));
 
 int main(int argc, char *argv[]) {
   cl::ParseCommandLineOptions(argc, argv);
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
+  sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y; // Call llvm_shutdown() on exit.
 
-  if (std::error_code EC = dumpInput(InputFilename)) {
-    errs() << "Error: '" << EC.message() << "'\n";
-    return 1;
+  // Process the input file
+  OwningPtr<MemoryBuffer> buf;
+
+  // TODO: If this is an archive, then burst it and dump each entry
+  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename, buf)) {
+    errs() << "Error: '" << ec.message() << "' opening file '" << InputFilename
+           << "'\n";
+  } else {
+    ec = coff2yaml(outs(), buf.take());
+    if (ec)
+      errs() << "Error: " << ec.message() << " dumping COFF file\n";
   }
 
   return 0;

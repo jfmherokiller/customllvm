@@ -13,15 +13,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm-c/ErrorHandling.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Config/config.h"     // Get autoconf configuration settings
-#include "llvm/Support/Compiler.h"
+#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Signals.h"
+#include "llvm/Support/ThreadLocal.h"
 #include "llvm/Support/Watchdog.h"
 #include "llvm/Support/raw_ostream.h"
-
-#include <tuple>
+#include "llvm-c/Core.h"
 
 #ifdef HAVE_CRASHREPORTERCLIENT_H
 #include <CrashReporterClient.h>
@@ -29,52 +28,30 @@
 
 using namespace llvm;
 
-// If backtrace support is not enabled, compile out support for pretty stack
-// traces.  This has the secondary effect of not requiring thread local storage
-// when backtrace support is disabled.
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
+static ManagedStatic<sys::ThreadLocal<const PrettyStackTraceEntry> > PrettyStackTraceHead;
 
-// We need a thread local pointer to manage the stack of our stack trace
-// objects, but we *really* cannot tolerate destructors running and do not want
-// to pay any overhead of synchronizing. As a consequence, we use a raw
-// thread-local variable.
-static LLVM_THREAD_LOCAL PrettyStackTraceEntry *PrettyStackTraceHead = nullptr;
-
-namespace llvm {
-PrettyStackTraceEntry *ReverseStackTrace(PrettyStackTraceEntry *Head) {
-  PrettyStackTraceEntry *Prev = nullptr;
-  while (Head)
-    std::tie(Prev, Head, Head->NextEntry) =
-        std::make_tuple(Head, Head->NextEntry, Prev);
-  return Prev;
-}
-}
-
-static void PrintStack(raw_ostream &OS) {
-  // Print out the stack in reverse order. To avoid recursion (which is likely
-  // to fail if we crashed due to stack overflow), we do an up-front pass to
-  // reverse the stack, then print it, then reverse it again.
-  unsigned ID = 0;
-  PrettyStackTraceEntry *ReversedStack =
-      llvm::ReverseStackTrace(PrettyStackTraceHead);
-  for (const PrettyStackTraceEntry *Entry = ReversedStack; Entry;
-       Entry = Entry->getNextEntry()) {
-    OS << ID++ << ".\t";
+static unsigned PrintStack(const PrettyStackTraceEntry *Entry, raw_ostream &OS){
+  unsigned NextID = 0;
+  if (Entry->getNextEntry())
+    NextID = PrintStack(Entry->getNextEntry(), OS);
+  OS << NextID << ".\t";
+  {
     sys::Watchdog W(5);
     Entry->print(OS);
   }
-  llvm::ReverseStackTrace(ReversedStack);
+  
+  return NextID+1;
 }
 
 /// PrintCurStackTrace - Print the current stack trace to the specified stream.
 static void PrintCurStackTrace(raw_ostream &OS) {
   // Don't print an empty trace.
-  if (!PrettyStackTraceHead) return;
+  if (PrettyStackTraceHead->get() == 0) return;
   
   // If there are pretty stack frames registered, walk and emit them.
   OS << "Stack dump:\n";
   
-  PrintStack(OS);
+  PrintStack(PrettyStackTraceHead->get(), OS);
   OS.flush();
 }
 
@@ -122,23 +99,28 @@ static void CrashHandler(void *) {
 #endif
 }
 
-// defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
-#endif
-
 PrettyStackTraceEntry::PrettyStackTraceEntry() {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
   // Link ourselves.
-  NextEntry = PrettyStackTraceHead;
-  PrettyStackTraceHead = this;
-#endif
+  NextEntry = PrettyStackTraceHead->get();
+  PrettyStackTraceHead->set(this);
 }
 
 PrettyStackTraceEntry::~PrettyStackTraceEntry() {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
-  assert(PrettyStackTraceHead == this &&
+  // Do nothing if PrettyStackTraceHead is uninitialized. This can only happen
+  // if a shutdown occurred after we created the PrettyStackTraceEntry. That
+  // does occur in the following idiom:
+  //
+  // PrettyStackTraceProgram X(...);
+  // llvm_shutdown_obj Y;
+  //
+  // Without this check, we may end up removing ourselves from the stack trace
+  // after PrettyStackTraceHead has already been destroyed.
+  if (!PrettyStackTraceHead.isConstructed())
+    return;
+  
+  assert(PrettyStackTraceHead->get() == this &&
          "Pretty stack trace entry destruction is out of order");
-  PrettyStackTraceHead = NextEntry;
-#endif
+  PrettyStackTraceHead->set(getNextEntry());
 }
 
 void PrettyStackTraceString::print(raw_ostream &OS) const {
@@ -153,34 +135,15 @@ void PrettyStackTraceProgram::print(raw_ostream &OS) const {
   OS << '\n';
 }
 
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
 static bool RegisterCrashPrinter() {
-  sys::AddSignalHandler(CrashHandler, nullptr);
+  sys::AddSignalHandler(CrashHandler, 0);
   return false;
 }
-#endif
 
 void llvm::EnablePrettyStackTrace() {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
   // The first time this is called, we register the crash printer.
   static bool HandlerRegistered = RegisterCrashPrinter();
   (void)HandlerRegistered;
-#endif
-}
-
-const void *llvm::SavePrettyStackState() {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
-  return PrettyStackTraceHead;
-#else
-  return nullptr;
-#endif
-}
-
-void llvm::RestorePrettyStackState(const void *Top) {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
-  PrettyStackTraceHead =
-      static_cast<PrettyStackTraceEntry *>(const_cast<void *>(Top));
-#endif
 }
 
 void LLVMEnablePrettyStackTrace() {

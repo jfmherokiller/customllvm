@@ -1,13 +1,6 @@
 ; Test that the pow library call simplifier works correctly.
 ;
 ; RUN: opt < %s -instcombine -S | FileCheck %s
-; RUN: opt -instcombine -S < %s -mtriple=x86_64-apple-macosx10.9 | FileCheck %s --check-prefix=CHECK-EXP10
-; RUN: opt -instcombine -S < %s -mtriple=arm-apple-ios7.0 | FileCheck %s --check-prefix=CHECK-EXP10
-; RUN: opt -instcombine -S < %s -mtriple=x86_64-apple-macosx10.8 | FileCheck %s --check-prefix=CHECK-NO-EXP10
-; RUN: opt -instcombine -S < %s -mtriple=arm-apple-ios6.0 | FileCheck %s --check-prefix=CHECK-NO-EXP10
-; RUN: opt -instcombine -S < %s -mtriple=x86_64-netbsd | FileCheck %s --check-prefix=CHECK-NO-EXP10
-; RUN: opt -instcombine -S < %s -mtriple=arm-apple-tvos9.0 | FileCheck %s --check-prefix=CHECK-EXP10
-; RUN: opt -instcombine -S < %s -mtriple=arm-apple-watchos2.0 | FileCheck %s --check-prefix=CHECK-EXP10
 ; rdar://7251832
 
 ; NOTE: The readonly attribute on the pow call should be preserved
@@ -37,7 +30,7 @@ define double @test_simplify2(double %x) {
 define float @test_simplify3(float %x) {
 ; CHECK-LABEL: @test_simplify3(
   %retval = call float @powf(float 2.0, float %x)
-; CHECK-NEXT: [[EXP2F:%[a-z0-9]+]] = call float @llvm.exp2.f32(float %x)
+; CHECK-NEXT: [[EXP2F:%[a-z0-9]+]] = call float @exp2f(float %x) [[NUW_RO:#[0-9]+]]
   ret float %retval
 ; CHECK-NEXT: ret float [[EXP2F]]
 }
@@ -45,7 +38,7 @@ define float @test_simplify3(float %x) {
 define double @test_simplify4(double %x) {
 ; CHECK-LABEL: @test_simplify4(
   %retval = call double @pow(double 2.0, double %x)
-; CHECK-NEXT: [[EXP2:%[a-z0-9]+]] = call double @llvm.exp2.f64(double %x)
+; CHECK-NEXT: [[EXP2:%[a-z0-9]+]] = call double @exp2(double %x) [[NUW_RO]]
   ret double %retval
 ; CHECK-NEXT: ret double [[EXP2]]
 }
@@ -71,7 +64,7 @@ define double @test_simplify6(double %x) {
 define float @test_simplify7(float %x) {
 ; CHECK-LABEL: @test_simplify7(
   %retval = call float @powf(float %x, float 0.5)
-; CHECK-NEXT: [[SQRTF:%[a-z0-9]+]] = call float @sqrtf(float %x) [[NUW_RO:#[0-9]+]]
+; CHECK-NEXT: [[SQRTF:%[a-z0-9]+]] = call float @sqrtf(float %x) [[NUW_RO]]
 ; CHECK-NEXT: [[FABSF:%[a-z0-9]+]] = call float @fabsf(float [[SQRTF]]) [[NUW_RO]]
 ; CHECK-NEXT: [[FCMP:%[a-z0-9]+]] = fcmp oeq float %x, 0xFFF0000000000000
 ; CHECK-NEXT: [[SELECT:%[a-z0-9]+]] = select i1 [[FCMP]], float 0x7FF0000000000000, float [[FABSF]]
@@ -162,32 +155,12 @@ declare double @llvm.pow.f64(double %Val, double %Power)
 define double @test_simplify17(double %x) {
 ; CHECK-LABEL: @test_simplify17(
   %retval = call double @llvm.pow.f64(double %x, double 0.5)
-; CHECK-NEXT: [[SQRT:%[a-z0-9]+]] = call double @sqrt(double %x)
-; CHECK-NEXT: [[FABS:%[a-z0-9]+]] = call double @fabs(double [[SQRT]])
+; CHECK-NEXT: [[SQRT:%[a-z0-9]+]] = call double @sqrt(double %x) [[NUW_RO]]
+; CHECK-NEXT: [[FABS:%[a-z0-9]+]] = call double @fabs(double [[SQRT]]) [[NUW_RO]]
 ; CHECK-NEXT: [[FCMP:%[a-z0-9]+]] = fcmp oeq double %x, 0xFFF0000000000000
 ; CHECK-NEXT: [[SELECT:%[a-z0-9]+]] = select i1 [[FCMP]], double 0x7FF0000000000000, double [[FABS]]
   ret double %retval
 ; CHECK-NEXT: ret double [[SELECT]]
-}
-
-; Check pow(10.0, x) -> __exp10(x) on OS X 10.9+ and iOS 7.0+.
-
-define float @test_simplify18(float %x) {
-; CHECK-LABEL: @test_simplify18(
-  %retval = call float @powf(float 10.0, float %x)
-; CHECK-EXP10: [[EXP10F:%[_a-z0-9]+]] = call float @__exp10f(float %x) [[NUW_RO:#[0-9]+]]
-  ret float %retval
-; CHECK-EXP10: ret float [[EXP10F]]
-; CHECK-NO-EXP10: call float @powf
-}
-
-define double @test_simplify19(double %x) {
-; CHECK-LABEL: @test_simplify19(
-  %retval = call double @pow(double 10.0, double %x)
-; CHECK-EXP10: [[EXP10:%[_a-z0-9]+]] = call double @__exp10(double %x) [[NUW_RO]]
-  ret double %retval
-; CHECK-EXP10: ret double [[EXP10]]
-; CHECK-NO-EXP10: call double @pow
 }
 
 ; CHECK: attributes [[NUW_RO]] = { nounwind readonly }

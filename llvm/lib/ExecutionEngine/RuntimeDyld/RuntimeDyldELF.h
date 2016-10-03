@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDELF_H
-#define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDELF_H
+#ifndef LLVM_RUNTIME_DYLD_ELF_H
+#define LLVM_RUNTIME_DYLD_ELF_H
 
 #include "RuntimeDyldImpl.h"
 #include "llvm/ADT/DenseMap.h"
@@ -20,59 +20,74 @@
 using namespace llvm;
 
 namespace llvm {
-namespace object {
-class ELFObjectFileBase;
-}
+
+namespace {
+  // Helper for extensive error checking in debug builds.
+  error_code Check(error_code Err) {
+    if (Err) {
+      report_fatal_error(Err.message());
+    }
+    return Err;
+  }
+} // end anonymous namespace
 
 class RuntimeDyldELF : public RuntimeDyldImpl {
+  void resolveRelocation(const SectionEntry &Section,
+                         uint64_t Offset,
+                         uint64_t Value,
+                         uint32_t Type,
+                         int64_t Addend,
+                         uint64_t SymOffset=0);
 
-  void resolveRelocation(const SectionEntry &Section, uint64_t Offset,
-                         uint64_t Value, uint32_t Type, int64_t Addend,
-                         uint64_t SymOffset = 0, SID SectionID = 0);
-
-  void resolveX86_64Relocation(const SectionEntry &Section, uint64_t Offset,
-                               uint64_t Value, uint32_t Type, int64_t Addend,
+  void resolveX86_64Relocation(const SectionEntry &Section,
+                               uint64_t Offset,
+                               uint64_t Value,
+                               uint32_t Type,
+                               int64_t  Addend,
                                uint64_t SymOffset);
 
-  void resolveX86Relocation(const SectionEntry &Section, uint64_t Offset,
-                            uint32_t Value, uint32_t Type, int32_t Addend);
+  void resolveX86Relocation(const SectionEntry &Section,
+                            uint64_t Offset,
+                            uint32_t Value,
+                            uint32_t Type,
+                            int32_t Addend);
 
-  void resolveAArch64Relocation(const SectionEntry &Section, uint64_t Offset,
-                                uint64_t Value, uint32_t Type, int64_t Addend);
+  void resolveAArch64Relocation(const SectionEntry &Section,
+                                uint64_t Offset,
+                                uint64_t Value,
+                                uint32_t Type,
+                                int64_t Addend);
 
-  void resolveARMRelocation(const SectionEntry &Section, uint64_t Offset,
-                            uint32_t Value, uint32_t Type, int32_t Addend);
+  void resolveARMRelocation(const SectionEntry &Section,
+                            uint64_t Offset,
+                            uint32_t Value,
+                            uint32_t Type,
+                            int32_t Addend);
 
-  void resolveMIPSRelocation(const SectionEntry &Section, uint64_t Offset,
-                             uint32_t Value, uint32_t Type, int32_t Addend);
+  void resolveMIPSRelocation(const SectionEntry &Section,
+                             uint64_t Offset,
+                             uint32_t Value,
+                             uint32_t Type,
+                             int32_t Addend);
 
-  void resolvePPC32Relocation(const SectionEntry &Section, uint64_t Offset,
-                              uint64_t Value, uint32_t Type, int64_t Addend);
+  void resolvePPC64Relocation(const SectionEntry &Section,
+                              uint64_t Offset,
+                              uint64_t Value,
+                              uint32_t Type,
+                              int64_t Addend);
 
-  void resolvePPC64Relocation(const SectionEntry &Section, uint64_t Offset,
-                              uint64_t Value, uint32_t Type, int64_t Addend);
+  void resolveSystemZRelocation(const SectionEntry &Section,
+                                uint64_t Offset,
+                                uint64_t Value,
+                                uint32_t Type,
+                                int64_t Addend);
 
-  void resolveSystemZRelocation(const SectionEntry &Section, uint64_t Offset,
-                                uint64_t Value, uint32_t Type, int64_t Addend);
-
-  void resolveMIPS64Relocation(const SectionEntry &Section, uint64_t Offset,
-                               uint64_t Value, uint32_t Type, int64_t Addend,
-                               uint64_t SymOffset, SID SectionID);
-
-  int64_t evaluateMIPS64Relocation(const SectionEntry &Section,
-                                   uint64_t Offset, uint64_t Value,
-                                   uint32_t Type,  int64_t Addend,
-                                   uint64_t SymOffset, SID SectionID);
-
-  void applyMIPS64Relocation(uint8_t *TargetPtr, int64_t CalculatedValue,
-                             uint32_t Type);
-
-  unsigned getMaxStubSize() override {
-    if (Arch == Triple::aarch64 || Arch == Triple::aarch64_be)
+  unsigned getMaxStubSize() {
+    if (Arch == Triple::aarch64)
       return 20; // movz; movk; movk; movk; br
     if (Arch == Triple::arm || Arch == Triple::thumb)
       return 8; // 32-bit instruction and 32-bit address
-    else if (IsMipsO32ABI)
+    else if (Arch == Triple::mipsel || Arch == Triple::mips)
       return 16;
     else if (Arch == Triple::ppc64 || Arch == Triple::ppc64le)
       return 44;
@@ -84,70 +99,28 @@ class RuntimeDyldELF : public RuntimeDyldImpl {
       return 0;
   }
 
-  unsigned getStubAlignment() override {
+  unsigned getStubAlignment() {
     if (Arch == Triple::systemz)
       return 8;
     else
       return 1;
   }
 
-  void setMipsABI(const ObjectFile &Obj) override;
+  uint64_t findPPC64TOC() const;
+  void findOPDEntrySection(ObjectImage &Obj,
+                           ObjSectionToIDMap &LocalSections,
+                           RelocationValueRef &Rel);
 
-  Error findPPC64TOCSection(const ELFObjectFileBase &Obj,
-                            ObjSectionToIDMap &LocalSections,
-                            RelocationValueRef &Rel);
-  Error findOPDEntrySection(const ELFObjectFileBase &Obj,
-                            ObjSectionToIDMap &LocalSections,
-                            RelocationValueRef &Rel);
-
+  uint64_t findGOTEntry(uint64_t LoadAddr, uint64_t Offset);
   size_t getGOTEntrySize();
 
-  SectionEntry &getSection(unsigned SectionID) { return Sections[SectionID]; }
+  virtual void updateGOTEntries(StringRef Name, uint64_t Addr);
 
-  // Allocate no GOT entries for use in the given section.
-  uint64_t allocateGOTEntries(unsigned SectionID, unsigned no);
-
-  // Resolve the relvative address of GOTOffset in Section ID and place
-  // it at the given Offset
-  void resolveGOTOffsetRelocation(unsigned SectionID, uint64_t Offset,
-                                  uint64_t GOTOffset);
-
-  // For a GOT entry referenced from SectionID, compute a relocation entry
-  // that will place the final resolved value in the GOT slot
-  RelocationEntry computeGOTOffsetRE(unsigned SectionID,
-                                     uint64_t GOTOffset,
-                                     uint64_t SymbolOffset,
-                                     unsigned Type);
-
-  // Compute the address in memory where we can find the placeholder
-  void *computePlaceholderAddress(unsigned SectionID, uint64_t Offset) const;
-
-  // Split out common case for createing the RelocationEntry for when the relocation requires
-  // no particular advanced processing.
-  void processSimpleRelocation(unsigned SectionID, uint64_t Offset, unsigned RelType, RelocationValueRef Value);
-
-  // Return matching *LO16 relocation (Mips specific)
-  uint32_t getMatchingLoRelocation(uint32_t RelType,
-                                   bool IsLocal = false) const;
-
-  // The tentative ID for the GOT section
-  unsigned GOTSectionID;
-
-  // Records the current number of allocated slots in the GOT
-  // (This would be equivalent to GOTEntries.size() were it not for relocations
-  // that consume more than one slot)
-  unsigned CurrentGOTIndex;
-
-  // A map from section to a GOT section that has entries for section's GOT
-  // relocations. (Mips64 specific)
-  DenseMap<SID, SID> SectionToGOTMap;
-
-  // A map to avoid duplicate got entries (Mips64 specific)
-  StringMap<uint64_t> GOTSymbolOffsets;
-
-  // *HI16 relocations will be added for resolving when we find matching
-  // *LO16 part. (Mips specific)
-  SmallVector<std::pair<RelocationValueRef, RelocationEntry>, 8> PendingRelocs;
+  // Relocation entries for symbols whose position-independant offset is
+  // updated in a global offset table.
+  typedef SmallVector<RelocationValueRef, 2> GOTRelocations;
+  GOTRelocations GOTEntries; // List of entries requiring finalization.
+  SmallVector<std::pair<SID, GOTRelocations>, 8> GOTs; // Allocated tables.
 
   // When a module is loaded we save the SectionID of the EH frame section
   // in a table until we receive a request to register all unregistered
@@ -155,27 +128,23 @@ class RuntimeDyldELF : public RuntimeDyldImpl {
   SmallVector<SID, 2> UnregisteredEHFrameSections;
   SmallVector<SID, 2> RegisteredEHFrameSections;
 
-  bool relocationNeedsStub(const RelocationRef &R) const override;
-
 public:
-  RuntimeDyldELF(RuntimeDyld::MemoryManager &MemMgr,
-                 JITSymbolResolver &Resolver);
-  ~RuntimeDyldELF() override;
+  RuntimeDyldELF(RTDyldMemoryManager *mm) : RuntimeDyldImpl(mm)
+                                          {}
 
-  std::unique_ptr<RuntimeDyld::LoadedObjectInfo>
-  loadObject(const object::ObjectFile &O) override;
-
-  void resolveRelocation(const RelocationEntry &RE, uint64_t Value) override;
-  Expected<relocation_iterator>
-  processRelocationRef(unsigned SectionID, relocation_iterator RelI,
-                       const ObjectFile &Obj,
-                       ObjSectionToIDMap &ObjSectionToID,
-                       StubMap &Stubs) override;
-  bool isCompatibleFile(const object::ObjectFile &Obj) const override;
-  void registerEHFrames() override;
-  void deregisterEHFrames() override;
-  Error finalizeLoad(const ObjectFile &Obj,
-                     ObjSectionToIDMap &SectionMap) override;
+  virtual void resolveRelocation(const RelocationEntry &RE, uint64_t Value);
+  virtual void processRelocationRef(unsigned SectionID,
+                                    RelocationRef RelI,
+                                    ObjectImage &Obj,
+                                    ObjSectionToIDMap &ObjSectionToID,
+                                    const SymbolTableMap &Symbols,
+                                    StubMap &Stubs);
+  virtual bool isCompatibleFormat(const ObjectBuffer *Buffer) const;
+  virtual ObjectImage *createObjectImage(ObjectBuffer *InputBuffer);
+  virtual void registerEHFrames();
+  virtual void deregisterEHFrames();
+  virtual void finalizeLoad(ObjSectionToIDMap &SectionMap);
+  virtual ~RuntimeDyldELF();
 };
 
 } // end namespace llvm

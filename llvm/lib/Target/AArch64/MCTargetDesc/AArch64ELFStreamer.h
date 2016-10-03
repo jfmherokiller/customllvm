@@ -11,16 +11,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_AARCH64_MCTARGETDESC_AARCH64ELFSTREAMER_H
-#define LLVM_LIB_TARGET_AARCH64_MCTARGETDESC_AARCH64ELFSTREAMER_H
+#ifndef LLVM_AARCH64_ELF_STREAMER_H
+#define LLVM_AARCH64_ELF_STREAMER_H
 
 #include "llvm/MC/MCELFStreamer.h"
 
 namespace llvm {
 
-MCELFStreamer *createAArch64ELFStreamer(MCContext &Context, MCAsmBackend &TAB,
-                                        raw_pwrite_stream &OS,
-                                        MCCodeEmitter *Emitter, bool RelaxAll);
+  MCELFStreamer* createAArch64ELFStreamer(MCContext &Context, MCAsmBackend &TAB,
+                                          raw_ostream &OS,
+                                          MCCodeEmitter *Emitter,
+                                          bool RelaxAll, bool NoExecStack);
 }
 
-#endif
+#endif // AArch64_ELF_STREAMER_H

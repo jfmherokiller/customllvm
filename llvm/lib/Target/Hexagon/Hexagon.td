@@ -21,41 +21,35 @@ include "llvm/Target/Target.td"
 // Hexagon Subtarget features.
 //===----------------------------------------------------------------------===//
 
-// Hexagon Architectures
-def ArchV4:  SubtargetFeature<"v4",  "HexagonArchVersion", "V4",  "Hexagon V4">;
-def ArchV5:  SubtargetFeature<"v5",  "HexagonArchVersion", "V5",  "Hexagon V5">;
-def ArchV55: SubtargetFeature<"v55", "HexagonArchVersion", "V55", "Hexagon V55">;
-def ArchV60: SubtargetFeature<"v60", "HexagonArchVersion", "V60", "Hexagon V60">;
-
-def FeatureHVX: SubtargetFeature<"hvx", "UseHVXOps", "true",
-      "Hexagon HVX instructions">;
-def FeatureHVXDbl: SubtargetFeature<"hvx-double", "UseHVXDblOps", "true",
-      "Hexagon HVX Double instructions">;
-def FeatureLongCalls: SubtargetFeature<"long-calls", "UseLongCalls", "true",
-      "Use constant-extended calls">;
+// Hexagon Archtectures
+def ArchV2       : SubtargetFeature<"v2", "HexagonArchVersion", "V2",
+                                    "Hexagon v2">;
+def ArchV3       : SubtargetFeature<"v3", "HexagonArchVersion", "V3",
+                                    "Hexagon v3">;
+def ArchV4       : SubtargetFeature<"v4", "HexagonArchVersion", "V4",
+                                    "Hexagon v4">;
+def ArchV5       : SubtargetFeature<"v5", "HexagonArchVersion", "V5",
+                                    "Hexagon v5">;
 
 //===----------------------------------------------------------------------===//
 // Hexagon Instruction Predicate Definitions.
 //===----------------------------------------------------------------------===//
-def HasV5T             : Predicate<"HST->hasV5TOps()">;
-def NoV5T              : Predicate<"!HST->hasV5TOps()">;
-def HasV55T            : Predicate<"HST->hasV55TOps()">,
-                         AssemblerPredicate<"ArchV55">;
-def HasV60T            : Predicate<"HST->hasV60TOps()">,
-                         AssemblerPredicate<"ArchV60">;
-def UseMEMOP           : Predicate<"HST->useMemOps()">;
-def IEEERndNearV5T     : Predicate<"HST->modeIEEERndNear()">;
-def UseHVXDbl          : Predicate<"HST->useHVXDblOps()">,
-                         AssemblerPredicate<"FeatureHVXDbl">;
-def UseHVXSgl          : Predicate<"HST->useHVXSglOps()">;
-def UseHVX             : Predicate<"HST->useHVXSglOps() ||HST->useHVXDblOps()">,
-                         AssemblerPredicate<"FeatureHVX">;
+def HasV2T                      : Predicate<"Subtarget.hasV2TOps()">;
+def HasV2TOnly                  : Predicate<"Subtarget.hasV2TOpsOnly()">;
+def NoV2T                       : Predicate<"!Subtarget.hasV2TOps()">;
+def HasV3T                      : Predicate<"Subtarget.hasV3TOps()">;
+def HasV3TOnly                  : Predicate<"Subtarget.hasV3TOpsOnly()">;
+def NoV3T                       : Predicate<"!Subtarget.hasV3TOps()">;
+def HasV4T                      : Predicate<"Subtarget.hasV4TOps()">;
+def NoV4T                       : Predicate<"!Subtarget.hasV4TOps()">;
+def HasV5T                      : Predicate<"Subtarget.hasV5TOps()">;
+def NoV5T                       : Predicate<"!Subtarget.hasV5TOps()">;
+def UseMEMOP                    : Predicate<"Subtarget.useMemOps()">;
+def IEEERndNearV5T              : Predicate<"Subtarget.modeIEEERndNear()">;
 
 //===----------------------------------------------------------------------===//
 // Classes used for relation maps.
 //===----------------------------------------------------------------------===//
-
-class ImmRegShl;
 // PredRel - Filter class used to relate non-predicated instructions with their
 // predicated forms.
 class PredRel;
@@ -71,7 +65,6 @@ class NewValueRel: PredNewRel;
 // NewValueRel - Filter class used to relate load/store instructions having
 // different addressing modes with each other.
 class AddrModeRel: NewValueRel;
-class IntrinsicsRel;
 
 //===----------------------------------------------------------------------===//
 // Generate mapping table to relate non-predicate instructions with their
@@ -81,7 +74,7 @@ class IntrinsicsRel;
 def getPredOpcode : InstrMapping {
   let FilterClass = "PredRel";
   // Instructions with the same BaseOpcode and isNVStore values form a row.
-  let RowFields = ["BaseOpcode", "isNVStore", "PNewValue", "isNT"];
+  let RowFields = ["BaseOpcode", "isNVStore", "PNewValue"];
   // Instructions with the same predicate sense form a column.
   let ColFields = ["PredSense"];
   // The key column is the unpredicated instructions.
@@ -96,7 +89,7 @@ def getPredOpcode : InstrMapping {
 //
 def getFalsePredOpcode : InstrMapping {
   let FilterClass = "PredRel";
-  let RowFields = ["BaseOpcode", "PNewValue", "isNVStore", "isBrTaken", "isNT"];
+  let RowFields = ["BaseOpcode", "PNewValue", "isNVStore", "isBrTaken"];
   let ColFields = ["PredSense"];
   let KeyCol = ["true"];
   let ValueCols = [["false"]];
@@ -108,7 +101,7 @@ def getFalsePredOpcode : InstrMapping {
 //
 def getTruePredOpcode : InstrMapping {
   let FilterClass = "PredRel";
-  let RowFields = ["BaseOpcode", "PNewValue", "isNVStore", "isBrTaken", "isNT"];
+  let RowFields = ["BaseOpcode", "PNewValue", "isNVStore", "isBrTaken"];
   let ColFields = ["PredSense"];
   let KeyCol = ["false"];
   let ValueCols = [["true"]];
@@ -144,7 +137,7 @@ def getPredOldOpcode : InstrMapping {
 //
 def getNewValueOpcode : InstrMapping {
   let FilterClass = "NewValueRel";
-  let RowFields = ["BaseOpcode", "PredSense", "PNewValue", "addrMode", "isNT"];
+  let RowFields = ["BaseOpcode", "PredSense", "PNewValue"];
   let ColFields = ["NValueST"];
   let KeyCol = ["false"];
   let ValueCols = [["true"]];
@@ -156,28 +149,19 @@ def getNewValueOpcode : InstrMapping {
 //
 def getNonNVStore : InstrMapping {
   let FilterClass = "NewValueRel";
-  let RowFields = ["BaseOpcode", "PredSense", "PNewValue", "addrMode", "isNT"];
+  let RowFields = ["BaseOpcode", "PredSense", "PNewValue"];
   let ColFields = ["NValueST"];
   let KeyCol = ["true"];
   let ValueCols = [["false"]];
 }
 
-def getBaseWithImmOffset : InstrMapping {
+def getBasedWithImmOffset : InstrMapping {
   let FilterClass = "AddrModeRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore",
-                   "isFloat"];
+                   "isMEMri", "isFloat"];
   let ColFields = ["addrMode"];
   let KeyCol = ["Absolute"];
   let ValueCols = [["BaseImmOffset"]];
-}
-
-def getAbsoluteForm : InstrMapping {
-  let FilterClass = "AddrModeRel";
-  let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore",
-                   "isFloat"];
-  let ColFields = ["addrMode"];
-  let KeyCol = ["BaseImmOffset"];
-  let ValueCols = [["Absolute"]];
 }
 
 def getBaseWithRegOffset : InstrMapping {
@@ -188,22 +172,6 @@ def getBaseWithRegOffset : InstrMapping {
   let ValueCols = [["BaseRegOffset"]];
 }
 
-def xformRegToImmOffset : InstrMapping {
-  let FilterClass = "AddrModeRel";
-  let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
-  let ColFields = ["addrMode"];
-  let KeyCol = ["BaseRegOffset"];
-  let ValueCols = [["BaseImmOffset"]];
-}
-
-def getBaseWithLongOffset : InstrMapping {
-  let FilterClass = "ImmRegShl";
-  let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
-  let ColFields = ["addrMode"];
-  let KeyCol = ["BaseRegOffset"];
-  let ValueCols = [["BaseLongOffset"]];
-}
-
 def getRegForm : InstrMapping {
   let FilterClass = "ImmRegRel";
   let RowFields = ["CextOpcode", "PredSense", "PNewValue"];
@@ -212,37 +180,6 @@ def getRegForm : InstrMapping {
   let ValueCols = [["reg"]];
 }
 
-def getRegShlForm : InstrMapping {
-  let FilterClass = "ImmRegShl";
-  let RowFields = ["CextOpcode", "PredSense", "PNewValue", "isNVStore"];
-  let ColFields = ["InputType"];
-  let KeyCol = ["imm"];
-  let ValueCols = [["reg"]];
-}
-
-def notTakenBranchPrediction : InstrMapping {
-  let FilterClass = "PredRel";
-  let RowFields = ["BaseOpcode", "PNewValue",  "PredSense", "isBranch", "isPredicated"];
-  let ColFields = ["isBrTaken"];
-  let KeyCol = ["true"];
-  let ValueCols = [["false"]];
-}
-
-def takenBranchPrediction : InstrMapping {
-  let FilterClass = "PredRel";
-  let RowFields = ["BaseOpcode", "PNewValue",  "PredSense", "isBranch", "isPredicated"];
-  let ColFields = ["isBrTaken"];
-  let KeyCol = ["false"];
-  let ValueCols = [["true"]];
-}
-
-def getRealHWInstr : InstrMapping {
-  let FilterClass = "IntrinsicsRel";
-  let RowFields = ["BaseOpcode"];
-  let ColFields = ["InstrType"];
-  let KeyCol = ["Pseudo"];
-  let ValueCols = [["Pseudo"], ["Real"]];
-}
 //===----------------------------------------------------------------------===//
 // Register File, Calling Conv, Instruction Descriptions
 //===----------------------------------------------------------------------===//
@@ -263,32 +200,26 @@ class Proc<string Name, SchedMachineModel Model,
            list<SubtargetFeature> Features>
  : ProcessorModel<Name, Model, Features>;
 
-def : Proc<"hexagonv4",  HexagonModelV4,
-           [ArchV4]>;
-def : Proc<"hexagonv5",  HexagonModelV4,
-           [ArchV4, ArchV5]>;
-def : Proc<"hexagonv55", HexagonModelV55,
-           [ArchV4, ArchV5, ArchV55]>;
-def : Proc<"hexagonv60", HexagonModelV60,
-           [ArchV4, ArchV5, ArchV55, ArchV60, FeatureHVX]>;
+def : Proc<"hexagonv2", HexagonModel,   [ArchV2]>;
+def : Proc<"hexagonv3", HexagonModel,   [ArchV2, ArchV3]>;
+def : Proc<"hexagonv4", HexagonModelV4, [ArchV2, ArchV3, ArchV4]>;
+def : Proc<"hexagonv5", HexagonModelV4, [ArchV2, ArchV3, ArchV4, ArchV5]>;
+
+
+// Hexagon Uses the MC printer for assembler output, so make sure the TableGen
+// AsmWriter bits get associated with the correct class.
+def HexagonAsmWriter : AsmWriter {
+  string AsmWriterClassName  = "InstPrinter";
+  bit isMCAsmWriter = 1;
+}
 
 //===----------------------------------------------------------------------===//
 // Declare the target which we are implementing
 //===----------------------------------------------------------------------===//
 
-def HexagonAsmParser : AsmParser {
-  let ShouldEmitMatchRegisterAltName = 1;
-  bit HasMnemonicFirst = 0;
-}
-
-def HexagonAsmParserVariant : AsmParserVariant {
-  int Variant = 0;
-  string TokenizingCharacters = "#()=:.<>!+*";
-}
-
 def Hexagon : Target {
   // Pull in Instruction Info:
   let InstructionSet = HexagonInstrInfo;
-  let AssemblyParsers = [HexagonAsmParser];
-  let AssemblyParserVariants = [HexagonAsmParserVariant];
+
+  let AssemblyWriters = [HexagonAsmWriter];
 }

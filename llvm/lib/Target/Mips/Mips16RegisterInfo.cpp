@@ -12,20 +12,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "Mips16RegisterInfo.h"
+#include "Mips16InstrInfo.h"
 #include "Mips.h"
 #include "Mips16InstrInfo.h"
+#include "MipsAnalyzeImmediate.h"
 #include "MipsInstrInfo.h"
 #include "MipsMachineFunction.h"
 #include "MipsSubtarget.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/ValueTypes.h"
+#include "llvm/DebugInfo.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -36,9 +41,8 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "mips16-registerinfo"
-
-Mips16RegisterInfo::Mips16RegisterInfo() : MipsRegisterInfo() {}
+Mips16RegisterInfo::Mips16RegisterInfo(const MipsSubtarget &ST)
+  : MipsRegisterInfo(ST) {}
 
 bool Mips16RegisterInfo::requiresRegisterScavenging
   (const MachineFunction &MF) const {
@@ -61,7 +65,7 @@ bool Mips16RegisterInfo::saveScavengerRegister
    const TargetRegisterClass *RC,
    unsigned Reg) const {
   DebugLoc DL;
-  const TargetInstrInfo &TII = *MBB.getParent()->getSubtarget().getInstrInfo();
+  const TargetInstrInfo &TII = *MBB.getParent()->getTarget().getInstrInfo();
   TII.copyPhysReg(MBB, I, DL, Mips::T0, Reg, true);
   TII.copyPhysReg(MBB, UseMI, DL, Reg, Mips::T0, true);
   return true;
@@ -79,9 +83,9 @@ void Mips16RegisterInfo::eliminateFI(MachineBasicBlock::iterator II,
                                      int64_t SPOffset) const {
   MachineInstr &MI = *II;
   MachineFunction &MF = *MI.getParent()->getParent();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo *MFI = MF.getFrameInfo();
 
-  const std::vector<CalleeSavedInfo> &CSI = MFI.getCalleeSavedInfo();
+  const std::vector<CalleeSavedInfo> &CSI = MFI->getCalleeSavedInfo();
   int MinCSFI = 0;
   int MaxCSFI = -1;
 
@@ -102,7 +106,7 @@ void Mips16RegisterInfo::eliminateFI(MachineBasicBlock::iterator II,
   if (FrameIndex >= MinCSFI && FrameIndex <= MaxCSFI)
     FrameReg = Mips::SP;
   else {
-    const TargetFrameLowering *TFI = MF.getSubtarget().getFrameLowering();
+    const TargetFrameLowering *TFI = MF.getTarget().getFrameLowering();
     if (TFI->hasFP(MF)) {
       FrameReg = Mips::S0;
     }
@@ -136,7 +140,8 @@ void Mips16RegisterInfo::eliminateFI(MachineBasicBlock::iterator II,
     DebugLoc DL = II->getDebugLoc();
     unsigned NewImm;
     const Mips16InstrInfo &TII =
-        *static_cast<const Mips16InstrInfo *>(MF.getSubtarget().getInstrInfo());
+      *static_cast<const Mips16InstrInfo*>(
+        MBB.getParent()->getTarget().getInstrInfo());
     FrameReg = TII.loadImmediate(FrameReg, Offset, MBB, II, DL, NewImm);
     Offset = SignExtend64<16>(NewImm);
     IsKill = true;

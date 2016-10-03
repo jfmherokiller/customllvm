@@ -84,16 +84,10 @@ public:
   bool changedSince(unsigned tag) const { return tag != Tag; }
 
   // Add a live virtual register to this union and merge its segments.
-  void unify(LiveInterval &VirtReg, const LiveRange &Range);
-  void unify(LiveInterval &VirtReg) {
-    unify(VirtReg, VirtReg);
-  }
+  void unify(LiveInterval &VirtReg);
 
   // Remove a live virtual register's segments from this union.
-  void extract(LiveInterval &VirtReg, const LiveRange &Range);
-  void extract(LiveInterval &VirtReg) {
-    extract(VirtReg, VirtReg);
-  }
+  void extract(LiveInterval &VirtReg);
 
   // Remove all inserted virtual registers.
   void clear() { Segments.clear(); ++Tag; }
@@ -128,8 +122,8 @@ public:
     {}
 
     void clear() {
-      LiveUnion = nullptr;
-      VirtReg = nullptr;
+      LiveUnion = NULL;
+      VirtReg = NULL;
       InterferingVRegs.clear();
       CheckedFirstInterference = false;
       SeenAllInterferences = false;
@@ -179,8 +173,8 @@ public:
     }
 
   private:
-    Query(const Query&) = delete;
-    void operator=(const Query&) = delete;
+    Query(const Query&) LLVM_DELETED_FUNCTION;
+    void operator=(const Query&) LLVM_DELETED_FUNCTION;
   };
 
   // Array of LiveIntervalUnions.
@@ -188,7 +182,7 @@ public:
     unsigned Size;
     LiveIntervalUnion *LIUs;
   public:
-    Array() : Size(0), LIUs(nullptr) {}
+    Array() : Size(0), LIUs(0) {}
     ~Array() { clear(); }
 
     // Initialize the array to have Size entries.
@@ -202,11 +196,6 @@ public:
     LiveIntervalUnion& operator[](unsigned idx) {
       assert(idx <  Size && "idx out of bounds");
       return LIUs[idx];
-    }
-
-    const LiveIntervalUnion& operator[](unsigned Idx) const {
-      assert(Idx < Size && "Idx out of bounds");
-      return LIUs[Idx];
     }
   };
 };

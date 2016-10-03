@@ -11,10 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_MIPS_MIPSASMPRINTER_H
-#define LLVM_LIB_TARGET_MIPS_MIPSASMPRINTER_H
+#ifndef MIPSASMPRINTER_H
+#define MIPSASMPRINTER_H
 
-#include "Mips16HardFloatInfo.h"
 #include "MipsMCInstLower.h"
 #include "MipsMachineFunction.h"
 #include "MipsSubtarget.h"
@@ -31,7 +30,7 @@ class Module;
 class raw_ostream;
 
 class LLVM_LIBRARY_VISIBILITY MipsAsmPrinter : public AsmPrinter {
-  MipsTargetStreamer &getTargetStreamer() const;
+  MipsTargetStreamer &getTargetStreamer();
 
   void EmitInstrWithMacroNoAT(const MachineInstr *MI);
 
@@ -39,12 +38,6 @@ private:
   // tblgen'erated function.
   bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
                                    const MachineInstr *MI);
-
-  // Emit PseudoReturn, PseudoReturn64, PseudoIndirectBranch,
-  // and PseudoIndirectBranch64 as a JR, JR_MM, JALR, or JALR64 as appropriate
-  // for the target.
-  void emitPseudoIndirectBranch(MCStreamer &OutStreamer,
-                                const MachineInstr *MI);
 
   // lowerOperand - Convert a MachineOperand into the equivalent MCOperand.
   bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
@@ -57,40 +50,7 @@ private:
   /// pool entries so we can properly mark them as data regions.
   bool InConstantPool;
 
-  std::map<const char *, const llvm::Mips16HardFloatInfo::FuncSignature *>
-  StubsNeeded;
-
-  void emitInlineAsmStart() const override;
-
-  void emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
-                        const MCSubtargetInfo *EndInfo) const override;
-
-  void EmitJal(const MCSubtargetInfo &STI, MCSymbol *Symbol);
-
-  void EmitInstrReg(const MCSubtargetInfo &STI, unsigned Opcode, unsigned Reg);
-
-  void EmitInstrRegReg(const MCSubtargetInfo &STI, unsigned Opcode,
-                       unsigned Reg1, unsigned Reg2);
-
-  void EmitInstrRegRegReg(const MCSubtargetInfo &STI, unsigned Opcode,
-                          unsigned Reg1, unsigned Reg2, unsigned Reg3);
-
-  void EmitMovFPIntPair(const MCSubtargetInfo &STI, unsigned MovOpc,
-                        unsigned Reg1, unsigned Reg2, unsigned FPReg1,
-                        unsigned FPReg2, bool LE);
-
-  void EmitSwapFPIntParams(const MCSubtargetInfo &STI,
-                           Mips16HardFloatInfo::FPParamVariant, bool LE,
-                           bool ToFP);
-
-  void EmitSwapFPIntRetval(const MCSubtargetInfo &STI,
-                           Mips16HardFloatInfo::FPReturnVariant, bool LE);
-
-  void EmitFPCallStub(const char *, const Mips16HardFloatInfo::FuncSignature *);
-
-  void NaClAlignIndirectJumpTargets(MachineFunction &MF);
-
-  bool isLongBranchPseudo(int Opcode) const;
+  bool UsingConstantPools;
 
 public:
 
@@ -98,49 +58,50 @@ public:
   const MipsFunctionInfo *MipsFI;
   MipsMCInstLower MCInstLowering;
 
-  explicit MipsAsmPrinter(TargetMachine &TM,
-                          std::unique_ptr<MCStreamer> Streamer)
-      : AsmPrinter(TM, std::move(Streamer)), MCP(nullptr),
-        InConstantPool(false), MCInstLowering(*this) {}
+  explicit MipsAsmPrinter(TargetMachine &TM,  MCStreamer &Streamer)
+    : AsmPrinter(TM, Streamer), MCP(0), InConstantPool(false),
+      MCInstLowering(*this) {
+    Subtarget = &TM.getSubtarget<MipsSubtarget>();
+    UsingConstantPools =
+      (Subtarget->inMips16Mode() && Subtarget->useConstantIslands());
+  }
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const {
     return "Mips Assembly Printer";
   }
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
+  virtual bool runOnMachineFunction(MachineFunction &MF);
 
-  void EmitConstantPool() override {
-    bool UsingConstantPools =
-      (Subtarget->inMips16Mode() && Subtarget->useConstantIslands());
+  virtual void EmitConstantPool() LLVM_OVERRIDE {
     if (!UsingConstantPools)
       AsmPrinter::EmitConstantPool();
     // we emit constant pools customly!
   }
 
-  void EmitInstruction(const MachineInstr *MI) override;
-  void printSavedRegsBitmask();
+  void EmitInstruction(const MachineInstr *MI);
+  void printSavedRegsBitmask(raw_ostream &O);
+  void printHex32(unsigned int Value, raw_ostream &O);
   void emitFrameDirective();
   const char *getCurrentABIString() const;
-  void EmitFunctionEntryLabel() override;
-  void EmitFunctionBodyStart() override;
-  void EmitFunctionBodyEnd() override;
-  void EmitBasicBlockEnd(const MachineBasicBlock &MBB) override;
-  bool isBlockOnlyReachableByFallthrough(
-                                   const MachineBasicBlock* MBB) const override;
+  virtual void EmitFunctionEntryLabel();
+  virtual void EmitFunctionBodyStart();
+  virtual void EmitFunctionBodyEnd();
+  virtual bool isBlockOnlyReachableByFallthrough(const MachineBasicBlock*
+                                                 MBB) const;
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        unsigned AsmVariant, const char *ExtraCode,
-                       raw_ostream &O) override;
+                       raw_ostream &O);
   bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNum,
                              unsigned AsmVariant, const char *ExtraCode,
-                             raw_ostream &O) override;
+                             raw_ostream &O);
   void printOperand(const MachineInstr *MI, int opNum, raw_ostream &O);
+  void printUnsignedImm(const MachineInstr *MI, int opNum, raw_ostream &O);
   void printMemOperand(const MachineInstr *MI, int opNum, raw_ostream &O);
   void printMemOperandEA(const MachineInstr *MI, int opNum, raw_ostream &O);
   void printFCCOperand(const MachineInstr *MI, int opNum, raw_ostream &O,
-                       const char *Modifier = nullptr);
-  void printRegisterList(const MachineInstr *MI, int opNum, raw_ostream &O);
-  void EmitStartOfAsmFile(Module &M) override;
-  void EmitEndOfAsmFile(Module &M) override;
+                       const char *Modifier = 0);
+  void EmitStartOfAsmFile(Module &M);
+  void EmitEndOfAsmFile(Module &M);
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
 };
 }

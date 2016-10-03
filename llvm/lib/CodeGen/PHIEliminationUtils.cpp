@@ -28,15 +28,17 @@ llvm::findPHICopyInsertPoint(MachineBasicBlock* MBB, MachineBasicBlock* SuccMBB,
   // Usually, we just want to insert the copy before the first terminator
   // instruction. However, for the edge going to a landing pad, we must insert
   // the copy before the call/invoke instruction.
-  if (!SuccMBB->isEHPad())
+  if (!SuccMBB->isLandingPad())
     return MBB->getFirstTerminator();
 
   // Discover any defs/uses in this basic block.
   SmallPtrSet<MachineInstr*, 8> DefUsesInMBB;
   MachineRegisterInfo& MRI = MBB->getParent()->getRegInfo();
-  for (MachineInstr &RI : MRI.reg_instructions(SrcReg)) {
-    if (RI.getParent() == MBB)
-      DefUsesInMBB.insert(&RI);
+  for (MachineRegisterInfo::reg_iterator RI = MRI.reg_begin(SrcReg),
+         RE = MRI.reg_end(); RI != RE; ++RI) {
+    MachineInstr* DefUseMI = &*RI;
+    if (DefUseMI->getParent() == MBB)
+      DefUsesInMBB.insert(DefUseMI);
   }
 
   MachineBasicBlock::iterator InsertPoint;
@@ -54,7 +56,6 @@ llvm::findPHICopyInsertPoint(MachineBasicBlock* MBB, MachineBasicBlock* SuccMBB,
     ++InsertPoint;
   }
 
-  // Make sure the copy goes after any phi nodes but before
-  // any debug nodes.
+  // Make sure the copy goes after any phi nodes however.
   return MBB->SkipPHIsAndLabels(InsertPoint);
 }

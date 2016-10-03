@@ -28,20 +28,20 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/Metadata.h"
 
 namespace llvm {
-  /// A wrapper class for inspecting calls to intrinsic functions.
-  /// This allows the standard isa/dyncast/cast functionality to work with calls
-  /// to intrinsic functions.
+  /// IntrinsicInst - A useful wrapper class for inspecting calls to intrinsic
+  /// functions.  This allows the standard isa/dyncast/cast functionality to
+  /// work with calls to intrinsic functions.
   class IntrinsicInst : public CallInst {
-    IntrinsicInst() = delete;
-    IntrinsicInst(const IntrinsicInst&) = delete;
-    void operator=(const IntrinsicInst&) = delete;
+    IntrinsicInst() LLVM_DELETED_FUNCTION;
+    IntrinsicInst(const IntrinsicInst&) LLVM_DELETED_FUNCTION;
+    void operator=(const IntrinsicInst&) LLVM_DELETED_FUNCTION;
   public:
-    /// Return the intrinsic ID of this intrinsic.
+    /// getIntrinsicID - Return the intrinsic ID of this intrinsic.
+    ///
     Intrinsic::ID getIntrinsicID() const {
-      return getCalledFunction()->getIntrinsicID();
+      return (Intrinsic::ID)getCalledFunction()->getIntrinsicID();
     }
 
     // Methods for support type inquiry through isa, cast, and dyn_cast:
@@ -55,13 +55,10 @@ namespace llvm {
     }
   };
 
-  /// This is the common base class for debug info intrinsics.
+  /// DbgInfoIntrinsic - This is the common base class for debug info intrinsics
+  ///
   class DbgInfoIntrinsic : public IntrinsicInst {
   public:
-    /// Get the location corresponding to the variable referenced by the debug
-    /// info intrinsic.  Depending on the intrinsic, this could be the
-    /// variable's value or its address.
-    Value *getVariableLocation(bool AllowNullOp = true) const;
 
     // Methods for support type inquiry through isa, cast, and dyn_cast:
     static inline bool classof(const IntrinsicInst *I) {
@@ -75,25 +72,16 @@ namespace llvm {
     static inline bool classof(const Value *V) {
       return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
     }
+
+    static Value *StripCast(Value *C);
   };
 
-  /// This represents the llvm.dbg.declare instruction.
+  /// DbgDeclareInst - This represents the llvm.dbg.declare instruction.
+  ///
   class DbgDeclareInst : public DbgInfoIntrinsic {
   public:
-    Value *getAddress() const { return getVariableLocation(); }
-    DILocalVariable *getVariable() const {
-      return cast<DILocalVariable>(getRawVariable());
-    }
-    DIExpression *getExpression() const {
-      return cast<DIExpression>(getRawExpression());
-    }
-
-    Metadata *getRawVariable() const {
-      return cast<MetadataAsValue>(getArgOperand(1))->getMetadata();
-    }
-    Metadata *getRawExpression() const {
-      return cast<MetadataAsValue>(getArgOperand(2))->getMetadata();
-    }
+    Value *getAddress() const;
+    MDNode *getVariable() const { return cast<MDNode>(getArgOperand(1)); }
 
     // Methods for support type inquiry through isa, cast, and dyn_cast:
     static inline bool classof(const IntrinsicInst *I) {
@@ -104,29 +92,17 @@ namespace llvm {
     }
   };
 
-  /// This represents the llvm.dbg.value instruction.
+  /// DbgValueInst - This represents the llvm.dbg.value instruction.
+  ///
   class DbgValueInst : public DbgInfoIntrinsic {
   public:
-    Value *getValue() const {
-      return getVariableLocation(/* AllowNullOp = */ false);
-    }
+    const Value *getValue() const;
+    Value *getValue();
     uint64_t getOffset() const {
       return cast<ConstantInt>(
                           const_cast<Value*>(getArgOperand(1)))->getZExtValue();
     }
-    DILocalVariable *getVariable() const {
-      return cast<DILocalVariable>(getRawVariable());
-    }
-    DIExpression *getExpression() const {
-      return cast<DIExpression>(getRawExpression());
-    }
-
-    Metadata *getRawVariable() const {
-      return cast<MetadataAsValue>(getArgOperand(2))->getMetadata();
-    }
-    Metadata *getRawExpression() const {
-      return cast<MetadataAsValue>(getArgOperand(3))->getMetadata();
-    }
+    MDNode *getVariable() const { return cast<MDNode>(getArgOperand(2)); }
 
     // Methods for support type inquiry through isa, cast, and dyn_cast:
     static inline bool classof(const IntrinsicInst *I) {
@@ -137,17 +113,13 @@ namespace llvm {
     }
   };
 
-  /// This is the common base class for memset/memcpy/memmove.
+  /// MemIntrinsic - This is the common base class for memset/memcpy/memmove.
+  ///
   class MemIntrinsic : public IntrinsicInst {
   public:
     Value *getRawDest() const { return const_cast<Value*>(getArgOperand(0)); }
-    const Use &getRawDestUse() const { return getArgOperandUse(0); }
-    Use &getRawDestUse() { return getArgOperandUse(0); }
 
     Value *getLength() const { return const_cast<Value*>(getArgOperand(2)); }
-    const Use &getLengthUse() const { return getArgOperandUse(2); }
-    Use &getLengthUse() { return getArgOperandUse(2); }
-
     ConstantInt *getAlignmentCst() const {
       return cast<ConstantInt>(const_cast<Value*>(getArgOperand(3)));
     }
@@ -167,12 +139,13 @@ namespace llvm {
       return cast<PointerType>(getRawDest()->getType())->getAddressSpace();
     }
 
-    /// This is just like getRawDest, but it strips off any cast
+    /// getDest - This is just like getRawDest, but it strips off any cast
     /// instructions that feed it, giving the original input.  The returned
     /// value is guaranteed to be a pointer.
     Value *getDest() const { return getRawDest()->stripPointerCasts(); }
 
-    /// Set the specified arguments of the instruction.
+    /// set* - Set the specified arguments of the instruction.
+    ///
     void setDest(Value *Ptr) {
       assert(getRawDest()->getType() == Ptr->getType() &&
              "setDest called with pointer of wrong type!");
@@ -212,13 +185,13 @@ namespace llvm {
     }
   };
 
-  /// This class wraps the llvm.memset intrinsic.
+  /// MemSetInst - This class wraps the llvm.memset intrinsic.
+  ///
   class MemSetInst : public MemIntrinsic {
   public:
-    /// Return the arguments to the instruction.
+    /// get* - Return the arguments to the instruction.
+    ///
     Value *getValue() const { return const_cast<Value*>(getArgOperand(1)); }
-    const Use &getValueUse() const { return getArgOperandUse(1); }
-    Use &getValueUse() { return getArgOperandUse(1); }
 
     void setValue(Value *Val) {
       assert(getValue()->getType() == Val->getType() &&
@@ -235,15 +208,15 @@ namespace llvm {
     }
   };
 
-  /// This class wraps the llvm.memcpy/memmove intrinsics.
+  /// MemTransferInst - This class wraps the llvm.memcpy/memmove intrinsics.
+  ///
   class MemTransferInst : public MemIntrinsic {
   public:
-    /// Return the arguments to the instruction.
+    /// get* - Return the arguments to the instruction.
+    ///
     Value *getRawSource() const { return const_cast<Value*>(getArgOperand(1)); }
-    const Use &getRawSourceUse() const { return getArgOperandUse(1); }
-    Use &getRawSourceUse() { return getArgOperandUse(1); }
 
-    /// This is just like getRawSource, but it strips off any cast
+    /// getSource - This is just like getRawSource, but it strips off any cast
     /// instructions that feed it, giving the original input.  The returned
     /// value is guaranteed to be a pointer.
     Value *getSource() const { return getRawSource()->stripPointerCasts(); }
@@ -269,7 +242,8 @@ namespace llvm {
   };
 
 
-  /// This class wraps the llvm.memcpy intrinsic.
+  /// MemCpyInst - This class wraps the llvm.memcpy intrinsic.
+  ///
   class MemCpyInst : public MemTransferInst {
   public:
     // Methods for support type inquiry through isa, cast, and dyn_cast:
@@ -281,7 +255,8 @@ namespace llvm {
     }
   };
 
-  /// This class wraps the llvm.memmove intrinsic.
+  /// MemMoveInst - This class wraps the llvm.memmove intrinsic.
+  ///
   class MemMoveInst : public MemTransferInst {
   public:
     // Methods for support type inquiry through isa, cast, and dyn_cast:
@@ -293,7 +268,8 @@ namespace llvm {
     }
   };
 
-  /// This represents the llvm.va_start intrinsic.
+  /// VAStartInst - This represents the llvm.va_start intrinsic.
+  ///
   class VAStartInst : public IntrinsicInst {
   public:
     static inline bool classof(const IntrinsicInst *I) {
@@ -306,7 +282,8 @@ namespace llvm {
     Value *getArgList() const { return const_cast<Value*>(getArgOperand(0)); }
   };
 
-  /// This represents the llvm.va_end intrinsic.
+  /// VAEndInst - This represents the llvm.va_end intrinsic.
+  ///
   class VAEndInst : public IntrinsicInst {
   public:
     static inline bool classof(const IntrinsicInst *I) {
@@ -319,7 +296,8 @@ namespace llvm {
     Value *getArgList() const { return const_cast<Value*>(getArgOperand(0)); }
   };
 
-  /// This represents the llvm.va_copy intrinsic.
+  /// VACopyInst - This represents the llvm.va_copy intrinsic.
+  ///
   class VACopyInst : public IntrinsicInst {
   public:
     static inline bool classof(const IntrinsicInst *I) {
@@ -333,77 +311,6 @@ namespace llvm {
     Value *getSrc() const { return const_cast<Value*>(getArgOperand(1)); }
   };
 
-  /// This represents the llvm.instrprof_increment intrinsic.
-  class InstrProfIncrementInst : public IntrinsicInst {
-  public:
-    static inline bool classof(const IntrinsicInst *I) {
-      return I->getIntrinsicID() == Intrinsic::instrprof_increment;
-    }
-    static inline bool classof(const Value *V) {
-      return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
-    }
-
-    GlobalVariable *getName() const {
-      return cast<GlobalVariable>(
-          const_cast<Value *>(getArgOperand(0))->stripPointerCasts());
-    }
-
-    ConstantInt *getHash() const {
-      return cast<ConstantInt>(const_cast<Value *>(getArgOperand(1)));
-    }
-
-    ConstantInt *getNumCounters() const {
-      return cast<ConstantInt>(const_cast<Value *>(getArgOperand(2)));
-    }
-
-    ConstantInt *getIndex() const {
-      return cast<ConstantInt>(const_cast<Value *>(getArgOperand(3)));
-    }
-    Value *getStep() const;
-  };
-
-  class InstrProfIncrementInstStep : public InstrProfIncrementInst {
-  public:
-    static inline bool classof(const IntrinsicInst *I) {
-      return I->getIntrinsicID() == Intrinsic::instrprof_increment_step;
-    }
-    static inline bool classof(const Value *V) {
-      return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
-    }
-  };
-
-  /// This represents the llvm.instrprof_value_profile intrinsic.
-  class InstrProfValueProfileInst : public IntrinsicInst {
-  public:
-    static inline bool classof(const IntrinsicInst *I) {
-      return I->getIntrinsicID() == Intrinsic::instrprof_value_profile;
-    }
-    static inline bool classof(const Value *V) {
-      return isa<IntrinsicInst>(V) && classof(cast<IntrinsicInst>(V));
-    }
-
-    GlobalVariable *getName() const {
-      return cast<GlobalVariable>(
-          const_cast<Value *>(getArgOperand(0))->stripPointerCasts());
-    }
-
-    ConstantInt *getHash() const {
-      return cast<ConstantInt>(const_cast<Value *>(getArgOperand(1)));
-    }
-
-    Value *getTargetValue() const {
-      return cast<Value>(const_cast<Value *>(getArgOperand(2)));
-    }
-
-    ConstantInt *getValueKind() const {
-      return cast<ConstantInt>(const_cast<Value *>(getArgOperand(3)));
-    }
-
-    // Returns the value site index.
-    ConstantInt *getIndex() const {
-      return cast<ConstantInt>(const_cast<Value *>(getArgOperand(4)));
-    }
-  };
-} // namespace llvm
+}
 
 #endif

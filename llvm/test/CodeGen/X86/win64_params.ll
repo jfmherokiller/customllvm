@@ -7,7 +7,8 @@ define i32 @f6(i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p5, i32 %p6) nounwind re
 entry:
 ; CHECK: movl    48(%rsp), %eax
 ; CHECK: addl    40(%rsp), %eax
-; LINUX: leal    (%r8,%r9), %eax
+; LINUX: addl    %r9d, %r8d
+; LINUX: movl    %r8d, %eax
   %add = add nsw i32 %p6, %p5
   ret i32 %add
 }
@@ -26,8 +27,10 @@ entry:
 ; on other platforms here (note the x86_64_sysvcc calling convention).
 define x86_64_sysvcc i32 @f8(i32 %p1, i32 %p2, i32 %p3, i32 %p4, i32 %p5, i32 %p6) nounwind readnone optsize {
 entry:
-; CHECK: leal    (%r8,%r9), %eax
-; LINUX: leal    (%r8,%r9), %eax
+; CHECK: addl    %r9d, %r8d
+; CHECK: movl    %r8d, %eax
+; LINUX: addl    %r9d, %r8d
+; LINUX: movl    %r8d, %eax
   %add = add nsw i32 %p6, %p5
   ret i32 %add
 }

@@ -27,13 +27,15 @@ static void llvm_finalize_pmbuilder(value PMB) {
 }
 
 static struct custom_operations pmbuilder_ops = {
-  (char *) "Llvm_passmgr_builder.t",
+  (char *) "LLVMPassManagerBuilder",
   llvm_finalize_pmbuilder,
   custom_compare_default,
   custom_hash_default,
   custom_serialize_default,
-  custom_deserialize_default,
-  custom_compare_ext_default
+  custom_deserialize_default
+#ifdef custom_compare_ext_default
+  , custom_compare_ext_default
+#endif
 };
 
 static value alloc_pmbuilder(LLVMPassManagerBuilderRef Ref) {

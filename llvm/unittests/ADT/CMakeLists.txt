@@ -5,55 +5,30 @@ set(LLVM_LINK_COMPONENTS
 set(ADTSources
   APFloatTest.cpp
   APIntTest.cpp
-  APSIntTest.cpp
-  ArrayRefTest.cpp
-  BitmaskEnumTest.cpp
   BitVectorTest.cpp
-  BumpPtrListTest.cpp
   DAGDeltaAlgorithmTest.cpp
   DeltaAlgorithmTest.cpp
   DenseMapTest.cpp
   DenseSetTest.cpp
-  DepthFirstIteratorTest.cpp
   FoldingSet.cpp
-  FunctionRefTest.cpp
   HashingTest.cpp
-  IListBaseTest.cpp
-  IListIteratorTest.cpp
-  IListNodeBaseTest.cpp
-  IListNodeTest.cpp
-  IListSentinelTest.cpp
-  IListTest.cpp
+  ilistTest.cpp
   ImmutableMapTest.cpp
   ImmutableSetTest.cpp
   IntEqClassesTest.cpp
   IntervalMapTest.cpp
   IntrusiveRefCntPtrTest.cpp
-  IteratorTest.cpp
-  MakeUniqueTest.cpp
   MapVectorTest.cpp
   OptionalTest.cpp
   PackedVectorTest.cpp
-  PointerEmbeddedIntTest.cpp
-  PointerIntPairTest.cpp
-  PointerSumTypeTest.cpp
   PointerUnionTest.cpp
-  PostOrderIteratorTest.cpp
-  PriorityWorklistTest.cpp
-  RangeAdapterTest.cpp
   SCCIteratorTest.cpp
-  STLExtrasTest.cpp
-  ScopeExitTest.cpp
-  SequenceTest.cpp
-  SetVectorTest.cpp
-  SimpleIListTest.cpp
   SmallPtrSetTest.cpp
   SmallStringTest.cpp
   SmallVectorTest.cpp
   SparseBitVectorTest.cpp
   SparseMultiSetTest.cpp
   SparseSetTest.cpp
-  StringExtrasTest.cpp
   StringMapTest.cpp
   StringRefTest.cpp
   TinyPtrVectorTest.cpp
@@ -62,8 +37,15 @@ set(ADTSources
   VariadicFunctionTest.cpp
  )
 
+# They cannot be compiled on MSVC9 due to its bug.
+if(MSVC AND MSVC_VERSION LESS 1600)
+  set(LLVM_OPTIONAL_SOURCES
+    DenseMapTest.cpp
+    SmallVectorTest.cpp
+    )
+  list(REMOVE_ITEM ADTSources ${LLVM_OPTIONAL_SOURCES})
+endif()
+
 add_llvm_unittest(ADTTests
   ${ADTSources}
   )
-
-add_dependencies(ADTTests intrinsics_gen)

@@ -14,15 +14,14 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "expand-isel-pseudos"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "expand-isel-pseudos"
 
 namespace {
   class ExpandISelPseudos : public MachineFunctionPass {
@@ -31,9 +30,9 @@ namespace {
     ExpandISelPseudos() : MachineFunctionPass(ID) {}
 
   private:
-    bool runOnMachineFunction(MachineFunction &MF) override;
+    virtual bool runOnMachineFunction(MachineFunction &MF);
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       MachineFunctionPass::getAnalysisUsage(AU);
     }
   };
@@ -46,23 +45,24 @@ INITIALIZE_PASS(ExpandISelPseudos, "expand-isel-pseudos",
 
 bool ExpandISelPseudos::runOnMachineFunction(MachineFunction &MF) {
   bool Changed = false;
-  const TargetLowering *TLI = MF.getSubtarget().getTargetLowering();
+  const TargetLowering *TLI = MF.getTarget().getTargetLowering();
 
   // Iterate through each instruction in the function, looking for pseudos.
   for (MachineFunction::iterator I = MF.begin(), E = MF.end(); I != E; ++I) {
-    MachineBasicBlock *MBB = &*I;
+    MachineBasicBlock *MBB = I;
     for (MachineBasicBlock::iterator MBBI = MBB->begin(), MBBE = MBB->end();
          MBBI != MBBE; ) {
-      MachineInstr &MI = *MBBI++;
+      MachineInstr *MI = MBBI++;
 
       // If MI is a pseudo, expand it.
-      if (MI.usesCustomInsertionHook()) {
+      if (MI->usesCustomInsertionHook()) {
         Changed = true;
-        MachineBasicBlock *NewMBB = TLI->EmitInstrWithCustomInserter(MI, MBB);
+        MachineBasicBlock *NewMBB =
+          TLI->EmitInstrWithCustomInserter(MI, MBB);
         // The expansion may involve new basic blocks.
         if (NewMBB != MBB) {
           MBB = NewMBB;
-          I = NewMBB->getIterator();
+          I = NewMBB;
           MBBI = NewMBB->begin();
           MBBE = NewMBB->end();
         }

@@ -15,17 +15,15 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "msp430-branch-select"
 #include "MSP430.h"
 #include "MSP430InstrInfo.h"
-#include "MSP430Subtarget.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetMachine.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "msp430-branch-select"
 
 STATISTIC(NumExpanded, "Number of branches expanded to long format");
 
@@ -37,14 +35,9 @@ namespace {
     /// BlockSizes - The sizes of the basic blocks in the function.
     std::vector<unsigned> BlockSizes;
 
-    bool runOnMachineFunction(MachineFunction &Fn) override;
+    virtual bool runOnMachineFunction(MachineFunction &Fn);
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::NoVRegs);
-    }
-
-    const char *getPassName() const override {
+    virtual const char *getPassName() const {
       return "MSP430 Branch Selector";
     }
   };
@@ -60,19 +53,23 @@ FunctionPass *llvm::createMSP430BranchSelectionPass() {
 
 bool MSP430BSel::runOnMachineFunction(MachineFunction &Fn) {
   const MSP430InstrInfo *TII =
-      static_cast<const MSP430InstrInfo *>(Fn.getSubtarget().getInstrInfo());
+             static_cast<const MSP430InstrInfo*>(Fn.getTarget().getInstrInfo());
   // Give the blocks of the function a dense, in-order, numbering.
   Fn.RenumberBlocks();
   BlockSizes.resize(Fn.getNumBlockIDs());
 
   // Measure each MBB and compute a size for the entire function.
   unsigned FuncSize = 0;
-  for (MachineBasicBlock &MBB : Fn) {
-    unsigned BlockSize = 0;
-    for (MachineInstr &MI : MBB)
-      BlockSize += TII->getInstSizeInBytes(MI);
+  for (MachineFunction::iterator MFI = Fn.begin(), E = Fn.end(); MFI != E;
+       ++MFI) {
+    MachineBasicBlock *MBB = MFI;
 
-    BlockSizes[MBB.getNumber()] = BlockSize;
+    unsigned BlockSize = 0;
+    for (MachineBasicBlock::iterator MBBI = MBB->begin(), EE = MBB->end();
+         MBBI != EE; ++MBBI)
+      BlockSize += TII->GetInstSizeInBytes(MBBI);
+
+    BlockSizes[MBB->getNumber()] = BlockSize;
     FuncSize += BlockSize;
   }
 
@@ -107,7 +104,7 @@ bool MSP430BSel::runOnMachineFunction(MachineFunction &Fn) {
            I != E; ++I) {
         if ((I->getOpcode() != MSP430::JCC || I->getOperand(0).isImm()) &&
             I->getOpcode() != MSP430::JMP) {
-          MBBStartOffset += TII->getInstSizeInBytes(*I);
+          MBBStartOffset += TII->GetInstSizeInBytes(I);
           continue;
         }
 
@@ -141,8 +138,8 @@ bool MSP430BSel::runOnMachineFunction(MachineFunction &Fn) {
 
         // Otherwise, we have to expand it to a long branch.
         unsigned NewSize;
-        MachineInstr &OldBranch = *I;
-        DebugLoc dl = OldBranch.getDebugLoc();
+        MachineInstr *OldBranch = I;
+        DebugLoc dl = OldBranch->getDebugLoc();
 
         if (I->getOpcode() == MSP430::JMP) {
           NewSize = 4;
@@ -154,7 +151,7 @@ bool MSP430BSel::runOnMachineFunction(MachineFunction &Fn) {
           Cond.push_back(I->getOperand(1));
 
           // Jump over the uncond branch inst (i.e. $+6) on opposite condition.
-          TII->reverseBranchCondition(Cond);
+          TII->ReverseBranchCondition(Cond);
           BuildMI(MBB, I, dl, TII->get(MSP430::JCC))
             .addImm(4).addOperand(Cond[0]);
 
@@ -164,7 +161,7 @@ bool MSP430BSel::runOnMachineFunction(MachineFunction &Fn) {
         I = BuildMI(MBB, I, dl, TII->get(MSP430::Bi)).addMBB(Dest);
 
         // Remove the old branch from the function.
-        OldBranch.eraseFromParent();
+        OldBranch->eraseFromParent();
 
         // Remember that this instruction is NewSize bytes, increase the size of the
         // block by NewSize-2, remember to iterate.

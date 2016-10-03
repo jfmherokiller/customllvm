@@ -1,4 +1,4 @@
-//===-- AArch64TargetObjectFile.h - AArch64 Object Info -*- C++ ---------*-===//
+//===-- AArch64TargetObjectFile.h - AArch64 Object Info ---------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -6,41 +6,25 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
+//
+// This file deals with any AArch64 specific requirements on object files.
+//
+//===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_AARCH64_AARCH64TARGETOBJECTFILE_H
-#define LLVM_LIB_TARGET_AARCH64_AARCH64TARGETOBJECTFILE_H
+#ifndef LLVM_TARGET_AARCH64_TARGETOBJECTFILE_H
+#define LLVM_TARGET_AARCH64_TARGETOBJECTFILE_H
 
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
 namespace llvm {
-class AArch64TargetMachine;
 
-/// This implementation is used for AArch64 ELF targets (Linux in particular).
-class AArch64_ELFTargetObjectFile : public TargetLoweringObjectFileELF {
-  void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
-};
-
-/// AArch64_MachoTargetObjectFile - This TLOF implementation is used for Darwin.
-class AArch64_MachoTargetObjectFile : public TargetLoweringObjectFileMachO {
-public:
-  AArch64_MachoTargetObjectFile();
-
-  const MCExpr *getTTypeGlobalReference(const GlobalValue *GV,
-                                        unsigned Encoding,
-                                        const TargetMachine &TM,
-                                        MachineModuleInfo *MMI,
-                                        MCStreamer &Streamer) const override;
-
-  MCSymbol *getCFIPersonalitySymbol(const GlobalValue *GV,
-                                    const TargetMachine &TM,
-                                    MachineModuleInfo *MMI) const override;
-
-  const MCExpr *getIndirectSymViaGOTPCRel(const MCSymbol *Sym,
-                                          const MCValue &MV, int64_t Offset,
-                                          MachineModuleInfo *MMI,
-                                          MCStreamer &Streamer) const override;
-};
+  /// AArch64LinuxTargetObjectFile - This implementation is used for linux
+  /// AArch64.
+  class AArch64LinuxTargetObjectFile : public TargetLoweringObjectFileELF {
+    virtual void Initialize(MCContext &Ctx, const TargetMachine &TM);
+  };
 
 } // end namespace llvm
 

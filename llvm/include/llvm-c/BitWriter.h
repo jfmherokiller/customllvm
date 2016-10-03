@@ -16,10 +16,10 @@
 |*                                                                            *|
 \*===----------------------------------------------------------------------===*/
 
-#ifndef LLVM_C_BITWRITER_H
-#define LLVM_C_BITWRITER_H
+#ifndef LLVM_C_BITCODEWRITER_H
+#define LLVM_C_BITCODEWRITER_H
 
-#include "llvm-c/Types.h"
+#include "llvm-c/Core.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,9 +44,6 @@ int LLVMWriteBitcodeToFD(LLVMModuleRef M, int FD, int ShouldClose,
 /** Deprecated for LLVMWriteBitcodeToFD. Writes a module to an open file
     descriptor. Returns 0 on success. Closes the Handle. */
 int LLVMWriteBitcodeToFileHandle(LLVMModuleRef M, int Handle);
-
-/** Writes a module to a new memory buffer and returns it. */
-LLVMMemoryBufferRef LLVMWriteBitcodeToMemoryBuffer(LLVMModuleRef M);
 
 /**
  * @}

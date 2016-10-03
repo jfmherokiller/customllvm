@@ -1,8 +1,7 @@
-; Test that compares are omitted if CC already has the right value
+; Test that compares are ommitted if CC already has the right value
 ; (z10 version).
 ;
-; RUN: llc < %s -mtriple=s390x-linux-gnu -mcpu=z10 -no-integrated-as \
-; RUN:   -verify-machineinstrs| FileCheck %s
+; RUN: llc < %s -mtriple=s390x-linux-gnu -mcpu=z10 | FileCheck %s
 
 declare void @foo()
 
@@ -11,7 +10,7 @@ declare void @foo()
 define i32 @f1(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f1:
 ; CHECK: afi %r2, 1000000
-; CHECK-NEXT: ber %r14
+; CHECK-NEXT: je .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -30,7 +29,7 @@ exit:
 define i32 @f2(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f2:
 ; CHECK: afi %r2, 1000000
-; CHECK-NEXT: bner %r14
+; CHECK-NEXT: jne .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -49,7 +48,7 @@ exit:
 define i32 @f3(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f3:
 ; CHECK: afi %r2, 1000000
-; CHECK-NEXT: cibl %r2, 0, 0(%r14)
+; CHECK-NEXT: cijl %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -68,7 +67,7 @@ exit:
 define i32 @f4(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f4:
 ; CHECK: afi %r2, 1000000
-; CHECK-NEXT: cible %r2, 0, 0(%r14)
+; CHECK-NEXT: cijle %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -87,7 +86,7 @@ exit:
 define i32 @f5(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f5:
 ; CHECK: afi %r2, 1000000
-; CHECK-NEXT: cibh %r2, 0, 0(%r14)
+; CHECK-NEXT: cijh %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -106,7 +105,7 @@ exit:
 define i32 @f6(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f6:
 ; CHECK: afi %r2, 1000000
-; CHECK-NEXT: cibhe %r2, 0, 0(%r14)
+; CHECK-NEXT: cijhe %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -125,10 +124,10 @@ exit:
 define i32 @f7(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f7:
 ; CHECK: s %r2, 0(%r4)
-; CHECK-NEXT: bner %r14
+; CHECK-NEXT: jne .L{{.*}}
 ; CHECK: br %r14
 entry:
-  %cur = load i32 , i32 *%dest
+  %cur = load i32 *%dest
   %res = sub i32 %a, %cur
   %cmp = icmp ne i32 %res, 0
   br i1 %cmp, label %exit, label %store
@@ -145,10 +144,10 @@ exit:
 define i32 @f8(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f8:
 ; CHECK: s %r2, 0(%r4)
-; CHECK-NEXT: cibl %r2, 0, 0(%r14)
+; CHECK-NEXT: cijl %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
-  %cur = load i32 , i32 *%dest
+  %cur = load i32 *%dest
   %res = sub i32 %a, %cur
   %cmp = icmp slt i32 %res, 0
   br i1 %cmp, label %exit, label %store
@@ -166,7 +165,7 @@ exit:
 define i32 @f9(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f9:
 ; CHECK: nr %r2, %r3
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = and i32 %a, %b
@@ -185,7 +184,7 @@ exit:
 define i32 @f10(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f10:
 ; CHECK: nr %r2, %r3
-; CHECK-NEXT: cibl %r2, 0, 0(%r14)
+; CHECK-NEXT: cijl %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = and i32 %a, %b
@@ -205,7 +204,7 @@ exit:
 define i32 @f11(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f11:
 ; CHECK: nilf %r2, 100000001
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = and i32 %a, 100000001
@@ -225,7 +224,7 @@ exit:
 define i32 @f12(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f12:
 ; CHECK: nill %r2, 65436
-; CHECK-NEXT: ciblh %r2, 0, 0(%r14)
+; CHECK-NEXT: cijlh %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = and i32 %a, -100
@@ -244,7 +243,7 @@ exit:
 define i32 @f13(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f13:
 ; CHECK: sra %r2, 0(%r3)
-; CHECK-NEXT: ber %r14
+; CHECK-NEXT: je .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = ashr i32 %a, %b
@@ -263,7 +262,7 @@ exit:
 define i32 @f14(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f14:
 ; CHECK: sra %r2, 0(%r3)
-; CHECK-NEXT: blhr %r14
+; CHECK-NEXT: jlh .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = ashr i32 %a, %b
@@ -282,7 +281,7 @@ exit:
 define i32 @f15(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f15:
 ; CHECK: sra %r2, 0(%r3)
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = ashr i32 %a, %b
@@ -301,7 +300,7 @@ exit:
 define i32 @f16(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f16:
 ; CHECK: sra %r2, 0(%r3)
-; CHECK-NEXT: bler %r14
+; CHECK-NEXT: jle .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = ashr i32 %a, %b
@@ -320,7 +319,7 @@ exit:
 define i32 @f17(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f17:
 ; CHECK: sra %r2, 0(%r3)
-; CHECK-NEXT: bhr %r14
+; CHECK-NEXT: jh .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = ashr i32 %a, %b
@@ -339,7 +338,7 @@ exit:
 define i32 @f18(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-LABEL: f18:
 ; CHECK: sra %r2, 0(%r3)
-; CHECK-NEXT: bher %r14
+; CHECK-NEXT: jhe .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = ashr i32 %a, %b
@@ -359,7 +358,7 @@ exit:
 define i64 @f19(i64 %a, i64 %b, i64 *%dest) {
 ; CHECK-LABEL: f19:
 ; CHECK: risbg %r2, %r3, 0, 190, 0
-; CHECK-NEXT: ber %r14
+; CHECK-NEXT: je .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = and i64 %b, -2
@@ -378,7 +377,7 @@ exit:
 define i64 @f20(i64 %a, i64 %b, i64 *%dest) {
 ; CHECK-LABEL: f20:
 ; CHECK: risbg %r2, %r3, 0, 190, 0
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = and i64 %b, -2
@@ -401,7 +400,7 @@ define i32 @f21(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r2
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: cibe %r2, 0, 0(%r14)
+; CHECK-NEXT: cije %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i32 %a, 1000000
@@ -424,7 +423,7 @@ define i32 @f22(i32 %a, i32 %b, i32 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r2
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: cibe %r2, 0, 0(%r14)
+; CHECK-NEXT: cije %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i32 %a, 1000000
@@ -445,7 +444,7 @@ define i32 @f23(i32 %a, i32 %b, i32 *%dest1, i32 *%dest2) {
 ; CHECK-LABEL: f23:
 ; CHECK: afi %r2, 1000000
 ; CHECK-NEXT: st %r2, 0(%r4)
-; CHECK-NEXT: bner %r14
+; CHECK-NEXT: jne .L{{.*}}
 ; CHECK: br %r14
 entry:
   %res = add i32 %a, 1000000
@@ -469,7 +468,7 @@ define void @f24(i32 *%ptr) {
 ; CHECK-NEXT: cijlh [[REG]], 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
-  %val = load i32 , i32 *%ptr
+  %val = load i32 *%ptr
   %xor = xor i32 %val, 1
   %add = add i32 %xor, 1000000
   call void @foo()
@@ -491,7 +490,7 @@ define void @f25(i32 %a, i32 *%ptr) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: bner %r14
+; CHECK-NEXT: jne .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i32 %a, 1000000
@@ -514,7 +513,7 @@ define void @f26(i32 %a, i32 *%ptr) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: ciblh %r2, 0, 0(%r14)
+; CHECK-NEXT: cijlh %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i32 %a, 1000000
@@ -537,7 +536,7 @@ define i32 @f27(i32 %a, i32 %b, i32 *%dest1, i32 *%dest2) {
 ; CHECK: afi %r2, 1000000
 ; CHECK-NEXT: sr %r3, %r2
 ; CHECK-NEXT: st %r3, 0(%r4)
-; CHECK-NEXT: cibe %r2, 0, 0(%r14)
+; CHECK-NEXT: cije %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i32 %a, 1000000
@@ -558,11 +557,11 @@ exit:
 define void @f28(i64 %a, i64 *%dest) {
 ; CHECK-LABEL: f28:
 ; CHECK: xi 0(%r2), 15
-; CHECK: cgibe %r2, 0, 0(%r14)
+; CHECK: cgije %r2, 0, .L{{.*}}
 ; CHECK: br %r14
 entry:
   %ptr = inttoptr i64 %a to i8 *
-  %val = load i8 , i8 *%ptr
+  %val = load i8 *%ptr
   %xor = xor i8 %val, 15
   store i8 %xor, i8 *%ptr
   %cmp = icmp eq i64 %a, 0
@@ -580,12 +579,12 @@ exit:
 define i32 @f29(i64 %base, i64 %index, i32 *%dest) {
 ; CHECK-LABEL: f29:
 ; CHECK: lt %r2, 0({{%r2,%r3|%r3,%r2}})
-; CHECK-NEXT: bler %r14
+; CHECK-NEXT: jle .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i64 %base, %index
   %ptr = inttoptr i64 %add to i32 *
-  %res = load i32 , i32 *%ptr
+  %res = load i32 *%ptr
   %cmp = icmp sle i32 %res, 0
   br i1 %cmp, label %exit, label %store
 
@@ -601,13 +600,13 @@ exit:
 define i32 @f30(i64 %base, i64 %index, i32 *%dest) {
 ; CHECK-LABEL: f30:
 ; CHECK: lt %r2, 100000({{%r2,%r3|%r3,%r2}})
-; CHECK-NEXT: bler %r14
+; CHECK-NEXT: jle .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add1 = add i64 %base, %index
   %add2 = add i64 %add1, 100000
   %ptr = inttoptr i64 %add2 to i32 *
-  %res = load i32 , i32 *%ptr
+  %res = load i32 *%ptr
   %cmp = icmp sle i32 %res, 0
   br i1 %cmp, label %exit, label %store
 
@@ -623,12 +622,12 @@ exit:
 define i64 @f31(i64 %base, i64 %index, i64 *%dest) {
 ; CHECK-LABEL: f31:
 ; CHECK: ltg %r2, 0({{%r2,%r3|%r3,%r2}})
-; CHECK-NEXT: bher %r14
+; CHECK-NEXT: jhe .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i64 %base, %index
   %ptr = inttoptr i64 %add to i64 *
-  %res = load i64 , i64 *%ptr
+  %res = load i64 *%ptr
   %cmp = icmp sge i64 %res, 0
   br i1 %cmp, label %exit, label %store
 
@@ -644,12 +643,12 @@ exit:
 define i64 @f32(i64 %base, i64 %index, i64 *%dest) {
 ; CHECK-LABEL: f32:
 ; CHECK: ltgf %r2, 0({{%r2,%r3|%r3,%r2}})
-; CHECK-NEXT: bhr %r14
+; CHECK-NEXT: jh .L{{.*}}
 ; CHECK: br %r14
 entry:
   %add = add i64 %base, %index
   %ptr = inttoptr i64 %add to i32 *
-  %val = load i32 , i32 *%ptr
+  %val = load i32 *%ptr
   %res = sext i32 %val to i64
   %cmp = icmp sgt i64 %res, 0
   br i1 %cmp, label %exit, label %store
@@ -669,7 +668,7 @@ define i32 @f33(i32 %dummy, i32 %val, i32 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r2
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   call void asm sideeffect "blah $0", "{r2}"(i32 %val)
@@ -691,7 +690,7 @@ define i64 @f34(i64 %dummy, i64 %val, i64 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r2
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: bhr %r14
+; CHECK-NEXT: jh .L{{.*}}
 ; CHECK: br %r14
 entry:
   call void asm sideeffect "blah $0", "{r2}"(i64 %val)
@@ -713,7 +712,7 @@ define i64 @f35(i64 %dummy, i32 %val, i64 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r2
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: bhr %r14
+; CHECK-NEXT: jh .L{{.*}}
 ; CHECK: br %r14
 entry:
   %ext = sext i32 %val to i64
@@ -737,7 +736,7 @@ define i32 @f36(i32 %val, i32 %dummy, i32 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r3
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   call void asm sideeffect "blah $0", "{r3}"(i32 %val)
@@ -760,7 +759,7 @@ define i64 @f37(i64 %val, i64 %dummy, i64 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r3
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   call void asm sideeffect "blah $0", "{r3}"(i64 %val)
@@ -783,7 +782,7 @@ define i32 @f38(i32 %val, i64 %dummy, i32 *%dest) {
 ; CHECK-NEXT: #APP
 ; CHECK-NEXT: blah %r3
 ; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl .L{{.*}}
 ; CHECK: br %r14
 entry:
   %ext = sext i32 %val to i64
@@ -797,94 +796,4 @@ store:
 
 exit:
   ret i32 %val
-}
-
-; Test f35 for in-register extensions.
-define i64 @f39(i64 %dummy, i64 %a, i64 *%dest) {
-; CHECK-LABEL: f39:
-; CHECK: ltgfr %r2, %r3
-; CHECK-NEXT: #APP
-; CHECK-NEXT: blah %r2
-; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: bhr %r14
-; CHECK: br %r14
-entry:
-  %val = trunc i64 %a to i32
-  %ext = sext i32 %val to i64
-  call void asm sideeffect "blah $0", "{r2}"(i64 %ext)
-  %cmp = icmp sgt i64 %ext, 0
-  br i1 %cmp, label %exit, label %store
-
-store:
-  store i64 %ext, i64 *%dest
-  br label %exit
-
-exit:
-  ret i64 %ext
-}
-
-; ...and again with what InstCombine would produce for f40.
-define i64 @f40(i64 %dummy, i64 %a, i64 *%dest) {
-; CHECK-LABEL: f40:
-; CHECK: ltgfr %r2, %r3
-; CHECK-NEXT: #APP
-; CHECK-NEXT: blah %r2
-; CHECK-NEXT: #NO_APP
-; CHECK-NEXT: bhr %r14
-; CHECK: br %r14
-entry:
-  %shl = shl i64 %a, 32
-  %ext = ashr i64 %shl, 32
-  call void asm sideeffect "blah $0", "{r2}"(i64 %ext)
-  %cmp = icmp sgt i64 %shl, 0
-  br i1 %cmp, label %exit, label %store
-
-store:
-  store i64 %ext, i64 *%dest
-  br label %exit
-
-exit:
-  ret i64 %ext
-}
-
-; Try a form of f7 in which the subtraction operands are compared directly.
-define i32 @f41(i32 %a, i32 %b, i32 *%dest) {
-; CHECK-LABEL: f41:
-; CHECK: s %r2, 0(%r4)
-; CHECK-NEXT: bner %r14
-; CHECK: br %r14
-entry:
-  %cur = load i32 , i32 *%dest
-  %res = sub i32 %a, %cur
-  %cmp = icmp ne i32 %a, %cur
-  br i1 %cmp, label %exit, label %store
-
-store:
-  store i32 %b, i32 *%dest
-  br label %exit
-
-exit:
-  ret i32 %res
-}
-
-; A version of f32 that tests the unextended value.
-define i64 @f42(i64 %base, i64 %index, i64 *%dest) {
-; CHECK-LABEL: f42:
-; CHECK: ltgf %r2, 0({{%r2,%r3|%r3,%r2}})
-; CHECK-NEXT: bhr %r14
-; CHECK: br %r14
-entry:
-  %add = add i64 %base, %index
-  %ptr = inttoptr i64 %add to i32 *
-  %val = load i32 , i32 *%ptr
-  %res = sext i32 %val to i64
-  %cmp = icmp sgt i32 %val, 0
-  br i1 %cmp, label %exit, label %store
-
-store:
-  store i64 %res, i64 *%dest
-  br label %exit
-
-exit:
-  ret i64 %res
 }

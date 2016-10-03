@@ -14,48 +14,41 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/LoopPass.h"
-#include "llvm/Analysis/LoopPassManager.h"
-#include "llvm/IR/IRPrintingPasses.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/OptBisect.h"
-#include "llvm/IR/PassManager.h"
+#include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Timer.h"
-#include "llvm/Support/raw_ostream.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "loop-pass-manager"
 
 namespace {
 
 /// PrintLoopPass - Print a Function corresponding to a Loop.
 ///
-class PrintLoopPassWrapper : public LoopPass {
-  PrintLoopPass P;
+class PrintLoopPass : public LoopPass {
+private:
+  std::string Banner;
+  raw_ostream &Out;       // raw_ostream to print on.
 
 public:
   static char ID;
-  PrintLoopPassWrapper() : LoopPass(ID) {}
-  PrintLoopPassWrapper(raw_ostream &OS, const std::string &Banner)
-      : LoopPass(ID), P(OS, Banner) {}
+  PrintLoopPass(const std::string &B, raw_ostream &o)
+      : LoopPass(ID), Banner(B), Out(o) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 
-  bool runOnLoop(Loop *L, LPPassManager &) override {
-    auto BBI = find_if(L->blocks().begin(), L->blocks().end(),
-                       [](BasicBlock *BB) { return BB; });
-    if (BBI != L->blocks().end() &&
-        isFunctionInPrintList((*BBI)->getParent()->getName())) {
-      LoopAnalysisManager DummyLAM;
-      P.run(*L, DummyLAM);
+  bool runOnLoop(Loop *L, LPPassManager &) {
+    Out << Banner;
+    for (Loop::block_iterator b = L->block_begin(), be = L->block_end();
+         b != be;
+         ++b) {
+      (*b)->print(Out);
     }
     return false;
   }
 };
 
-char PrintLoopPassWrapper::ID = 0;
+char PrintLoopPass::ID = 0;
 }
 
 //===----------------------------------------------------------------------===//
@@ -66,34 +59,78 @@ char LPPassManager::ID = 0;
 
 LPPassManager::LPPassManager()
   : FunctionPass(ID), PMDataManager() {
-  LI = nullptr;
-  CurrentLoop = nullptr;
+  skipThisLoop = false;
+  redoThisLoop = false;
+  LI = NULL;
+  CurrentLoop = NULL;
 }
 
-// Inset loop into loop nest (LoopInfo) and loop queue (LQ).
-Loop &LPPassManager::addLoop(Loop *ParentLoop) {
-  // Create a new loop. LI will take ownership.
-  Loop *L = new Loop();
+/// Delete loop from the loop queue and loop hierarchy (LoopInfo).
+void LPPassManager::deleteLoopFromQueue(Loop *L) {
 
-  // Insert into the loop nest and the loop queue.
-  if (!ParentLoop) {
-    // This is the top level loop.
-    LI->addTopLevelLoop(L);
-    LQ.push_front(L);
-    return *L;
-  }
+  LI->updateUnloop(L);
 
-  ParentLoop->addChildLoop(L);
-  // Insert L into the loop queue after the parent loop.
-  for (auto I = LQ.begin(), E = LQ.end(); I != E; ++I) {
-    if (*I == L->getParentLoop()) {
-      // deque does not support insert after.
-      ++I;
-      LQ.insert(I, 1, L);
+  // If L is current loop then skip rest of the passes and let
+  // runOnFunction remove L from LQ. Otherwise, remove L from LQ now
+  // and continue applying other passes on CurrentLoop.
+  if (CurrentLoop == L)
+    skipThisLoop = true;
+
+  delete L;
+
+  if (skipThisLoop)
+    return;
+
+  for (std::deque<Loop *>::iterator I = LQ.begin(),
+         E = LQ.end(); I != E; ++I) {
+    if (*I == L) {
+      LQ.erase(I);
       break;
     }
   }
-  return *L;
+}
+
+// Inset loop into loop nest (LoopInfo) and loop queue (LQ).
+void LPPassManager::insertLoop(Loop *L, Loop *ParentLoop) {
+
+  assert (CurrentLoop != L && "Cannot insert CurrentLoop");
+
+  // Insert into loop nest
+  if (ParentLoop)
+    ParentLoop->addChildLoop(L);
+  else
+    LI->addTopLevelLoop(L);
+
+  insertLoopIntoQueue(L);
+}
+
+void LPPassManager::insertLoopIntoQueue(Loop *L) {
+  // Insert L into loop queue
+  if (L == CurrentLoop)
+    redoLoop(L);
+  else if (!L->getParentLoop())
+    // This is top level loop.
+    LQ.push_front(L);
+  else {
+    // Insert L after the parent loop.
+    for (std::deque<Loop *>::iterator I = LQ.begin(),
+           E = LQ.end(); I != E; ++I) {
+      if (*I == L->getParentLoop()) {
+        // deque does not support insert after.
+        ++I;
+        LQ.insert(I, 1, L);
+        break;
+      }
+    }
+  }
+}
+
+// Reoptimize this loop. LPPassManager will re-insert this loop into the
+// queue. This allows LoopPass to change loop nest for the loop. This
+// utility may send LPPassManager into infinite loops so use caution.
+void LPPassManager::redoLoop(Loop *L) {
+  assert (CurrentLoop == L && "Can redo only CurrentLoop");
+  redoThisLoop = true;
 }
 
 /// cloneBasicBlockSimpleAnalysis - Invoke cloneBasicBlockAnalysis hook for
@@ -109,7 +146,9 @@ void LPPassManager::cloneBasicBlockSimpleAnalysis(BasicBlock *From,
 /// deleteSimpleAnalysisValue - Invoke deleteAnalysisValue hook for all passes.
 void LPPassManager::deleteSimpleAnalysisValue(Value *V, Loop *L) {
   if (BasicBlock *BB = dyn_cast<BasicBlock>(V)) {
-    for (Instruction &I : *BB) {
+    for (BasicBlock::iterator BI = BB->begin(), BE = BB->end(); BI != BE;
+         ++BI) {
+      Instruction &I = *BI;
       deleteSimpleAnalysisValue(&I, L);
     }
   }
@@ -119,35 +158,26 @@ void LPPassManager::deleteSimpleAnalysisValue(Value *V, Loop *L) {
   }
 }
 
-/// Invoke deleteAnalysisLoop hook for all passes.
-void LPPassManager::deleteSimpleAnalysisLoop(Loop *L) {
-  for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
-    LoopPass *LP = getContainedPass(Index);
-    LP->deleteAnalysisLoop(L);
-  }
-}
-
 
 // Recurse through all subloops and all loops  into LQ.
 static void addLoopIntoQueue(Loop *L, std::deque<Loop *> &LQ) {
   LQ.push_back(L);
-  for (Loop *I : reverse(*L))
-    addLoopIntoQueue(I, LQ);
+  for (Loop::reverse_iterator I = L->rbegin(), E = L->rend(); I != E; ++I)
+    addLoopIntoQueue(*I, LQ);
 }
 
 /// Pass Manager itself does not invalidate any analysis info.
 void LPPassManager::getAnalysisUsage(AnalysisUsage &Info) const {
   // LPPassManager needs LoopInfo. In the long term LoopInfo class will
   // become part of LPPassManager.
-  Info.addRequired<LoopInfoWrapperPass>();
+  Info.addRequired<LoopInfo>();
   Info.setPreservesAll();
 }
 
 /// run - Execute all of the passes scheduled for execution.  Keep track of
 /// whether any of the passes modifies the function, and if so, return true.
 bool LPPassManager::runOnFunction(Function &F) {
-  auto &LIWP = getAnalysis<LoopInfoWrapperPass>();
-  LI = &LIWP.getLoopInfo();
+  LI = &getAnalysis<LoopInfo>();
   bool Changed = false;
 
   // Collect inherited analysis from Module level pass manager.
@@ -162,14 +192,16 @@ bool LPPassManager::runOnFunction(Function &F) {
   // Note that LoopInfo::iterator visits loops in reverse program
   // order. Here, reverse_iterator gives us a forward order, and the LoopQueue
   // reverses the order a third time by popping from the back.
-  for (Loop *L : reverse(*LI))
-    addLoopIntoQueue(L, LQ);
+  for (LoopInfo::reverse_iterator I = LI->rbegin(), E = LI->rend(); I != E; ++I)
+    addLoopIntoQueue(*I, LQ);
 
   if (LQ.empty()) // No loops, skip calling finalizers
     return false;
 
   // Initialization
-  for (Loop *L : LQ) {
+  for (std::deque<Loop *>::const_iterator I = LQ.begin(), E = LQ.end();
+       I != E; ++I) {
+    Loop *L = *I;
     for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
       LoopPass *P = getContainedPass(Index);
       Changed |= P->doInitialization(L, *this);
@@ -178,8 +210,10 @@ bool LPPassManager::runOnFunction(Function &F) {
 
   // Walk Loops
   while (!LQ.empty()) {
-    bool LoopWasDeleted = false;
-    CurrentLoop = LQ.back();
+
+    CurrentLoop  = LQ.back();
+    skipThisLoop = false;
+    redoThisLoop = false;
 
     // Run all passes on the current Loop.
     for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
@@ -197,41 +231,36 @@ bool LPPassManager::runOnFunction(Function &F) {
 
         Changed |= P->runOnLoop(CurrentLoop, *this);
       }
-      LoopWasDeleted = CurrentLoop->isInvalid();
 
       if (Changed)
         dumpPassInfo(P, MODIFICATION_MSG, ON_LOOP_MSG,
-                     LoopWasDeleted ? "<deleted>"
-                                    : CurrentLoop->getHeader()->getName());
+                     skipThisLoop ? "<deleted>" :
+                                    CurrentLoop->getHeader()->getName());
       dumpPreservedSet(P);
 
-      if (LoopWasDeleted) {
-        // Notify passes that the loop is being deleted.
-        deleteSimpleAnalysisLoop(CurrentLoop);
-      } else {
+      if (!skipThisLoop) {
         // Manually check that this loop is still healthy. This is done
         // instead of relying on LoopInfo::verifyLoop since LoopInfo
         // is a function pass and it's really expensive to verify every
         // loop in the function every time. That level of checking can be
         // enabled with the -verify-loop-info option.
         {
-          TimeRegion PassTimer(getPassTimer(&LIWP));
+          TimeRegion PassTimer(getPassTimer(LI));
           CurrentLoop->verifyLoop();
         }
 
         // Then call the regular verifyAnalysis functions.
         verifyPreservedAnalysis(P);
-
-        F.getContext().yield();
       }
 
       removeNotPreservedAnalysis(P);
       recordAvailableAnalysis(P);
-      removeDeadPasses(P, LoopWasDeleted ? "<deleted>"
-                                         : CurrentLoop->getHeader()->getName(),
+      removeDeadPasses(P,
+                       skipThisLoop ? "<deleted>" :
+                                      CurrentLoop->getHeader()->getName(),
                        ON_LOOP_MSG);
 
-      if (LoopWasDeleted)
+      if (skipThisLoop)
         // Do not run other passes on this loop.
         break;
     }
@@ -239,15 +268,17 @@ bool LPPassManager::runOnFunction(Function &F) {
     // If the loop was deleted, release all the loop passes. This frees up
     // some memory, and avoids trouble with the pass manager trying to call
     // verifyAnalysis on them.
-    if (LoopWasDeleted) {
+    if (skipThisLoop)
       for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
         Pass *P = getContainedPass(Index);
         freePass(P, "<deleted>", ON_LOOP_MSG);
       }
-    }
 
     // Pop the loop from queue after running all passes.
     LQ.pop_back();
+
+    if (redoThisLoop)
+      LQ.push_back(CurrentLoop);
   }
 
   // Finalization
@@ -275,7 +306,7 @@ void LPPassManager::dumpPassStructure(unsigned Offset) {
 
 Pass *LoopPass::createPrinterPass(raw_ostream &O,
                                   const std::string &Banner) const {
-  return new PrintLoopPassWrapper(O, Banner);
+  return new PrintLoopPass(Banner, O);
 }
 
 // Check if this pass is suitable for the current LPPassManager, if
@@ -333,23 +364,4 @@ void LoopPass::assignPassManager(PMStack &PMS,
   }
 
   LPPM->add(this);
-}
-
-bool LoopPass::skipLoop(const Loop *L) const {
-  const Function *F = L->getHeader()->getParent();
-  if (!F)
-    return false;
-  // Check the opt bisect limit.
-  LLVMContext &Context = F->getContext();
-  if (!Context.getOptBisect().shouldRunPass(this, *L))
-    return true;
-  // Check for the OptimizeNone attribute.
-  if (F->hasFnAttribute(Attribute::OptimizeNone)) {
-    // FIXME: Report this to dbgs() only once per function.
-    DEBUG(dbgs() << "Skipping pass '" << getPassName()
-          << "' in function " << F->getName() << "\n");
-    // FIXME: Delete loop from pass manager's queue?
-    return true;
-  }
-  return false;
 }

@@ -63,16 +63,12 @@ def WriteZero : SchedWrite;
 defm WriteJump : X86SchedWritePair;
 
 // Floating point. This covers both scalar and vector operations.
-defm WriteFAdd   : X86SchedWritePair; // Floating point add/sub/compare.
-defm WriteFMul   : X86SchedWritePair; // Floating point multiplication.
-defm WriteFDiv   : X86SchedWritePair; // Floating point division.
-defm WriteFSqrt  : X86SchedWritePair; // Floating point square root.
-defm WriteFRcp   : X86SchedWritePair; // Floating point reciprocal estimate.
-defm WriteFRsqrt : X86SchedWritePair; // Floating point reciprocal square root estimate.
-defm WriteFMA    : X86SchedWritePair; // Fused Multiply Add.
-defm WriteFShuffle  : X86SchedWritePair; // Floating point vector shuffles.
-defm WriteFBlend  : X86SchedWritePair; // Floating point vector blends.
-defm WriteFVarBlend  : X86SchedWritePair; // Fp vector variable blends.
+defm WriteFAdd  : X86SchedWritePair; // Floating point add/sub/compare.
+defm WriteFMul  : X86SchedWritePair; // Floating point multiplication.
+defm WriteFDiv  : X86SchedWritePair; // Floating point division.
+defm WriteFSqrt : X86SchedWritePair; // Floating point square root.
+defm WriteFRcp  : X86SchedWritePair; // Floating point reciprocal.
+defm WriteFMA   : X86SchedWritePair; // Fused Multiply Add.
 
 // FMA Scheduling helper class.
 class FMASC { X86FoldableSchedWrite Sched = WriteFAdd; }
@@ -81,54 +77,22 @@ class FMASC { X86FoldableSchedWrite Sched = WriteFAdd; }
 defm WriteVecALU   : X86SchedWritePair; // Vector integer ALU op, no logicals.
 defm WriteVecShift : X86SchedWritePair; // Vector integer shifts.
 defm WriteVecIMul  : X86SchedWritePair; // Vector integer multiply.
-defm WriteShuffle  : X86SchedWritePair; // Vector shuffles.
-defm WriteBlend  : X86SchedWritePair; // Vector blends.
-defm WriteVarBlend  : X86SchedWritePair; // Vector variable blends.
-defm WriteMPSAD : X86SchedWritePair; // Vector MPSAD.
 
 // Vector bitwise operations.
 // These are often used on both floating point and integer vectors.
 defm WriteVecLogic : X86SchedWritePair; // Vector and/or/xor.
+defm WriteShuffle  : X86SchedWritePair; // Vector shuffles and blends.
 
 // Conversion between integer and float.
 defm WriteCvtF2I : X86SchedWritePair; // Float -> Integer.
 defm WriteCvtI2F : X86SchedWritePair; // Integer -> Float.
 defm WriteCvtF2F : X86SchedWritePair; // Float -> Float size conversion.
 
-// Strings instructions.
-// Packed Compare Implicit Length Strings, Return Mask
-defm WritePCmpIStrM : X86SchedWritePair;
-// Packed Compare Explicit Length Strings, Return Mask
-defm WritePCmpEStrM : X86SchedWritePair;
-// Packed Compare Implicit Length Strings, Return Index
-defm WritePCmpIStrI : X86SchedWritePair;
-// Packed Compare Explicit Length Strings, Return Index
-defm WritePCmpEStrI : X86SchedWritePair;
-
-// AES instructions.
-defm WriteAESDecEnc : X86SchedWritePair; // Decryption, encryption.
-defm WriteAESIMC : X86SchedWritePair; // InvMixColumn.
-defm WriteAESKeyGen : X86SchedWritePair; // Key Generation.
-
-// Carry-less multiplication instructions.
-defm WriteCLMul : X86SchedWritePair;
-
 // Catch-all for expensive system instructions.
 def WriteSystem : SchedWrite;
 
-// AVX2.
-defm WriteFShuffle256 : X86SchedWritePair; // Fp 256-bit width vector shuffles.
-defm WriteShuffle256 : X86SchedWritePair; // 256-bit width vector shuffles.
-defm WriteVarVecShift : X86SchedWritePair; // Variable vector shifts.
-
 // Old microcoded instructions that nobody use.
 def WriteMicrocoded : SchedWrite;
-
-// Fence instructions.
-def WriteFence : SchedWrite;
-
-// Nop, not very useful expect it provides a model for nops!
-def WriteNop : SchedWrite;
 
 //===----------------------------------------------------------------------===//
 // Instruction Itinerary classes used for X86
@@ -315,11 +279,6 @@ def IIC_SSE_SQRTPD_RM : InstrItinClass;
 def IIC_SSE_SQRTSD_RR : InstrItinClass;
 def IIC_SSE_SQRTSD_RM : InstrItinClass;
 
-def IIC_SSE_RSQRTPS_RR : InstrItinClass;
-def IIC_SSE_RSQRTPS_RM : InstrItinClass;
-def IIC_SSE_RSQRTSS_RR : InstrItinClass;
-def IIC_SSE_RSQRTSS_RM : InstrItinClass;
-
 def IIC_SSE_RCPP_RR : InstrItinClass;
 def IIC_SSE_RCPP_RM : InstrItinClass;
 def IIC_SSE_RCPS_RR : InstrItinClass;
@@ -364,8 +323,6 @@ def IIC_SSE_PALIGNRR : InstrItinClass;
 def IIC_SSE_PALIGNRM : InstrItinClass;
 def IIC_SSE_MWAIT : InstrItinClass;
 def IIC_SSE_MONITOR : InstrItinClass;
-def IIC_SSE_MWAITX : InstrItinClass;
-def IIC_SSE_MONITORX : InstrItinClass;
 
 def IIC_SSE_PREFETCH : InstrItinClass;
 def IIC_SSE_PAUSE : InstrItinClass;
@@ -620,7 +577,7 @@ def IIC_NOP : InstrItinClass;
 //===----------------------------------------------------------------------===//
 // Processor instruction itineraries.
 
-// IssueWidth is analogous to the number of decode units. Core and its
+// IssueWidth is analagous to the number of decode units. Core and its
 // descendents, including Nehalem and SandyBridge have 4 decoders.
 // Resources beyond the decoder operate on micro-ops and are bufferred
 // so adjacent micro-ops don't directly compete.
@@ -635,27 +592,15 @@ def IIC_NOP : InstrItinClass;
 // latencies. Since these latencies are not used for pipeline hazards,
 // they do not need to be exact.
 //
-// The GenericX86Model contains no instruction itineraries
-// and disables PostRAScheduler.
-class GenericX86Model : SchedMachineModel {
+// The GenericModel contains no instruction itineraries.
+def GenericModel : SchedMachineModel {
   let IssueWidth = 4;
   let MicroOpBufferSize = 32;
   let LoadLatency = 4;
   let HighLatency = 10;
-  let PostRAScheduler = 0;
-  let CompleteModel = 0;
-}
-
-def GenericModel : GenericX86Model;
-
-// Define a model with the PostRAScheduler enabled.
-def GenericPostRAModel : GenericX86Model {
-  let PostRAScheduler = 1;
 }
 
 include "X86ScheduleAtom.td"
 include "X86SchedSandyBridge.td"
 include "X86SchedHaswell.td"
 include "X86ScheduleSLM.td"
-include "X86ScheduleBtVer2.td"
-

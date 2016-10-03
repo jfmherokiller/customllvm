@@ -1,4 +1,4 @@
-//==-- AArch64.h - Top-level interface for AArch64  --------------*- C++ -*-==//
+//==-- AArch64.h - Top-level interface for AArch64 representation -*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,55 +12,31 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_AARCH64_AARCH64_H
-#define LLVM_LIB_TARGET_AARCH64_AARCH64_H
+#ifndef LLVM_TARGET_AARCH64_H
+#define LLVM_TARGET_AARCH64_H
 
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
-#include "Utils/AArch64BaseInfo.h"
-#include "llvm/Support/DataTypes.h"
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
 
-class AArch64TargetMachine;
+class AArch64AsmPrinter;
 class FunctionPass;
-class MachineFunctionPass;
+class AArch64TargetMachine;
+class MachineInstr;
+class MCInst;
 
-FunctionPass *createAArch64DeadRegisterDefinitions();
-FunctionPass *createAArch64RedundantCopyEliminationPass();
-FunctionPass *createAArch64ConditionalCompares();
-FunctionPass *createAArch64AdvSIMDScalar();
-FunctionPass *createAArch64BranchRelaxation();
-FunctionPass *createAArch64ISelDag(AArch64TargetMachine &TM,
-                                 CodeGenOpt::Level OptLevel);
-FunctionPass *createAArch64StorePairSuppressPass();
-FunctionPass *createAArch64ExpandPseudoPass();
-FunctionPass *createAArch64LoadStoreOptimizationPass();
-ModulePass *createAArch64PromoteConstantPass();
-FunctionPass *createAArch64ConditionOptimizerPass();
-FunctionPass *createAArch64AddressTypePromotionPass();
-FunctionPass *createAArch64A57FPLoadBalancing();
-FunctionPass *createAArch64A53Fix835769();
+FunctionPass *createAArch64ISelDAG(AArch64TargetMachine &TM,
+                                   CodeGenOpt::Level OptLevel);
 
 FunctionPass *createAArch64CleanupLocalDynamicTLSPass();
 
-FunctionPass *createAArch64CollectLOHPass();
+FunctionPass *createAArch64BranchFixupPass();
 
-void initializeAArch64A53Fix835769Pass(PassRegistry&);
-void initializeAArch64A57FPLoadBalancingPass(PassRegistry&);
-void initializeAArch64AddressTypePromotionPass(PassRegistry&);
-void initializeAArch64AdvSIMDScalarPass(PassRegistry&);
-void initializeAArch64BranchRelaxationPass(PassRegistry&);
-void initializeAArch64CollectLOHPass(PassRegistry&);
-void initializeAArch64ConditionalComparesPass(PassRegistry&);
-void initializeAArch64ConditionOptimizerPass(PassRegistry&);
-void initializeAArch64DeadRegisterDefinitionsPass(PassRegistry&);
-void initializeAArch64ExpandPseudoPass(PassRegistry&);
-void initializeAArch64LoadStoreOptPass(PassRegistry&);
-void initializeAArch64PromoteConstantPass(PassRegistry&);
-void initializeAArch64RedundantCopyEliminationPass(PassRegistry&);
-void initializeAArch64StorePairSuppressPass(PassRegistry&);
-void initializeLDTLSCleanupPass(PassRegistry&);
-} // end namespace llvm
+void LowerAArch64MachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
+                                      AArch64AsmPrinter &AP);
+
+
+}
 
 #endif

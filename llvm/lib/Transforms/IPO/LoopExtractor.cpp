@@ -14,10 +14,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "loop-extract"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/Dominators.h"
 #include "llvm/Analysis/LoopPass.h"
-#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
@@ -29,8 +30,6 @@
 #include <set>
 using namespace llvm;
 
-#define DEBUG_TYPE "loop-extract"
-
 STATISTIC(NumExtracted, "Number of loops extracted");
 
 namespace {
@@ -38,18 +37,17 @@ namespace {
     static char ID; // Pass identification, replacement for typeid
     unsigned NumLoops;
 
-    explicit LoopExtractor(unsigned numLoops = ~0)
+    explicit LoopExtractor(unsigned numLoops = ~0) 
       : LoopPass(ID), NumLoops(numLoops) {
         initializeLoopExtractorPass(*PassRegistry::getPassRegistry());
       }
 
-    bool runOnLoop(Loop *L, LPPassManager &) override;
+    virtual bool runOnLoop(Loop *L, LPPassManager &LPM);
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.addRequiredID(BreakCriticalEdgesID);
       AU.addRequiredID(LoopSimplifyID);
-      AU.addRequired<DominatorTreeWrapperPass>();
-      AU.addRequired<LoopInfoWrapperPass>();
+      AU.addRequired<DominatorTree>();
     }
   };
 }
@@ -59,7 +57,7 @@ INITIALIZE_PASS_BEGIN(LoopExtractor, "loop-extract",
                       "Extract loops into new functions", false, false)
 INITIALIZE_PASS_DEPENDENCY(BreakCriticalEdges)
 INITIALIZE_PASS_DEPENDENCY(LoopSimplify)
-INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(DominatorTree)
 INITIALIZE_PASS_END(LoopExtractor, "loop-extract",
                     "Extract loops into new functions", false, false)
 
@@ -80,10 +78,7 @@ INITIALIZE_PASS(SingleLoopExtractor, "loop-extract-single",
 //
 Pass *llvm::createLoopExtractorPass() { return new LoopExtractor(); }
 
-bool LoopExtractor::runOnLoop(Loop *L, LPPassManager &) {
-  if (skipLoop(L))
-    return false;
-
+bool LoopExtractor::runOnLoop(Loop *L, LPPassManager &LPM) {
   // Only visit top-level loops.
   if (L->getParentLoop())
     return false;
@@ -92,8 +87,7 @@ bool LoopExtractor::runOnLoop(Loop *L, LPPassManager &) {
   if (!L->isLoopSimplifyForm())
     return false;
 
-  DominatorTree &DT = getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-  LoopInfo &LI = getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+  DominatorTree &DT = getAnalysis<DominatorTree>();
   bool Changed = false;
 
   // If there is more than one top-level loop in this function, extract all of
@@ -122,14 +116,14 @@ bool LoopExtractor::runOnLoop(Loop *L, LPPassManager &) {
   }
 
   if (ShouldExtractLoop) {
-    // We must omit EH pads. EH pads must accompany the invoke
+    // We must omit landing pads. Landing pads must accompany the invoke
     // instruction. But this would result in a loop in the extracted
     // function. An infinite cycle occurs when it tries to extract that loop as
     // well.
     SmallVector<BasicBlock*, 8> ExitBlocks;
     L->getExitBlocks(ExitBlocks);
     for (unsigned i = 0, e = ExitBlocks.size(); i != e; ++i)
-      if (ExitBlocks[i]->isEHPad()) {
+      if (ExitBlocks[i]->isLandingPad()) {
         ShouldExtractLoop = false;
         break;
       }
@@ -139,11 +133,11 @@ bool LoopExtractor::runOnLoop(Loop *L, LPPassManager &) {
     if (NumLoops == 0) return Changed;
     --NumLoops;
     CodeExtractor Extractor(DT, *L);
-    if (Extractor.extractCodeRegion() != nullptr) {
+    if (Extractor.extractCodeRegion() != 0) {
       Changed = true;
       // After extraction, the loop is replaced by a function call, so
       // we shouldn't try to run any more loop passes on it.
-      LI.markAsRemoved(L);
+      LPM.deleteLoopFromQueue(L);
     }
     ++NumExtracted;
   }
@@ -183,7 +177,7 @@ namespace {
         LoadFile(BlockFile.c_str());
     }
 
-    bool runOnModule(Module &M) override;
+    bool runOnModule(Module &M);
   };
 }
 
@@ -244,14 +238,11 @@ void BlockExtractorPass::SplitLandingPadPreds(Function *F) {
     if (!Split) continue;
 
     SmallVector<BasicBlock*, 2> NewBBs;
-    SplitLandingPadPredecessors(LPad, Parent, ".1", ".2", NewBBs);
+    SplitLandingPadPredecessors(LPad, Parent, ".1", ".2", 0, NewBBs);
   }
 }
 
 bool BlockExtractorPass::runOnModule(Module &M) {
-  if (skipModule(M))
-    return false;
-
   std::set<BasicBlock*> TranslatedBlocksToNotExtract;
   for (unsigned i = 0, e = BlocksToNotExtract.size(); i != e; ++i) {
     BasicBlock *BB = BlocksToNotExtract[i];
@@ -264,7 +255,7 @@ bool BlockExtractorPass::runOnModule(Module &M) {
     // Figure out which index the basic block is in its function.
     Function::iterator BBI = MF->begin();
     std::advance(BBI, std::distance(F->begin(), Function::iterator(BB)));
-    TranslatedBlocksToNotExtract.insert(&*BBI);
+    TranslatedBlocksToNotExtract.insert(BBI);
   }
 
   while (!BlocksToNotExtractByName.empty()) {
@@ -275,13 +266,15 @@ bool BlockExtractorPass::runOnModule(Module &M) {
     std::string &FuncName  = BlocksToNotExtractByName.back().first;
     std::string &BlockName = BlocksToNotExtractByName.back().second;
 
-    for (Function &F : M) {
+    for (Module::iterator FI = M.begin(), FE = M.end(); FI != FE; ++FI) {
+      Function &F = *FI;
       if (F.getName() != FuncName) continue;
 
-      for (BasicBlock &BB : F) {
+      for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
+        BasicBlock &BB = *BI;
         if (BB.getName() != BlockName) continue;
 
-        TranslatedBlocksToNotExtract.insert(&BB);
+        TranslatedBlocksToNotExtract.insert(BI);
       }
     }
 
@@ -291,18 +284,18 @@ bool BlockExtractorPass::runOnModule(Module &M) {
   // Now that we know which blocks to not extract, figure out which ones we WANT
   // to extract.
   std::vector<BasicBlock*> BlocksToExtract;
-  for (Function &F : M) {
-    SplitLandingPadPreds(&F);
-    for (BasicBlock &BB : F)
-      if (!TranslatedBlocksToNotExtract.count(&BB))
-        BlocksToExtract.push_back(&BB);
+  for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
+    SplitLandingPadPreds(&*F);
+    for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB)
+      if (!TranslatedBlocksToNotExtract.count(BB))
+        BlocksToExtract.push_back(BB);
   }
 
-  for (BasicBlock *BlockToExtract : BlocksToExtract) {
+  for (unsigned i = 0, e = BlocksToExtract.size(); i != e; ++i) {
     SmallVector<BasicBlock*, 2> BlocksToExtractVec;
-    BlocksToExtractVec.push_back(BlockToExtract);
+    BlocksToExtractVec.push_back(BlocksToExtract[i]);
     if (const InvokeInst *II =
-            dyn_cast<InvokeInst>(BlockToExtract->getTerminator()))
+        dyn_cast<InvokeInst>(BlocksToExtract[i]->getTerminator()))
       BlocksToExtractVec.push_back(II->getUnwindDest());
     CodeExtractor(BlocksToExtractVec).extractCodeRegion();
   }

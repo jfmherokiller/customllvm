@@ -14,6 +14,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "regalloc"
 #include "AllocationOrder.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -24,18 +25,15 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "regalloc"
-
 // Compare VirtRegMap::getRegAllocPref().
 AllocationOrder::AllocationOrder(unsigned VirtReg,
                                  const VirtRegMap &VRM,
-                                 const RegisterClassInfo &RegClassInfo,
-                                 const LiveRegMatrix *Matrix)
+                                 const RegisterClassInfo &RegClassInfo)
   : Pos(0) {
   const MachineFunction &MF = VRM.getMachineFunction();
   const TargetRegisterInfo *TRI = &VRM.getTargetRegInfo();
   Order = RegClassInfo.getOrder(MF.getRegInfo().getRegClass(VirtReg));
-  TRI->getRegAllocationHints(VirtReg, Order, Hints, MF, &VRM, Matrix);
+  TRI->getRegAllocationHints(VirtReg, Order, Hints, MF, &VRM);
   rewind();
 
   DEBUG({
@@ -48,7 +46,7 @@ AllocationOrder::AllocationOrder(unsigned VirtReg,
   });
 #ifndef NDEBUG
   for (unsigned I = 0, E = Hints.size(); I != E; ++I)
-    assert(is_contained(Order, Hints[I]) &&
+    assert(std::find(Order.begin(), Order.end(), Hints[I]) != Order.end() &&
            "Target hint is outside allocation order.");
 #endif
 }

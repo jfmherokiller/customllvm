@@ -1,4 +1,5 @@
 // REQUIRES: shell
+// XFAIL: mingw
 // RUN: llvm-mc -triple=x86_64-linux-unknown -g -fdebug-compilation-dir=/test/comp/dir %s -filetype=obj -o %t.o
 // RUN: llvm-dwarfdump -debug-dump=info %t.o | FileCheck %s
 

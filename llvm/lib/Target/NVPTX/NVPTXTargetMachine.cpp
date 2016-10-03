@@ -16,21 +16,21 @@
 #include "NVPTX.h"
 #include "NVPTXAllocaHoisting.h"
 #include "NVPTXLowerAggrCopies.h"
-#include "NVPTXTargetObjectFile.h"
-#include "NVPTXTargetTransformInfo.h"
+#include "NVPTXSplitBBatBar.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/Analysis/Verifier.h"
+#include "llvm/Assembly/PrintModulePass.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/IRPrintingPasses.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
@@ -44,34 +44,12 @@
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Scalar/GVN.h"
-#include "llvm/Transforms/Vectorize.h"
 
 using namespace llvm;
 
-static cl::opt<bool> UseInferAddressSpaces(
-    "nvptx-use-infer-addrspace", cl::init(true), cl::Hidden,
-    cl::desc("Optimize address spaces using NVPTXInferAddressSpaces instead of "
-             "NVPTXFavorNonGenericAddrSpaces"));
-
-// LSV is still relatively new; this switch lets us turn it off in case we
-// encounter (or suspect) a bug.
-static cl::opt<bool>
-    DisableLoadStoreVectorizer("disable-nvptx-load-store-vectorizer",
-                               cl::desc("Disable load/store vectorizer"),
-                               cl::init(false), cl::Hidden);
-
 namespace llvm {
-void initializeNVVMIntrRangePass(PassRegistry&);
 void initializeNVVMReflectPass(PassRegistry&);
 void initializeGenericToNVVMPass(PassRegistry&);
-void initializeNVPTXAllocaHoistingPass(PassRegistry &);
-void initializeNVPTXAssignValidGlobalNamesPass(PassRegistry&);
-void initializeNVPTXFavorNonGenericAddrSpacesPass(PassRegistry &);
-void initializeNVPTXInferAddressSpacesPass(PassRegistry &);
-void initializeNVPTXLowerAggrCopiesPass(PassRegistry &);
-void initializeNVPTXLowerArgsPass(PassRegistry &);
-void initializeNVPTXLowerAllocaPass(PassRegistry &);
 }
 
 extern "C" void LLVMInitializeNVPTXTarget() {
@@ -81,70 +59,36 @@ extern "C" void LLVMInitializeNVPTXTarget() {
 
   // FIXME: This pass is really intended to be invoked during IR optimization,
   // but it's very NVPTX-specific.
-  PassRegistry &PR = *PassRegistry::getPassRegistry();
-  initializeNVVMReflectPass(PR);
-  initializeNVVMIntrRangePass(PR);
-  initializeGenericToNVVMPass(PR);
-  initializeNVPTXAllocaHoistingPass(PR);
-  initializeNVPTXAssignValidGlobalNamesPass(PR);
-  initializeNVPTXFavorNonGenericAddrSpacesPass(PR);
-  initializeNVPTXInferAddressSpacesPass(PR);
-  initializeNVPTXLowerArgsPass(PR);
-  initializeNVPTXLowerAllocaPass(PR);
-  initializeNVPTXLowerAggrCopiesPass(PR);
+  initializeNVVMReflectPass(*PassRegistry::getPassRegistry());
+  initializeGenericToNVVMPass(*PassRegistry::getPassRegistry());
 }
 
-static std::string computeDataLayout(bool is64Bit) {
-  std::string Ret = "e";
-
-  if (!is64Bit)
-    Ret += "-p:32:32";
-
-  Ret += "-i64:64-v16:16-v32:32-n16:32:64";
-
-  return Ret;
-}
-
-NVPTXTargetMachine::NVPTXTargetMachine(const Target &T, const Triple &TT,
-                                       StringRef CPU, StringRef FS,
-                                       const TargetOptions &Options,
-                                       Optional<Reloc::Model> RM,
-                                       CodeModel::Model CM,
-                                       CodeGenOpt::Level OL, bool is64bit)
-    // The pic relocation model is used regardless of what the client has
-    // specified, as it is the only relocation model currently supported.
-    : LLVMTargetMachine(T, computeDataLayout(is64bit), TT, CPU, FS, Options,
-                        Reloc::PIC_, CM, OL),
-      is64bit(is64bit),
-      TLOF(make_unique<NVPTXTargetObjectFile>()),
-      Subtarget(TT, CPU, FS, *this) {
-  if (TT.getOS() == Triple::NVCL)
-    drvInterface = NVPTX::NVCL;
-  else
-    drvInterface = NVPTX::CUDA;
+NVPTXTargetMachine::NVPTXTargetMachine(
+    const Target &T, StringRef TT, StringRef CPU, StringRef FS,
+    const TargetOptions &Options, Reloc::Model RM, CodeModel::Model CM,
+    CodeGenOpt::Level OL, bool is64bit)
+    : LLVMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL),
+      Subtarget(TT, CPU, FS, is64bit), DL(Subtarget.getDataLayout()),
+      InstrInfo(*this), TLInfo(*this), TSInfo(*this),
+      FrameLowering(
+          *this, is64bit) /*FrameInfo(TargetFrameInfo::StackGrowsUp, 8, 0)*/ {
   initAsmInfo();
 }
 
-NVPTXTargetMachine::~NVPTXTargetMachine() {}
-
 void NVPTXTargetMachine32::anchor() {}
 
-NVPTXTargetMachine32::NVPTXTargetMachine32(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Optional<Reloc::Model> RM,
-                                           CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
+NVPTXTargetMachine32::NVPTXTargetMachine32(
+    const Target &T, StringRef TT, StringRef CPU, StringRef FS,
+    const TargetOptions &Options, Reloc::Model RM, CodeModel::Model CM,
+    CodeGenOpt::Level OL)
     : NVPTXTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
 
 void NVPTXTargetMachine64::anchor() {}
 
-NVPTXTargetMachine64::NVPTXTargetMachine64(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Optional<Reloc::Model> RM,
-                                           CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
+NVPTXTargetMachine64::NVPTXTargetMachine64(
+    const Target &T, StringRef TT, StringRef CPU, StringRef FS,
+    const TargetOptions &Options, Reloc::Model RM, CodeModel::Model CM,
+    CodeGenOpt::Level OL)
     : NVPTXTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
 
 namespace {
@@ -157,81 +101,20 @@ public:
     return getTM<NVPTXTargetMachine>();
   }
 
-  void addIRPasses() override;
-  bool addInstSelector() override;
-  void addPostRegAlloc() override;
-  void addMachineSSAOptimization() override;
+  virtual void addIRPasses();
+  virtual bool addInstSelector();
+  virtual bool addPreRegAlloc();
+  virtual bool addPostRegAlloc();
 
-  FunctionPass *createTargetRegisterAllocator(bool) override;
-  void addFastRegAlloc(FunctionPass *RegAllocPass) override;
-  void addOptimizedRegAlloc(FunctionPass *RegAllocPass) override;
-
-private:
-  // If the opt level is aggressive, add GVN; otherwise, add EarlyCSE. This
-  // function is only called in opt mode.
-  void addEarlyCSEOrGVNPass();
-
-  // Add passes that propagate special memory spaces.
-  void addAddressSpaceInferencePasses();
-
-  // Add passes that perform straight-line scalar optimizations.
-  void addStraightLineScalarOptimizationPasses();
+  virtual FunctionPass *createTargetRegisterAllocator(bool) LLVM_OVERRIDE;
+  virtual void addFastRegAlloc(FunctionPass *RegAllocPass);
+  virtual void addOptimizedRegAlloc(FunctionPass *RegAllocPass);
 };
 } // end anonymous namespace
 
 TargetPassConfig *NVPTXTargetMachine::createPassConfig(PassManagerBase &PM) {
-  return new NVPTXPassConfig(this, PM);
-}
-
-void NVPTXTargetMachine::addEarlyAsPossiblePasses(PassManagerBase &PM) {
-  PM.add(createNVVMReflectPass());
-  PM.add(createNVVMIntrRangePass(Subtarget.getSmVersion()));
-}
-
-TargetIRAnalysis NVPTXTargetMachine::getTargetIRAnalysis() {
-  return TargetIRAnalysis([this](const Function &F) {
-    return TargetTransformInfo(NVPTXTTIImpl(this, F));
-  });
-}
-
-void NVPTXPassConfig::addEarlyCSEOrGVNPass() {
-  if (getOptLevel() == CodeGenOpt::Aggressive)
-    addPass(createGVNPass());
-  else
-    addPass(createEarlyCSEPass());
-}
-
-void NVPTXPassConfig::addAddressSpaceInferencePasses() {
-  // NVPTXLowerArgs emits alloca for byval parameters which can often
-  // be eliminated by SROA.
-  addPass(createSROAPass());
-  addPass(createNVPTXLowerAllocaPass());
-  if (UseInferAddressSpaces) {
-    addPass(createNVPTXInferAddressSpacesPass());
-  } else {
-    addPass(createNVPTXFavorNonGenericAddrSpacesPass());
-    // FavorNonGenericAddrSpaces shortcuts unnecessary addrspacecasts, and leave
-    // them unused. We could remove dead code in an ad-hoc manner, but that
-    // requires manual work and might be error-prone.
-    addPass(createDeadCodeEliminationPass());
-  }
-}
-
-void NVPTXPassConfig::addStraightLineScalarOptimizationPasses() {
-  addPass(createSeparateConstOffsetFromGEPPass());
-  addPass(createSpeculativeExecutionPass());
-  // ReassociateGEPs exposes more opportunites for SLSR. See
-  // the example in reassociate-geps-and-slsr.ll.
-  addPass(createStraightLineStrengthReducePass());
-  // SeparateConstOffsetFromGEP and SLSR creates common expressions which GVN or
-  // EarlyCSE can reuse. GVN generates significantly better code than EarlyCSE
-  // for some of our benchmarks.
-  addEarlyCSEOrGVNPass();
-  // Run NaryReassociate after EarlyCSE/GVN to be more effective.
-  addPass(createNaryReassociatePass());
-  // NaryReassociate on GEPs creates redundant common expressions, so run
-  // EarlyCSE after it.
-  addPass(createEarlyCSEPass());
+  NVPTXPassConfig *PassConfig = new NVPTXPassConfig(this, PM);
+  return PassConfig;
 }
 
 void NVPTXPassConfig::addIRPasses() {
@@ -242,77 +125,28 @@ void NVPTXPassConfig::addIRPasses() {
   // NVPTXPrologEpilog pass (see NVPTXPrologEpilogPass.cpp).
   disablePass(&PrologEpilogCodeInserterID);
   disablePass(&MachineCopyPropagationID);
-  disablePass(&TailDuplicateID);
-  disablePass(&StackMapLivenessID);
-  disablePass(&LiveDebugValuesID);
-  disablePass(&PostRASchedulerID);
-  disablePass(&FuncletLayoutID);
-  disablePass(&PatchableFunctionID);
+  disablePass(&BranchFolderPassID);
 
-  // NVVMReflectPass is added in addEarlyAsPossiblePasses, so hopefully running
-  // it here does nothing.  But since we need it for correctness when lowering
-  // to NVPTX, run it here too, in case whoever built our pass pipeline didn't
-  // call addEarlyAsPossiblePasses.
-  addPass(createNVVMReflectPass());
-
-  if (getOptLevel() != CodeGenOpt::None)
-    addPass(createNVPTXImageOptimizerPass());
-  addPass(createNVPTXAssignValidGlobalNamesPass());
-  addPass(createGenericToNVVMPass());
-
-  // NVPTXLowerArgs is required for correctness and should be run right
-  // before the address space inference passes.
-  addPass(createNVPTXLowerArgsPass(&getNVPTXTargetMachine()));
-  if (getOptLevel() != CodeGenOpt::None) {
-    addAddressSpaceInferencePasses();
-    if (!DisableLoadStoreVectorizer)
-      addPass(createLoadStoreVectorizerPass());
-    addStraightLineScalarOptimizationPasses();
-  }
-
-  // === LSR and other generic IR passes ===
   TargetPassConfig::addIRPasses();
-  // EarlyCSE is not always strong enough to clean up what LSR produces. For
-  // example, GVN can combine
-  //
-  //   %0 = add %a, %b
-  //   %1 = add %b, %a
-  //
-  // and
-  //
-  //   %0 = shl nsw %a, 2
-  //   %1 = shl %a, 2
-  //
-  // but EarlyCSE can do neither of them.
-  if (getOptLevel() != CodeGenOpt::None)
-    addEarlyCSEOrGVNPass();
+  addPass(createGenericToNVVMPass());
 }
 
 bool NVPTXPassConfig::addInstSelector() {
-  const NVPTXSubtarget &ST = *getTM<NVPTXTargetMachine>().getSubtargetImpl();
-
   addPass(createLowerAggrCopies());
+  addPass(createSplitBBatBarPass());
   addPass(createAllocaHoisting());
   addPass(createNVPTXISelDag(getNVPTXTargetMachine(), getOptLevel()));
-
-  if (!ST.hasImageHandles())
-    addPass(createNVPTXReplaceImageHandlesPass());
-
   return false;
 }
 
-void NVPTXPassConfig::addPostRegAlloc() {
-  addPass(createNVPTXPrologEpilogPass(), false);
-  if (getOptLevel() != CodeGenOpt::None) {
-    // NVPTXPrologEpilogPass calculates frame object offset and replace frame
-    // index with VRFrame register. NVPTXPeephole need to be run after that and
-    // will replace VRFrame with VRFrameLocal when possible.
-    addPass(createNVPTXPeephole());
-  }
+bool NVPTXPassConfig::addPreRegAlloc() { return false; }
+bool NVPTXPassConfig::addPostRegAlloc() {
+  addPass(createNVPTXPrologEpilogPass());
+  return false;
 }
 
 FunctionPass *NVPTXPassConfig::createTargetRegisterAllocator(bool) {
-  return nullptr; // No reg alloc
+  return 0; // No reg alloc
 }
 
 void NVPTXPassConfig::addFastRegAlloc(FunctionPass *RegAllocPass) {
@@ -343,44 +177,4 @@ void NVPTXPassConfig::addOptimizedRegAlloc(FunctionPass *RegAllocPass) {
   //addPass(&PostRAMachineLICMID);
 
   printAndVerify("After StackSlotColoring");
-}
-
-void NVPTXPassConfig::addMachineSSAOptimization() {
-  // Pre-ra tail duplication.
-  if (addPass(&EarlyTailDuplicateID))
-    printAndVerify("After Pre-RegAlloc TailDuplicate");
-
-  // Optimize PHIs before DCE: removing dead PHI cycles may make more
-  // instructions dead.
-  addPass(&OptimizePHIsID);
-
-  // This pass merges large allocas. StackSlotColoring is a different pass
-  // which merges spill slots.
-  addPass(&StackColoringID);
-
-  // If the target requests it, assign local variables to stack slots relative
-  // to one another and simplify frame index references where possible.
-  addPass(&LocalStackSlotAllocationID);
-
-  // With optimization, dead code should already be eliminated. However
-  // there is one known exception: lowered code for arguments that are only
-  // used by tail calls, where the tail calls reuse the incoming stack
-  // arguments directly (see t11 in test/CodeGen/X86/sibcall.ll).
-  addPass(&DeadMachineInstructionElimID);
-  printAndVerify("After codegen DCE pass");
-
-  // Allow targets to insert passes that improve instruction level parallelism,
-  // like if-conversion. Such passes will typically need dominator trees and
-  // loop info, just like LICM and CSE below.
-  if (addILPOpts())
-    printAndVerify("After ILP optimizations");
-
-  addPass(&MachineLICMID);
-  addPass(&MachineCSEID);
-
-  addPass(&MachineSinkingID);
-  printAndVerify("After Machine LICM, CSE and Sinking passes");
-
-  addPass(&PeepholeOptimizerID);
-  printAndVerify("After codegen peephole optimization pass");
 }

@@ -1,6 +1,4 @@
 add_llvm_library(LLVMTransformUtils
-  ASanStackFrameLayout.cpp
-  AddDiscriminators.cpp
   BasicBlockUtils.cpp
   BreakCriticalEdges.cpp
   BuildLibCalls.cpp
@@ -9,14 +7,9 @@ add_llvm_library(LLVMTransformUtils
   CloneModule.cpp
   CmpInstAnalysis.cpp
   CodeExtractor.cpp
-  CtorUtils.cpp
   DemoteRegToStack.cpp
-  Evaluator.cpp
-  FlattenCFG.cpp
-  FunctionImportUtils.cpp
   GlobalStatus.cpp
   InlineFunction.cpp
-  ImportedFunctionsInliningStatistics.cpp
   InstructionNamer.cpp
   IntegerDivision.cpp
   LCSSA.cpp
@@ -24,31 +17,23 @@ add_llvm_library(LLVMTransformUtils
   LoopSimplify.cpp
   LoopUnroll.cpp
   LoopUnrollRuntime.cpp
-  LoopUtils.cpp
-  LoopVersioning.cpp
+  LowerExpectIntrinsic.cpp
   LowerInvoke.cpp
   LowerSwitch.cpp
   Mem2Reg.cpp
-  MemorySSA.cpp
   MetaRenamer.cpp
   ModuleUtils.cpp
-  NameAnonGlobals.cpp
   PromoteMemoryToRegister.cpp
   SSAUpdater.cpp
-  SanitizerStats.cpp
   SimplifyCFG.cpp
+  FlattenCFG.cpp
   SimplifyIndVar.cpp
   SimplifyInstructions.cpp
   SimplifyLibCalls.cpp
-  SplitModule.cpp
-  SymbolRewriter.cpp
+  SpecialCaseList.cpp
   UnifyFunctionExitNodes.cpp
   Utils.cpp
   ValueMapper.cpp
-
-  ADDITIONAL_HEADER_DIRS
-  ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
-  ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms/Utils
   )
 
 add_dependencies(LLVMTransformUtils intrinsics_gen)

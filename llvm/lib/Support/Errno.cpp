@@ -35,14 +35,12 @@ std::string StrError() {
 #endif  // HAVE_ERRNO_H
 
 std::string StrError(int errnum) {
-  std::string str;
-  if (errnum == 0)
-    return str;
-#if defined(HAVE_STRERROR_R) || HAVE_DECL_STRERROR_S
   const int MaxErrStrLen = 2000;
   char buffer[MaxErrStrLen];
   buffer[0] = '\0';
-#endif  
+  std::string str;
+  if (errnum == 0)
+    return str;
 
 #ifdef HAVE_STRERROR_R
   // strerror_r is thread-safe.

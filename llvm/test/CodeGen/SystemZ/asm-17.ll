@@ -1,7 +1,6 @@
 ; Test explicit register names.
 ;
-; RUN: llc < %s  -verify-machineinstrs -mtriple=s390x-linux-gnu -no-integrated-as \
-; RUN:   | FileCheck %s
+; RUN: llc < %s -mtriple=s390x-linux-gnu | FileCheck %s
 
 ; Test i32 GPRs.
 define i32 @f1() {

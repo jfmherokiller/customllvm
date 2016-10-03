@@ -13,11 +13,13 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_XCORE_INSTPRINTER_XCOREINSTPRINTER_H
-#define LLVM_LIB_TARGET_XCORE_INSTPRINTER_XCOREINSTPRINTER_H
+#ifndef XCOREINSTPRINTER_H
+#define XCOREINSTPRINTER_H
 #include "llvm/MC/MCInstPrinter.h"
 
 namespace llvm {
+
+class TargetMachine;
 
 class XCoreInstPrinter : public MCInstPrinter {
 public:
@@ -29,9 +31,8 @@ public:
   void printInstruction(const MCInst *MI, raw_ostream &O);
   static const char *getRegisterName(unsigned RegNo);
 
-  void printRegName(raw_ostream &OS, unsigned RegNo) const override;
-  void printInst(const MCInst *MI, raw_ostream &O, StringRef Annot,
-                 const MCSubtargetInfo &STI) override;
+  virtual void printRegName(raw_ostream &OS, unsigned RegNo) const;
+  virtual void printInst(const MCInst *MI, raw_ostream &O, StringRef Annot);
 private:
   void printInlineJT(const MCInst *MI, int opNum, raw_ostream &O);
   void printInlineJT32(const MCInst *MI, int opNum, raw_ostream &O);

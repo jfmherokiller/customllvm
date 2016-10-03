@@ -1,4 +1,4 @@
-(*===-- llvm/llvm.ml - LLVM OCaml Interface -------------------------------===*
+(*===-- llvm/llvm.ml - LLVM Ocaml Interface --------------------------------===*
  *
  *                     The LLVM Compiler Infrastructure
  *
@@ -16,7 +16,6 @@ type lluse
 type llbasicblock
 type llbuilder
 type llmemorybuffer
-type llmdkind
 
 module TypeKind = struct
   type t =
@@ -64,13 +63,6 @@ module Visibility = struct
   | Default
   | Hidden
   | Protected
-end
-
-module DLLStorageClass = struct
-  type t =
-  | Default
-  | DLLImport
-  | DLLExport
 end
 
 module CallConv = struct
@@ -283,26 +275,10 @@ module ValueKind = struct
   | Instruction of Opcode.t
 end
 
-module DiagnosticSeverity = struct
-  type t =
-  | Error
-  | Warning
-  | Remark
-  | Note
-end
-
 exception IoError of string
 
-let () = Callback.register_exception "Llvm.IoError" (IoError "")
-
-external install_fatal_error_handler : (string -> unit) -> unit
-                                     = "llvm_install_fatal_error_handler"
-external reset_fatal_error_handler : unit -> unit
-                                   = "llvm_reset_fatal_error_handler"
-external enable_pretty_stacktrace : unit -> unit
-                                  = "llvm_enable_pretty_stacktrace"
-external parse_command_line_options : ?overview:string -> string array -> unit
-                                    = "llvm_parse_command_line_options"
+external register_exns : exn -> unit = "llvm_register_core_exns"
+let _ = register_exns (IoError "")
 
 type ('a, 'b) llpos =
 | At_end of 'a
@@ -312,25 +288,11 @@ type ('a, 'b) llrev_pos =
 | At_start of 'a
 | After of 'b
 
-
-(*===-- Context error handling --------------------------------------------===*)
-module Diagnostic = struct
-  type t
-
-  external description : t -> string = "llvm_get_diagnostic_description"
-  external severity : t -> DiagnosticSeverity.t
-                    = "llvm_get_diagnostic_severity"
-end
-
-external set_diagnostic_handler
-  : llcontext -> (Diagnostic.t -> unit) option -> unit
-  = "llvm_set_diagnostic_handler"
-
 (*===-- Contexts ----------------------------------------------------------===*)
 external create_context : unit -> llcontext = "llvm_create_context"
 external dispose_context : llcontext -> unit = "llvm_dispose_context"
 external global_context : unit -> llcontext = "llvm_global_context"
-external mdkind_id : llcontext -> string -> llmdkind = "llvm_mdkind_id"
+external mdkind_id : llcontext -> string -> int = "llvm_mdkind_id"
 
 (*===-- Modules -----------------------------------------------------------===*)
 external create_module : llcontext -> string -> llmodule = "llvm_create_module"
@@ -458,7 +420,6 @@ let fold_right_uses f v init =
 
 (*--... Operations on users ................................................--*)
 external operand : llvalue -> int -> llvalue = "llvm_operand"
-external operand_use : llvalue -> int -> lluse = "llvm_operand_use"
 external set_operand : llvalue -> int -> llvalue -> unit = "llvm_set_operand"
 external num_operands : llvalue -> int = "llvm_num_operands"
 
@@ -474,17 +435,14 @@ external constexpr_opcode : llvalue -> Opcode.t = "llvm_constexpr_get_opcode"
 
 (*--... Operations on instructions .........................................--*)
 external has_metadata : llvalue -> bool = "llvm_has_metadata"
-external metadata : llvalue -> llmdkind -> llvalue option = "llvm_metadata"
-external set_metadata : llvalue -> llmdkind -> llvalue -> unit = "llvm_set_metadata"
-external clear_metadata : llvalue -> llmdkind -> unit = "llvm_clear_metadata"
+external metadata : llvalue -> int -> llvalue option = "llvm_metadata"
+external set_metadata : llvalue -> int -> llvalue -> unit = "llvm_set_metadata"
+external clear_metadata : llvalue -> int -> unit = "llvm_clear_metadata"
 
 (*--... Operations on metadata .......,.....................................--*)
 external mdstring : llcontext -> string -> llvalue = "llvm_mdstring"
 external mdnode : llcontext -> llvalue array -> llvalue = "llvm_mdnode"
-external mdnull : llcontext -> llvalue = "llvm_mdnull"
 external get_mdstring : llvalue -> string option = "llvm_get_mdstring"
-external get_mdnode_operands : llvalue -> llvalue array
-                            = "llvm_get_mdnode_operands"
 external get_named_metadata : llmodule -> string -> llvalue array
                             = "llvm_get_namedmd"
 external add_named_metadata_operand : llmodule -> string -> llvalue -> unit
@@ -499,8 +457,6 @@ external int64_of_const : llvalue -> Int64.t option
 external const_int_of_string : lltype -> string -> int -> llvalue
                              = "llvm_const_int_of_string"
 external const_float : lltype -> float -> llvalue = "llvm_const_float"
-external float_of_const : llvalue -> float option
-                        = "llvm_float_of_const"
 external const_float_of_string : lltype -> string -> llvalue
                                = "llvm_const_float_of_string"
 
@@ -515,8 +471,6 @@ external const_named_struct : lltype -> llvalue array -> llvalue
 external const_packed_struct : llcontext -> llvalue array -> llvalue
                              = "llvm_const_packed_struct"
 external const_vector : llvalue array -> llvalue = "llvm_const_vector"
-external string_of_const : llvalue -> string option = "llvm_string_of_const"
-external const_element : llvalue -> int -> llvalue = "llvm_const_element"
 
 (*--... Constant expressions ...............................................--*)
 external align_of : lltype -> llvalue = "LLVMAlignOf"
@@ -603,14 +557,10 @@ external global_parent : llvalue -> llmodule = "LLVMGetGlobalParent"
 external is_declaration : llvalue -> bool = "llvm_is_declaration"
 external linkage : llvalue -> Linkage.t = "llvm_linkage"
 external set_linkage : Linkage.t -> llvalue -> unit = "llvm_set_linkage"
-external unnamed_addr : llvalue -> bool = "llvm_unnamed_addr"
-external set_unnamed_addr : bool -> llvalue -> unit = "llvm_set_unnamed_addr"
 external section : llvalue -> string = "llvm_section"
 external set_section : string -> llvalue -> unit = "llvm_set_section"
 external visibility : llvalue -> Visibility.t = "llvm_visibility"
 external set_visibility : Visibility.t -> llvalue -> unit = "llvm_set_visibility"
-external dll_storage_class : llvalue -> DLLStorageClass.t = "llvm_dll_storage_class"
-external set_dll_storage_class : DLLStorageClass.t -> llvalue -> unit = "llvm_set_dll_storage_class"
 external alignment : llvalue -> int = "llvm_alignment"
 external set_alignment : int -> llvalue -> unit = "llvm_set_alignment"
 external is_global_constant : llvalue -> bool = "llvm_is_global_constant"
@@ -994,8 +944,6 @@ external instr_pred : llvalue -> (llbasicblock, llvalue) llrev_pos
 
 external instr_opcode : llvalue -> Opcode.t = "llvm_instr_get_opcode"
 external icmp_predicate : llvalue -> Icmp.t option = "llvm_instr_icmp_predicate"
-external fcmp_predicate : llvalue -> Fcmp.t option = "llvm_instr_fcmp_predicate"
-external instr_clone : llvalue -> llvalue = "llvm_instr_clone"
 
 let rec iter_instrs_range f i e =
   if i = e then () else
@@ -1062,63 +1010,6 @@ external set_tail_call : bool -> llvalue -> unit = "llvm_set_tail_call"
 (*--... Operations on load/store instructions (only) .......................--*)
 external is_volatile : llvalue -> bool = "llvm_is_volatile"
 external set_volatile : bool -> llvalue -> unit = "llvm_set_volatile"
-
-(*--... Operations on terminators ..........................................--*)
-
-let is_terminator llv =
-  let open ValueKind in
-  let open Opcode in
-  match classify_value llv with
-    | Instruction (Br | IndirectBr | Invoke | Resume | Ret | Switch | Unreachable)
-      -> true
-    | _ -> false
-
-external successor : llvalue -> int -> llbasicblock = "llvm_successor"
-external set_successor : llvalue -> int -> llbasicblock -> unit
-                       = "llvm_set_successor"
-external num_successors : llvalue -> int = "llvm_num_successors"
-
-let successors llv =
-  if not (is_terminator llv) then
-    raise (Invalid_argument "Llvm.successors can only be used on terminators")
-  else
-    Array.init (num_successors llv) (successor llv)
-
-let iter_successors f llv =
-  if not (is_terminator llv) then
-    raise (Invalid_argument "Llvm.iter_successors can only be used on terminators")
-  else
-    for i = 0 to num_successors llv - 1 do
-      f (successor llv i)
-    done
-
-let fold_successors f llv z =
-  if not (is_terminator llv) then
-    raise (Invalid_argument "Llvm.fold_successors can only be used on terminators")
-  else
-    let n = num_successors llv in
-    let rec aux i acc =
-      if i >= n then acc
-      else begin
-        let llb = successor llv i in
-        aux (i+1) (f llb acc)
-      end
-    in aux 0 z
-
-
-(*--... Operations on branches .............................................--*)
-external condition : llvalue -> llvalue = "llvm_condition"
-external set_condition : llvalue -> llvalue -> unit
-                       = "llvm_set_condition"
-external is_conditional : llvalue -> bool = "llvm_is_conditional"
-
-let get_branch llv =
-  if classify_value llv <> ValueKind.Instruction Opcode.Br then
-    None
-  else if is_conditional llv then
-    Some (`Conditional (condition llv, successor llv 0, successor llv 1))
-  else
-    Some (`Unconditional (successor llv 0))
 
 (*--... Operations on phi nodes ............................................--*)
 external add_incoming : (llvalue * llbasicblock) -> llvalue -> unit
@@ -1326,8 +1217,6 @@ external build_fcmp : Fcmp.t -> llvalue -> llvalue -> string ->
 (*--... Miscellaneous instructions .........................................--*)
 external build_phi : (llvalue * llbasicblock) list -> string -> llbuilder ->
                      llvalue = "llvm_build_phi"
-external build_empty_phi : lltype -> string -> llbuilder -> llvalue
-                         = "llvm_build_empty_phi"
 external build_call : llvalue -> llvalue array -> string -> llbuilder -> llvalue
                     = "llvm_build_call"
 external build_select : llvalue -> llvalue -> llvalue -> string -> llbuilder ->

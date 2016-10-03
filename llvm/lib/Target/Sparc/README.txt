@@ -1,3 +1,4 @@
+
 To-do
 -----
 
@@ -54,5 +55,7 @@ int %t1(int %a, int %b) {
 * Implement frame pointer elimination, e.g. eliminate save/restore for
   leaf fns.
 * Fill delay slots
+
+* Implement JIT support
 
 * Use %g0 directly to materialize 0. No instruction is required.

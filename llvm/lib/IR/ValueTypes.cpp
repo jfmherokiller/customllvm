@@ -19,14 +19,9 @@
 #include "llvm/Support/ErrorHandling.h"
 using namespace llvm;
 
-EVT EVT::changeExtendedTypeToInteger() const {
-  LLVMContext &Context = LLVMTy->getContext();
-  return getIntegerVT(Context, getSizeInBits());
-}
-
 EVT EVT::changeExtendedVectorElementTypeToInteger() const {
   LLVMContext &Context = LLVMTy->getContext();
-  EVT IntTy = getIntegerVT(Context, getScalarSizeInBits());
+  EVT IntTy = getIntegerVT(Context, getVectorElementType().getSizeInBits());
   return getVectorVT(Context, IntTy, getVectorNumElements());
 }
 
@@ -53,11 +48,6 @@ bool EVT::isExtendedFloatingPoint() const {
 bool EVT::isExtendedInteger() const {
   assert(isExtended() && "Type is not extended!");
   return LLVMTy->isIntOrIntVectorTy();
-}
-
-bool EVT::isExtendedScalarInteger() const {
-  assert(isExtended() && "Type is not extended!");
-  return LLVMTy->isIntegerTy();
 }
 
 bool EVT::isExtendedVector() const {
@@ -91,10 +81,6 @@ bool EVT::isExtended512BitVector() const {
 
 bool EVT::isExtended1024BitVector() const {
   return isExtendedVector() && getExtendedSizeInBits() == 1024;
-}
-
-bool EVT::isExtended2048BitVector() const {
-  return isExtendedVector() && getExtendedSizeInBits() == 2048;
 }
 
 EVT EVT::getExtendedVectorElementType() const {
@@ -148,8 +134,6 @@ std::string EVT::getEVTString() const {
   case MVT::v16i1:   return "v16i1";
   case MVT::v32i1:   return "v32i1";
   case MVT::v64i1:   return "v64i1";
-  case MVT::v512i1:  return "v512i1";
-  case MVT::v1024i1: return "v1024i1";
   case MVT::v1i8:    return "v1i8";
   case MVT::v2i8:    return "v2i8";
   case MVT::v4i8:    return "v4i8";
@@ -157,30 +141,22 @@ std::string EVT::getEVTString() const {
   case MVT::v16i8:   return "v16i8";
   case MVT::v32i8:   return "v32i8";
   case MVT::v64i8:   return "v64i8";
-  case MVT::v128i8:  return "v128i8";
-  case MVT::v256i8:  return "v256i8";
   case MVT::v1i16:   return "v1i16";
   case MVT::v2i16:   return "v2i16";
   case MVT::v4i16:   return "v4i16";
   case MVT::v8i16:   return "v8i16";
   case MVT::v16i16:  return "v16i16";
   case MVT::v32i16:  return "v32i16";
-  case MVT::v64i16:  return "v64i16";
-  case MVT::v128i16: return "v128i16";
   case MVT::v1i32:   return "v1i32";
   case MVT::v2i32:   return "v2i32";
   case MVT::v4i32:   return "v4i32";
   case MVT::v8i32:   return "v8i32";
   case MVT::v16i32:  return "v16i32";
-  case MVT::v32i32:  return "v32i32";
-  case MVT::v64i32:  return "v64i32";
   case MVT::v1i64:   return "v1i64";
   case MVT::v2i64:   return "v2i64";
   case MVT::v4i64:   return "v4i64";
   case MVT::v8i64:   return "v8i64";
   case MVT::v16i64:  return "v16i64";
-  case MVT::v32i64:  return "v32i64";
-  case MVT::v1i128:  return "v1i128";
   case MVT::v1f32:   return "v1f32";
   case MVT::v2f32:   return "v2f32";
   case MVT::v2f16:   return "v2f16";
@@ -226,8 +202,6 @@ Type *EVT::getTypeForEVT(LLVMContext &Context) const {
   case MVT::v16i1:   return VectorType::get(Type::getInt1Ty(Context), 16);
   case MVT::v32i1:   return VectorType::get(Type::getInt1Ty(Context), 32);
   case MVT::v64i1:   return VectorType::get(Type::getInt1Ty(Context), 64);
-  case MVT::v512i1:  return VectorType::get(Type::getInt1Ty(Context), 512);
-  case MVT::v1024i1: return VectorType::get(Type::getInt1Ty(Context), 1024);
   case MVT::v1i8:    return VectorType::get(Type::getInt8Ty(Context), 1);
   case MVT::v2i8:    return VectorType::get(Type::getInt8Ty(Context), 2);
   case MVT::v4i8:    return VectorType::get(Type::getInt8Ty(Context), 4);
@@ -235,30 +209,22 @@ Type *EVT::getTypeForEVT(LLVMContext &Context) const {
   case MVT::v16i8:   return VectorType::get(Type::getInt8Ty(Context), 16);
   case MVT::v32i8:   return VectorType::get(Type::getInt8Ty(Context), 32);
   case MVT::v64i8:   return VectorType::get(Type::getInt8Ty(Context), 64);
-  case MVT::v128i8:  return VectorType::get(Type::getInt8Ty(Context), 128);
-  case MVT::v256i8:  return VectorType::get(Type::getInt8Ty(Context), 256);
   case MVT::v1i16:   return VectorType::get(Type::getInt16Ty(Context), 1);
   case MVT::v2i16:   return VectorType::get(Type::getInt16Ty(Context), 2);
   case MVT::v4i16:   return VectorType::get(Type::getInt16Ty(Context), 4);
   case MVT::v8i16:   return VectorType::get(Type::getInt16Ty(Context), 8);
   case MVT::v16i16:  return VectorType::get(Type::getInt16Ty(Context), 16);
   case MVT::v32i16:  return VectorType::get(Type::getInt16Ty(Context), 32);
-  case MVT::v64i16:  return VectorType::get(Type::getInt16Ty(Context), 64);
-  case MVT::v128i16: return VectorType::get(Type::getInt16Ty(Context), 128);
   case MVT::v1i32:   return VectorType::get(Type::getInt32Ty(Context), 1);
   case MVT::v2i32:   return VectorType::get(Type::getInt32Ty(Context), 2);
   case MVT::v4i32:   return VectorType::get(Type::getInt32Ty(Context), 4);
   case MVT::v8i32:   return VectorType::get(Type::getInt32Ty(Context), 8);
   case MVT::v16i32:  return VectorType::get(Type::getInt32Ty(Context), 16);
-  case MVT::v32i32:  return VectorType::get(Type::getInt32Ty(Context), 32);
-  case MVT::v64i32:  return VectorType::get(Type::getInt32Ty(Context), 64);
   case MVT::v1i64:   return VectorType::get(Type::getInt64Ty(Context), 1);
   case MVT::v2i64:   return VectorType::get(Type::getInt64Ty(Context), 2);
   case MVT::v4i64:   return VectorType::get(Type::getInt64Ty(Context), 4);
   case MVT::v8i64:   return VectorType::get(Type::getInt64Ty(Context), 8);
   case MVT::v16i64:  return VectorType::get(Type::getInt64Ty(Context), 16);
-  case MVT::v32i64:  return VectorType::get(Type::getInt64Ty(Context), 32);
-  case MVT::v1i128:  return VectorType::get(Type::getInt128Ty(Context), 1);
   case MVT::v2f16:   return VectorType::get(Type::getHalfTy(Context), 2);
   case MVT::v4f16:   return VectorType::get(Type::getHalfTy(Context), 4);
   case MVT::v8f16:   return VectorType::get(Type::getHalfTy(Context), 8);

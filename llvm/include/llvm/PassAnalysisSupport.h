@@ -20,40 +20,35 @@
 #define LLVM_PASSANALYSISSUPPORT_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Pass.h"
 #include <vector>
 
 namespace llvm {
-class StringRef;
 
 //===----------------------------------------------------------------------===//
-/// Represent the analysis usage information of a pass.  This tracks analyses
-/// that the pass REQUIRES (must be available when the pass runs), REQUIRES
-/// TRANSITIVE (must be available throughout the lifetime of the pass), and
-/// analyses that the pass PRESERVES (the pass does not invalidate the results
-/// of these analyses).  This information is provided by a pass to the Pass
-/// infrastructure through the getAnalysisUsage virtual function.
-///
+// AnalysisUsage - Represent the analysis usage information of a pass.  This
+// tracks analyses that the pass REQUIRES (must be available when the pass
+// runs), REQUIRES TRANSITIVE (must be available throughout the lifetime of the
+// pass), and analyses that the pass PRESERVES (the pass does not invalidate the
+// results of these analyses).  This information is provided by a pass to the
+// Pass infrastructure through the getAnalysisUsage virtual function.
+//
 class AnalysisUsage {
 public:
-  typedef SmallVectorImpl<AnalysisID> VectorType;
+  typedef SmallVector<AnalysisID, 32> VectorType;
 
 private:
-  /// Sets of analyses required and preserved by a pass
-  // TODO: It's not clear that SmallVector is an appropriate data structure for
-  // this usecase.  The sizes were picked to minimize wasted space, but are
-  // otherwise fairly meaningless.
-  SmallVector<AnalysisID, 8> Required;
-  SmallVector<AnalysisID, 2> RequiredTransitive;
-  SmallVector<AnalysisID, 2> Preserved;
-  SmallVector<AnalysisID, 0> Used;
+  // Sets of analyses required and preserved by a pass
+  VectorType Required, RequiredTransitive, Preserved;
   bool PreservesAll;
 
 public:
   AnalysisUsage() : PreservesAll(false) {}
 
-  ///@{
-  /// Add the specified ID to the required set of the usage info for a pass.
+  // addRequired - Add the specified ID to the required set of the usage info
+  // for a pass.
+  //
   AnalysisUsage &addRequiredID(const void *ID);
   AnalysisUsage &addRequiredID(char &ID);
   template<class PassClass>
@@ -66,10 +61,10 @@ public:
   AnalysisUsage &addRequiredTransitive() {
     return addRequiredTransitiveID(PassClass::ID);
   }
-  ///@}
 
-  ///@{
-  /// Add the specified ID to the set of analyses preserved by this pass.
+  // addPreserved - Add the specified ID to the set of analyses preserved by
+  // this pass
+  //
   AnalysisUsage &addPreservedID(const void *ID) {
     Preserved.push_back(ID);
     return *this;
@@ -78,46 +73,29 @@ public:
     Preserved.push_back(&ID);
     return *this;
   }
-  /// Add the specified Pass class to the set of analyses preserved by this pass.
+
+  // addPreserved - Add the specified Pass class to the set of analyses
+  // preserved by this pass.
+  //
   template<class PassClass>
   AnalysisUsage &addPreserved() {
     Preserved.push_back(&PassClass::ID);
     return *this;
   }
-  ///@}
 
-  ///@{
-  /// Add the specified ID to the set of analyses used by this pass if they are
-  /// available..
-  AnalysisUsage &addUsedIfAvailableID(const void *ID) {
-    Used.push_back(ID);
-    return *this;
-  }
-  AnalysisUsage &addUsedIfAvailableID(char &ID) {
-    Used.push_back(&ID);
-    return *this;
-  }
-  /// Add the specified Pass class to the set of analyses used by this pass.
-  template<class PassClass>
-  AnalysisUsage &addUsedIfAvailable() {
-    Used.push_back(&PassClass::ID);
-    return *this;
-  }
-  ///@}
-
-  /// Add the Pass with the specified argument string to the set of analyses
-  /// preserved by this pass. If no such Pass exists, do nothing. This can be
-  /// useful when a pass is trivially preserved, but may not be linked in. Be
-  /// careful about spelling!
+  // addPreserved - Add the Pass with the specified argument string to the set
+  // of analyses preserved by this pass. If no such Pass exists, do nothing.
+  // This can be useful when a pass is trivially preserved, but may not be
+  // linked in. Be careful about spelling!
+  //
   AnalysisUsage &addPreserved(StringRef Arg);
 
-  /// Set by analyses that do not transform their input at all
+  // setPreservesAll - Set by analyses that do not transform their input at all
   void setPreservesAll() { PreservesAll = true; }
-
-  /// Determine whether a pass said it does not transform its input at all
   bool getPreservesAll() const { return PreservesAll; }
 
-  /// This function should be called by the pass, iff they do not:
+  /// setPreservesCFG - This function should be called by the pass, iff they do
+  /// not:
   ///
   ///  1. Add or remove basic blocks from the function
   ///  2. Modify terminator instructions in any way.
@@ -132,37 +110,36 @@ public:
     return RequiredTransitive;
   }
   const VectorType &getPreservedSet() const { return Preserved; }
-  const VectorType &getUsedSet() const { return Used; }
 };
 
 //===----------------------------------------------------------------------===//
-/// AnalysisResolver - Simple interface used by Pass objects to pull all
-/// analysis information out of pass manager that is responsible to manage
-/// the pass.
-///
+// AnalysisResolver - Simple interface used by Pass objects to pull all
+// analysis information out of pass manager that is responsible to manage
+// the pass.
+//
 class PMDataManager;
 class AnalysisResolver {
 private:
-  AnalysisResolver() = delete;
+  AnalysisResolver() LLVM_DELETED_FUNCTION;
 
 public:
   explicit AnalysisResolver(PMDataManager &P) : PM(P) { }
-
+  
   inline PMDataManager &getPMDataManager() { return PM; }
 
-  /// Find pass that is implementing PI.
+  // Find pass that is implementing PI.
   Pass *findImplPass(AnalysisID PI) {
-    Pass *ResultPass = nullptr;
-    for (const auto &AnalysisImpl : AnalysisImpls) {
-      if (AnalysisImpl.first == PI) {
-        ResultPass = AnalysisImpl.second;
+    Pass *ResultPass = 0;
+    for (unsigned i = 0; i < AnalysisImpls.size() ; ++i) {
+      if (AnalysisImpls[i].first == PI) {
+        ResultPass = AnalysisImpls[i].second;
         break;
       }
     }
     return ResultPass;
   }
 
-  /// Find pass that is implementing PI. Initialize pass for Function F.
+  // Find pass that is implementing PI. Initialize pass for Function F.
   Pass *findImplPass(Pass *P, AnalysisID PI, Function &F);
 
   void addAnalysisImplsPair(AnalysisID PI, Pass *P) {
@@ -172,20 +149,21 @@ public:
     AnalysisImpls.push_back(pir);
   }
 
-  /// Clear cache that is used to connect a pass to the the analysis (PassInfo).
+  /// clearAnalysisImpls - Clear cache that is used to connect a pass to the
+  /// the analysis (PassInfo).
   void clearAnalysisImpls() {
     AnalysisImpls.clear();
   }
 
-  /// Return analysis result or null if it doesn't exist.
+  // getAnalysisIfAvailable - Return analysis result or null if it doesn't exist
   Pass *getAnalysisIfAvailable(AnalysisID ID, bool Direction) const;
 
 private:
-  /// This keeps track of which passes implements the interfaces that are
-  /// required by the current pass (to implement getAnalysis()).
+  // AnalysisImpls - This keeps track of which passes implements the interfaces
+  // that are required by the current pass (to implement getAnalysis()).
   std::vector<std::pair<AnalysisID, Pass*> > AnalysisImpls;
 
-  /// PassManager that is used to resolve analysis info
+  // PassManager that is used to resolve analysis info
   PMDataManager &PM;
 };
 
@@ -204,7 +182,7 @@ AnalysisType *Pass::getAnalysisIfAvailable() const {
   const void *PI = &AnalysisType::ID;
 
   Pass *ResultPass = Resolver->getAnalysisIfAvailable(PI, true);
-  if (!ResultPass) return nullptr;
+  if (ResultPass == 0) return 0;
 
   // Because the AnalysisType may not be a subclass of pass (for
   // AnalysisGroups), we use getAdjustedAnalysisPointer here to potentially
@@ -262,7 +240,7 @@ AnalysisType &Pass::getAnalysisID(AnalysisID PI, Function &F) {
   // vector.
   Pass *ResultPass = Resolver->findImplPass(this, PI, F);
   assert(ResultPass && "Unable to find requested analysis info");
-
+  
   // Because the AnalysisType may not be a subclass of pass (for
   // AnalysisGroups), we use getAdjustedAnalysisPointer here to potentially
   // adjust the return pointer (because the class may multiply inherit, once

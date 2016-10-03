@@ -1,9 +1,9 @@
-; RUN: llc -mtriple=thumb-eabi -mcpu=arm1156t2-s -mattr=+thumb2 %s -o - | FileCheck %s
+; RUN: llc < %s -march=thumb -mattr=+thumb2 | FileCheck %s
 
 ; -0x000000bb = 4294967109
 define i1 @f1(i32 %a) {
 ; CHECK-LABEL: f1:
-; CHECK: adds {{r.*}}, #187
+; CHECK: cmn.w {{r.*}}, #187
     %tmp = icmp ne i32 %a, 4294967109
     ret i1 %tmp
 }

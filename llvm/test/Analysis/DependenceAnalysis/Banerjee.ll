@@ -1,5 +1,4 @@
-; RUN: opt < %s -analyze -basicaa -da -da-delinearize=false | FileCheck %s
-; RUN: opt < %s -analyze -basicaa -da -da-delinearize | FileCheck %s -check-prefix=DELIN
+; RUN: opt < %s -analyze -basicaa -da | FileCheck %s
 
 ; ModuleID = 'Banerjee.bc'
 target datalayout = "e-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-v64:64:64-v128:128:128-a0:0:64-s0:64:64-f80:128:128-n8:16:32:64-S128"
@@ -14,21 +13,13 @@ target triple = "x86_64-apple-macosx10.6.0"
 define void @banerjee0(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
-; CHECK: 'Dependence Analysis' for function 'banerjee0':
+
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [<= <>]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee0':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [<= <>]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc7
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc7 ]
@@ -40,21 +31,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %sub = add nsw i64 %add5, -1
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %sub
-  %0 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %sub
+  %0 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 11
   br i1 %exitcond, label %for.body3, label %for.inc7
 
 for.inc7:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc8 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc8, 11
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end9
@@ -74,21 +65,12 @@ entry:
   %cmp4 = icmp sgt i64 %n, 0
   br i1 %cmp4, label %for.cond1.preheader.preheader, label %for.end9
 
-; CHECK: 'Dependence Analysis' for function 'banerjee1':
 ; CHECK: da analyze - output [* *]!
 ; CHECK: da analyze - flow [* <>]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - input [* *]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - output [* *]!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee1':
-; DELIN: da analyze - output [* *]!
-; DELIN: da analyze - flow [* <>]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - input [* *]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - output [* *]!
 
 for.cond1.preheader.preheader:                    ; preds = %entry
   %0 = add i64 %n, 1
@@ -109,21 +91,21 @@ for.body3:                                        ; preds = %for.body3.preheader
   %B.addr.12 = phi i64* [ %incdec.ptr, %for.body3 ], [ %B.addr.06, %for.body3.preheader ]
   %mul = mul nsw i64 %i.05, 10
   %add = add nsw i64 %mul, %j.03
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.05, 10
   %add5 = add nsw i64 %mul4, %j.03
   %sub = add nsw i64 %add5, -1
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %sub
-  %2 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.12, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %sub
+  %2 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.12, i64 1
   store i64 %2, i64* %B.addr.12, align 8
   %inc = add nsw i64 %j.03, 1
   %exitcond = icmp eq i64 %inc, %1
   br i1 %exitcond, label %for.inc7.loopexit, label %for.body3
 
 for.inc7.loopexit:                                ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.06, i64 %m
+  %scevgep = getelementptr i64* %B.addr.06, i64 %m
   br label %for.inc7
 
 for.inc7:                                         ; preds = %for.inc7.loopexit, %for.cond1.preheader
@@ -149,21 +131,12 @@ define void @banerjee2(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee2':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee2':
-; DELIN: da analyze - none!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc8
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc8 ]
@@ -175,21 +148,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %add6 = add nsw i64 %add5, 100
-  %arrayidx7 = getelementptr inbounds i64, i64* %A, i64 %add6
-  %0 = load i64, i64* %arrayidx7, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx7 = getelementptr inbounds i64* %A, i64 %add6
+  %0 = load i64* %arrayidx7, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc8
 
 for.inc8:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc9 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc9, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end10
@@ -208,21 +181,12 @@ define void @banerjee3(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee3':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [> >]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee3':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [> >]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc8
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc8 ]
@@ -234,21 +198,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %add6 = add nsw i64 %add5, 99
-  %arrayidx7 = getelementptr inbounds i64, i64* %A, i64 %add6
-  %0 = load i64, i64* %arrayidx7, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx7 = getelementptr inbounds i64* %A, i64 %add6
+  %0 = load i64* %arrayidx7, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc8
 
 for.inc8:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc9 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc9, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end10
@@ -267,21 +231,12 @@ define void @banerjee4(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee4':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee4':
-; DELIN: da analyze - none!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc7
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc7 ]
@@ -293,21 +248,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %sub = add nsw i64 %add5, -100
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %sub
-  %0 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %sub
+  %0 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc7
 
 for.inc7:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc8 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc8, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end9
@@ -326,21 +281,12 @@ define void @banerjee5(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee5':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [< <]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee5':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [< <]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc7
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc7 ]
@@ -352,21 +298,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %sub = add nsw i64 %add5, -99
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %sub
-  %0 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %sub
+  %0 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc7
 
 for.inc7:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc8 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc8, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end9
@@ -385,21 +331,12 @@ define void @banerjee6(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee6':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [=> <>]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee6':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [=> <>]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc8
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc8 ]
@@ -411,21 +348,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %add6 = add nsw i64 %add5, 9
-  %arrayidx7 = getelementptr inbounds i64, i64* %A, i64 %add6
-  %0 = load i64, i64* %arrayidx7, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx7 = getelementptr inbounds i64* %A, i64 %add6
+  %0 = load i64* %arrayidx7, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc8
 
 for.inc8:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc9 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc9, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end10
@@ -444,21 +381,12 @@ define void @banerjee7(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee7':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [> <=]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee7':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [> <=]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc8
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc8 ]
@@ -470,21 +398,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %add6 = add nsw i64 %add5, 10
-  %arrayidx7 = getelementptr inbounds i64, i64* %A, i64 %add6
-  %0 = load i64, i64* %arrayidx7, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx7 = getelementptr inbounds i64* %A, i64 %add6
+  %0 = load i64* %arrayidx7, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc8
 
 for.inc8:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc9 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc9, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end10
@@ -503,21 +431,12 @@ define void @banerjee8(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee8':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [> <>]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee8':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [> <>]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc8
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc8 ]
@@ -529,21 +448,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 10
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 10
   %add5 = add nsw i64 %mul4, %j.02
   %add6 = add nsw i64 %add5, 11
-  %arrayidx7 = getelementptr inbounds i64, i64* %A, i64 %add6
-  %0 = load i64, i64* %arrayidx7, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx7 = getelementptr inbounds i64* %A, i64 %add6
+  %0 = load i64* %arrayidx7, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 10
   br i1 %exitcond, label %for.body3, label %for.inc8
 
 for.inc8:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 10
+  %scevgep = getelementptr i64* %B.addr.04, i64 10
   %inc9 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc9, 10
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end10
@@ -562,21 +481,12 @@ define void @banerjee9(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee9':
 ; CHECK: da analyze - output [* *]!
 ; CHECK: da analyze - flow [<= =|<]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee9':
-; DELIN: da analyze - output [* *]!
-; DELIN: da analyze - flow [<= =|<]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc8
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc8 ]
@@ -589,21 +499,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %mul = mul nsw i64 %i.03, 30
   %mul4 = mul nsw i64 %j.02, 500
   %add = add nsw i64 %mul, %mul4
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %0 = mul i64 %j.02, -500
   %sub = add i64 %i.03, %0
   %add6 = add nsw i64 %sub, 11
-  %arrayidx7 = getelementptr inbounds i64, i64* %A, i64 %add6
-  %1 = load i64, i64* %arrayidx7, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx7 = getelementptr inbounds i64* %A, i64 %add6
+  %1 = load i64* %arrayidx7, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %1, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 20
   br i1 %exitcond, label %for.body3, label %for.inc8
 
 for.inc8:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 20
+  %scevgep = getelementptr i64* %B.addr.04, i64 20
   %inc9 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc9, 20
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end10
@@ -622,21 +532,12 @@ define void @banerjee10(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee10':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [<> =]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee10':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [<> =]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc7
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc7 ]
@@ -648,21 +549,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %j.02, 500
   %add = add nsw i64 %i.03, %mul
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %0 = mul i64 %j.02, -500
   %sub = add i64 %i.03, %0
   %add5 = add nsw i64 %sub, 11
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %add5
-  %1 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %add5
+  %1 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %1, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 20
   br i1 %exitcond, label %for.body3, label %for.inc7
 
 for.inc7:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 20
+  %scevgep = getelementptr i64* %B.addr.04, i64 20
   %inc8 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc8, 20
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end9
@@ -681,21 +582,12 @@ define void @banerjee11(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee11':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [<= <>]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee11':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [<= <>]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc7
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc7 ]
@@ -707,21 +599,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 300
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 250
   %sub = sub nsw i64 %mul4, %j.02
   %add5 = add nsw i64 %sub, 11
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %add5
-  %0 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %add5
+  %0 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 20
   br i1 %exitcond, label %for.body3, label %for.inc7
 
 for.inc7:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 20
+  %scevgep = getelementptr i64* %B.addr.04, i64 20
   %inc8 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc8, 20
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end9
@@ -740,21 +632,12 @@ define void @banerjee12(i64* %A, i64* %B, i64 %m, i64 %n) nounwind uwtable ssp {
 entry:
   br label %for.cond1.preheader
 
-; CHECK: 'Dependence Analysis' for function 'banerjee12':
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - flow [= <>]!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
 ; CHECK: da analyze - confused!
 ; CHECK: da analyze - none!
-
-; DELIN: 'Dependence Analysis' for function 'banerjee12':
-; DELIN: da analyze - none!
-; DELIN: da analyze - flow [= <>]!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
-; DELIN: da analyze - confused!
-; DELIN: da analyze - none!
 
 for.cond1.preheader:                              ; preds = %entry, %for.inc7
   %B.addr.04 = phi i64* [ %B, %entry ], [ %scevgep, %for.inc7 ]
@@ -766,21 +649,21 @@ for.body3:                                        ; preds = %for.cond1.preheader
   %B.addr.11 = phi i64* [ %B.addr.04, %for.cond1.preheader ], [ %incdec.ptr, %for.body3 ]
   %mul = mul nsw i64 %i.03, 100
   %add = add nsw i64 %mul, %j.02
-  %arrayidx = getelementptr inbounds i64, i64* %A, i64 %add
+  %arrayidx = getelementptr inbounds i64* %A, i64 %add
   store i64 0, i64* %arrayidx, align 8
   %mul4 = mul nsw i64 %i.03, 100
   %sub = sub nsw i64 %mul4, %j.02
   %add5 = add nsw i64 %sub, 11
-  %arrayidx6 = getelementptr inbounds i64, i64* %A, i64 %add5
-  %0 = load i64, i64* %arrayidx6, align 8
-  %incdec.ptr = getelementptr inbounds i64, i64* %B.addr.11, i64 1
+  %arrayidx6 = getelementptr inbounds i64* %A, i64 %add5
+  %0 = load i64* %arrayidx6, align 8
+  %incdec.ptr = getelementptr inbounds i64* %B.addr.11, i64 1
   store i64 %0, i64* %B.addr.11, align 8
   %inc = add nsw i64 %j.02, 1
   %exitcond = icmp ne i64 %inc, 20
   br i1 %exitcond, label %for.body3, label %for.inc7
 
 for.inc7:                                         ; preds = %for.body3
-  %scevgep = getelementptr i64, i64* %B.addr.04, i64 20
+  %scevgep = getelementptr i64* %B.addr.04, i64 20
   %inc8 = add nsw i64 %i.03, 1
   %exitcond5 = icmp ne i64 %inc8, 20
   br i1 %exitcond5, label %for.cond1.preheader, label %for.end9

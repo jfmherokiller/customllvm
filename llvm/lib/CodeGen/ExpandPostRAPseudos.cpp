@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "postrapseudos"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
@@ -20,12 +21,9 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
-
 using namespace llvm;
-
-#define DEBUG_TYPE "postrapseudos"
 
 namespace {
 struct ExpandPostRA : public MachineFunctionPass {
@@ -37,7 +35,7 @@ public:
   static char ID; // Pass identification, replacement for typeid
   ExpandPostRA() : MachineFunctionPass(ID) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesCFG();
     AU.addPreservedID(MachineLoopInfoID);
     AU.addPreservedID(MachineDominatorsID);
@@ -45,13 +43,13 @@ public:
   }
 
   /// runOnMachineFunction - pass entry point
-  bool runOnMachineFunction(MachineFunction&) override;
+  bool runOnMachineFunction(MachineFunction&);
 
 private:
   bool LowerSubregToReg(MachineInstr *MI);
   bool LowerCopy(MachineInstr *MI);
 
-  void TransferImplicitOperands(MachineInstr *MI);
+  void TransferImplicitDefs(MachineInstr *MI);
 };
 } // end anonymous namespace
 
@@ -61,16 +59,20 @@ char &llvm::ExpandPostRAPseudosID = ExpandPostRA::ID;
 INITIALIZE_PASS(ExpandPostRA, "postrapseudos",
                 "Post-RA pseudo instruction expansion pass", false, false)
 
-/// TransferImplicitOperands - MI is a pseudo-instruction, and the lowered
-/// replacement instructions immediately precede it.  Copy any implicit
+/// TransferImplicitDefs - MI is a pseudo-instruction, and the lowered
+/// replacement instructions immediately precede it.  Copy any implicit-def
 /// operands from MI to the replacement instruction.
-void ExpandPostRA::TransferImplicitOperands(MachineInstr *MI) {
+void
+ExpandPostRA::TransferImplicitDefs(MachineInstr *MI) {
   MachineBasicBlock::iterator CopyMI = MI;
   --CopyMI;
 
-  for (const MachineOperand &MO : MI->implicit_operands())
-    if (MO.isReg())
-      CopyMI->addOperand(MO);
+  for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
+    MachineOperand &MO = MI->getOperand(i);
+    if (!MO.isReg() || !MO.isImplicit() || MO.isUse())
+      continue;
+    CopyMI->addOperand(MachineOperand::CreateReg(MO.getReg(), true, true));
+  }
 }
 
 bool ExpandPostRA::LowerSubregToReg(MachineInstr *MI) {
@@ -163,7 +165,7 @@ bool ExpandPostRA::LowerCopy(MachineInstr *MI) {
                    DstMO.getReg(), SrcMO.getReg(), SrcMO.isKill());
 
   if (MI->getNumOperands() > 2)
-    TransferImplicitOperands(MI);
+    TransferImplicitDefs(MI);
   DEBUG({
     MachineBasicBlock::iterator dMI = MI;
     dbgs() << "replaced by: " << *(--dMI);
@@ -179,8 +181,8 @@ bool ExpandPostRA::runOnMachineFunction(MachineFunction &MF) {
   DEBUG(dbgs() << "Machine Function\n"
                << "********** EXPANDING POST-RA PSEUDO INSTRS **********\n"
                << "********** Function: " << MF.getName() << '\n');
-  TRI = MF.getSubtarget().getRegisterInfo();
-  TII = MF.getSubtarget().getInstrInfo();
+  TRI = MF.getTarget().getRegisterInfo();
+  TII = MF.getTarget().getInstrInfo();
 
   bool MadeChange = false;
 
@@ -188,12 +190,12 @@ bool ExpandPostRA::runOnMachineFunction(MachineFunction &MF) {
        mbbi != mbbe; ++mbbi) {
     for (MachineBasicBlock::iterator mi = mbbi->begin(), me = mbbi->end();
          mi != me;) {
-      MachineInstr &MI = *mi;
+      MachineInstr *MI = mi;
       // Advance iterator here because MI may be erased.
       ++mi;
 
       // Only expand pseudos.
-      if (!MI.isPseudo())
+      if (!MI->isPseudo())
         continue;
 
       // Give targets a chance to expand even standard pseudos.
@@ -203,12 +205,12 @@ bool ExpandPostRA::runOnMachineFunction(MachineFunction &MF) {
       }
 
       // Expand standard pseudos.
-      switch (MI.getOpcode()) {
+      switch (MI->getOpcode()) {
       case TargetOpcode::SUBREG_TO_REG:
-        MadeChange |= LowerSubregToReg(&MI);
+        MadeChange |= LowerSubregToReg(MI);
         break;
       case TargetOpcode::COPY:
-        MadeChange |= LowerCopy(&MI);
+        MadeChange |= LowerCopy(MI);
         break;
       case TargetOpcode::DBG_VALUE:
         continue;

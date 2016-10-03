@@ -1,5 +1,4 @@
 ; RUN: llc < %s -march=x86-64 -verify-machineinstrs | FileCheck %s
-; RUN: llc < %s -march=x86-64 -mattr=slow-incdec -verify-machineinstrs | FileCheck %s --check-prefix SLOW_INC
 
 ; rdar://7103704
 
@@ -15,8 +14,6 @@ define void @inc4(i64* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: inc4:
 ; CHECK: incq
-; SLOW_INC-LABEL: inc4:
-; SLOW_INC-NOT: incq
   %0 = atomicrmw add i64* %p, i64 1 monotonic
   ret void
 }
@@ -42,8 +39,6 @@ define void @inc3(i8* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: inc3:
 ; CHECK: incb
-; SLOW_INC-LABEL: inc3:
-; SLOW_INC-NOT: incb
   %0 = atomicrmw add i8* %p, i8 1 monotonic
   ret void
 }
@@ -69,8 +64,6 @@ define void @inc2(i16* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: inc2:
 ; CHECK: incw
-; SLOW_INC-LABEL: inc2:
-; SLOW_INC-NOT: incw
   %0 = atomicrmw add i16* %p, i16 1 monotonic
   ret void
 }
@@ -96,8 +89,6 @@ define void @inc1(i32* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: inc1:
 ; CHECK: incl
-; SLOW_INC-LABEL: inc1:
-; SLOW_INC-NOT: incl
   %0 = atomicrmw add i32* %p, i32 1 monotonic
   ret void
 }
@@ -122,8 +113,6 @@ define void @dec4(i64* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: dec4:
 ; CHECK: decq
-; SLOW_INC-LABEL: dec4:
-; SLOW_INC-NOT: decq
   %0 = atomicrmw sub i64* %p, i64 1 monotonic
   ret void
 }
@@ -149,8 +138,6 @@ define void @dec3(i8* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: dec3:
 ; CHECK: decb
-; SLOW_INC-LABEL: dec3:
-; SLOW_INC-NOT: decb
   %0 = atomicrmw sub i8* %p, i8 1 monotonic
   ret void
 }
@@ -176,8 +163,6 @@ define void @dec2(i16* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: dec2:
 ; CHECK: decw
-; SLOW_INC-LABEL: dec2:
-; SLOW_INC-NOT: decw
   %0 = atomicrmw sub i16* %p, i16 1 monotonic
   ret void
 }
@@ -204,8 +189,6 @@ define void @dec1(i32* nocapture %p) nounwind ssp {
 entry:
 ; CHECK-LABEL: dec1:
 ; CHECK: decl
-; SLOW_INC-LABEL: dec1:
-; SLOW_INC-NOT: decl
   %0 = atomicrmw sub i32* %p, i32 1 monotonic
   ret void
 }

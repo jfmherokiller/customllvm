@@ -1,8 +1,5 @@
 ; RUN: opt < %s -loop-reduce -S | not grep mul
 
-; Provide legal integer types.
-target datalayout = "n8:16:32:64"
-
 ; Make sure we don't get a multiply by 6 in this loop.
 
 define i32 @foo(i32 %A, i32 %B, i32 %C, i32 %D) {

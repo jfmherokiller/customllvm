@@ -1,5 +1,5 @@
 @ RUN: not llvm-mc -triple=armv7-unknown-linux-gnueabi < %s 2> %t
-@ RUN: FileCheck < %t %s
+@ RUN: FileCheck --check-prefix=CHECK < %t %s
 
 @ Check the diagnostics for .vsave directive
 

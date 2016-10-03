@@ -31,14 +31,15 @@ static int SortSymbolPair(const void *LHS, const void *RHS) {
   return LHSS->getName().compare(RHSS->getName());
 }
 
-MachineModuleInfoImpl::SymbolListTy MachineModuleInfoImpl::getSortedStubs(
-    DenseMap<MCSymbol *, MachineModuleInfoImpl::StubValueTy> &Map) {
+/// GetSortedStubs - Return the entries from a DenseMap in a deterministic
+/// sorted orer.
+MachineModuleInfoImpl::SymbolListTy
+MachineModuleInfoImpl::GetSortedStubs(const DenseMap<MCSymbol*,
+                                      MachineModuleInfoImpl::StubValueTy>&Map) {
   MachineModuleInfoImpl::SymbolListTy List(Map.begin(), Map.end());
 
   if (!List.empty())
     qsort(&List[0], List.size(), sizeof(List[0]), SortSymbolPair);
-
-  Map.clear();
   return List;
 }
 

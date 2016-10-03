@@ -35,11 +35,6 @@ def XCoreBranchLink     : SDNode<"XCoreISD::BL",SDT_XCoreBranchLink,
 def XCoreRetsp : SDNode<"XCoreISD::RETSP", SDTBrind,
                       [SDNPHasChain, SDNPOptInGlue, SDNPMayLoad, SDNPVariadic]>;
 
-def SDT_XCoreEhRet : SDTypeProfile<0, 2,
-                            [SDTCisSameAs<0, 1>, SDTCisPtrTy<0>]>;
-def XCoreEhRet       : SDNode<"XCoreISD::EH_RETURN", SDT_XCoreEhRet,
-                         [SDNPHasChain, SDNPOptInGlue]>;
-
 def SDT_XCoreBR_JT    : SDTypeProfile<0, 2,
                                       [SDTCisVT<0, i32>, SDTCisVT<1, i32>]>;
 
@@ -61,16 +56,9 @@ def dprelwrapper : SDNode<"XCoreISD::DPRelativeWrapper", SDT_XCoreAddress,
 def cprelwrapper : SDNode<"XCoreISD::CPRelativeWrapper", SDT_XCoreAddress,
                            []>;
 
-def frametoargsoffset : SDNode<"XCoreISD::FRAME_TO_ARGS_OFFSET", SDTIntLeaf,
-                               []>;
-
 def SDT_XCoreStwsp    : SDTypeProfile<0, 2, [SDTCisInt<1>]>;
 def XCoreStwsp        : SDNode<"XCoreISD::STWSP", SDT_XCoreStwsp,
                                [SDNPHasChain, SDNPMayStore]>;
-
-def SDT_XCoreLdwsp    : SDTypeProfile<1, 1, [SDTCisInt<1>]>;
-def XCoreLdwsp        : SDNode<"XCoreISD::LDWSP", SDT_XCoreLdwsp,
-                               [SDNPHasChain, SDNPMayLoad]>;
 
 // These are target-independent nodes, but have target-specific formats.
 def SDT_XCoreCallSeqStart : SDCallSeqStart<[ SDTCisVT<0, i32> ]>;
@@ -82,11 +70,6 @@ def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_XCoreCallSeqStart,
 def callseq_end   : SDNode<"ISD::CALLSEQ_END",   SDT_XCoreCallSeqEnd,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
-def SDT_XCoreMEMBARRIER : SDTypeProfile<0, 0, []>;
-
-def XCoreMemBarrier : SDNode<"XCoreISD::MEMBARRIER", SDT_XCoreMEMBARRIER,
-                             [SDNPHasChain]>;
-
 //===----------------------------------------------------------------------===//
 // Instruction Pattern Stuff
 //===----------------------------------------------------------------------===//
@@ -94,34 +77,33 @@ def XCoreMemBarrier : SDNode<"XCoreISD::MEMBARRIER", SDT_XCoreMEMBARRIER,
 def div4_xform : SDNodeXForm<imm, [{
   // Transformation function: imm/4
   assert(N->getZExtValue() % 4 == 0);
-  return getI32Imm(N->getZExtValue()/4, SDLoc(N));
+  return getI32Imm(N->getZExtValue()/4);
 }]>;
 
 def msksize_xform : SDNodeXForm<imm, [{
   // Transformation function: get the size of a mask
   assert(isMask_32(N->getZExtValue()));
   // look for the first non-zero bit
-  return getI32Imm(32 - countLeadingZeros((uint32_t)N->getZExtValue()),
-                   SDLoc(N));
+  return getI32Imm(32 - countLeadingZeros((uint32_t)N->getZExtValue()));
 }]>;
 
 def neg_xform : SDNodeXForm<imm, [{
   // Transformation function: -imm
   uint32_t value = N->getZExtValue();
-  return getI32Imm(-value, SDLoc(N));
+  return getI32Imm(-value);
 }]>;
 
 def bpwsub_xform : SDNodeXForm<imm, [{
   // Transformation function: 32-imm
   uint32_t value = N->getZExtValue();
-  return getI32Imm(32 - value, SDLoc(N));
+  return getI32Imm(32-value);
 }]>;
 
 def div4neg_xform : SDNodeXForm<imm, [{
   // Transformation function: -imm/4
   uint32_t value = N->getZExtValue();
   assert(-value % 4 == 0);
-  return getI32Imm(-value/4, SDLoc(N));
+  return getI32Imm(-value/4);
 }]>;
 
 def immUs4Neg : PatLeaf<(imm), [{
@@ -339,16 +321,6 @@ def ADJCALLSTACKUP : PseudoInstXCore<(outs), (ins i32imm:$amt1, i32imm:$amt2),
                             [(callseq_end timm:$amt1, timm:$amt2)]>;
 }
 
-let isReMaterializable = 1 in
-def FRAME_TO_ARGS_OFFSET : PseudoInstXCore<(outs GRRegs:$dst), (ins),
-                               "# FRAME_TO_ARGS_OFFSET $dst",
-                               [(set GRRegs:$dst, (frametoargsoffset))]>;
-
-let isReturn = 1, isTerminator = 1, isBarrier = 1 in
-def EH_RETURN : PseudoInstXCore<(outs), (ins GRRegs:$s, GRRegs:$handler),
-                               "# EH_RETURN $s, $handler",
-                               [(XCoreEhRet GRRegs:$s, GRRegs:$handler)]>;
-
 def LDWFI : PseudoInstXCore<(outs GRRegs:$dst), (ins MEMii:$addr),
                              "# LDWFI $dst, $addr",
                              [(set GRRegs:$dst, (load ADDRspii:$addr))]>;
@@ -371,10 +343,6 @@ let usesCustomInserter = 1 in {
                                  (select GRRegs:$cond, GRRegs:$T, GRRegs:$F))]>;
 }
 
-let hasSideEffects = 1 in
-def Int_MemBarrier : PseudoInstXCore<(outs), (ins), "#MEMBARRIER",
-                                     [(XCoreMemBarrier)]>;
-
 //===----------------------------------------------------------------------===//
 // Instructions
 //===----------------------------------------------------------------------===//
@@ -382,7 +350,7 @@ def Int_MemBarrier : PseudoInstXCore<(outs), (ins), "#MEMBARRIER",
 // Three operand short
 defm ADD : F3R_2RUS<0b00010, 0b10010, "add", add>;
 defm SUB : F3R_2RUS<0b00011, 0b10011, "sub", sub>;
-let hasSideEffects = 0 in {
+let neverHasSideEffects = 1 in {
 defm EQ : F3R_2RUS_np<0b00110, 0b10110, "eq">;
 def LSS_3r : F3R_np<0b11000, "lss">;
 def LSU_3r : F3R_np<0b11001, "lsu">;
@@ -413,7 +381,7 @@ def STW_l3r : _FL3R<0b000001100, (outs),
                     (ins GRRegs:$val, GRRegs:$addr, GRRegs:$offset),
                     "stw $val, $addr[$offset]", []>;
 
-def STW_2rus : _F2RUS<0b00000, (outs),
+def STW_2rus : _F2RUS<0b0000, (outs),
                       (ins GRRegs:$val, GRRegs:$addr, i32imm:$offset),
                       "stw $val, $addr[$offset]", []>;
 }
@@ -433,7 +401,7 @@ def LDAWF_l3r : _FL3R<0b000111100, (outs GRRegs:$dst),
                       [(set GRRegs:$dst,
                          (ldawf GRRegs:$addr, GRRegs:$offset))]>;
 
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 def LDAWF_l2rus : _FL2RUS<0b100111100, (outs GRRegs:$dst),
                           (ins GRRegs:$addr, i32imm:$offset),
                           "ldaw $dst, $addr[$offset]", []>;
@@ -444,7 +412,7 @@ def LDAWB_l3r : _FL3R<0b001001100, (outs GRRegs:$dst),
                       [(set GRRegs:$dst,
                          (ldawb GRRegs:$addr, GRRegs:$offset))]>;
 
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 def LDAWB_l2rus : _FL2RUS<0b101001100, (outs GRRegs:$dst),
                          (ins GRRegs:$addr, i32imm:$offset),
                          "ldaw $dst, $addr[-$offset]", []>;
@@ -539,7 +507,7 @@ def LMUL_l6r : _FL6R<
 // Register - U6
 
 //let Uses = [DP] in ...
-let hasSideEffects = 0, isReMaterializable = 1 in
+let neverHasSideEffects = 1, isReMaterializable = 1 in
 def LDAWDP_ru6: _FRU6<0b011000, (outs RRegs:$a), (ins i32imm:$b),
                       "ldaw $a, dp[$b]", []>;
 
@@ -565,7 +533,7 @@ def STWDP_lru6 : _FLRU6<0b010100, (outs), (ins RRegs:$a, i32imm:$b),
                         [(store RRegs:$a, (dprelwrapper tglobaladdr:$b))]>;
 
 //let Uses = [CP] in ..
-let mayLoad = 1, isReMaterializable = 1, hasSideEffects = 0 in {
+let mayLoad = 1, isReMaterializable = 1, neverHasSideEffects = 1 in {
 def LDWCP_ru6 : _FRU6<0b011011, (outs RRegs:$a), (ins i32imm:$b),
                       "ldw $a, cp[$b]", []>;
 def LDWCP_lru6: _FLRU6<0b011011, (outs RRegs:$a), (ins i32imm:$b),
@@ -586,15 +554,13 @@ def STWSP_lru6 : _FLRU6<0b010101, (outs), (ins RRegs:$a, i32imm:$b),
 
 let mayLoad=1 in {
 def LDWSP_ru6 : _FRU6<0b010111, (outs RRegs:$a), (ins i32imm:$b),
-                      "ldw $a, sp[$b]",
-                      [(set RRegs:$a, (XCoreLdwsp immU6:$b))]>;
+                      "ldw $a, sp[$b]", []>;
 
 def LDWSP_lru6 : _FLRU6<0b010111, (outs RRegs:$a), (ins i32imm:$b),
-                        "ldw $a, sp[$b]",
-                        [(set RRegs:$a, (XCoreLdwsp immU16:$b))]>;
+                        "ldw $a, sp[$b]", []>;
 }
 
-let hasSideEffects = 0 in {
+let neverHasSideEffects = 1 in {
 def LDAWSP_ru6 : _FRU6<0b011001, (outs RRegs:$a), (ins i32imm:$b),
                        "ldaw $a, sp[$b]", []>;
 
@@ -629,7 +595,7 @@ defm BRBF: FRU6_LRU6_backwards_branch<0b011111, "bf">;
 
 // U6
 let Defs = [SP], Uses = [SP] in {
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 defm EXTSP : FU6_LU6_np<0b0111011110, "extsp">;
 
 let mayStore = 1 in
@@ -640,7 +606,7 @@ defm RETSP : FU6_LU6<0b0111011111, "retsp", XCoreRetsp>;
 }
 }
 
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 defm EXTDP : FU6_LU6_np<0b0111001110, "extdp">;
 
 let Uses = [R11], isCall=1 in
@@ -657,7 +623,7 @@ def BRFU_lu6 : _FLU6<0b0111001100, (outs), (ins brtarget:$a), "bu $a", []>;
 }
 
 //let Uses = [CP] in ...
-let Defs = [R11], hasSideEffects = 0, isReMaterializable = 1 in
+let Defs = [R11], neverHasSideEffects = 1, isReMaterializable = 1 in
 def LDAWCP_u6: _FU6<0b0111111101, (outs), (ins i32imm:$a), "ldaw r11, cp[$a]",
                     []>;
 
@@ -691,17 +657,17 @@ defm KRESTSP : FU6_LU6_np<0b0111101111, "krestsp">;
 // U10
 
 let Defs = [R11], isReMaterializable = 1 in {
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 def LDAPF_u10 : _FU10<0b110110, (outs), (ins pcrel_imm:$a), "ldap r11, $a", []>;
 
 def LDAPF_lu10 : _FLU10<0b110110, (outs), (ins pcrel_imm:$a), "ldap r11, $a",
                         [(set R11, (pcrelwrapper tglobaladdr:$a))]>;
 
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 def LDAPB_u10 : _FU10<0b110111, (outs), (ins pcrel_imm_neg:$a), "ldap r11, $a",
                       []>;
 
-let hasSideEffects = 0 in
+let neverHasSideEffects = 1 in
 def LDAPB_lu10 : _FLU10<0b110111, (outs), (ins pcrel_imm_neg:$a),
                         "ldap r11, $a",
                         [(set R11, (pcrelwrapper tglobaladdr:$a))]>;
@@ -719,10 +685,10 @@ def BLACP_u10 : _FU10<0b111000, (outs), (ins i32imm:$a), "bla cp[$a]", []>;
 def BLACP_lu10 : _FLU10<0b111000, (outs), (ins i32imm:$a), "bla cp[$a]", []>;
 
 def BLRF_u10 : _FU10<0b110100, (outs), (ins pcrel_imm:$a), "bl $a",
-                     []>;
+                     [(XCoreBranchLink immU10:$a)]>;
 
 def BLRF_lu10 : _FLU10<0b110100, (outs), (ins pcrel_imm:$a), "bl $a",
-                       [(XCoreBranchLink tglobaladdr:$a)]>;
+                       [(XCoreBranchLink immU20:$a)]>;
 
 def BLRB_u10 : _FU10<0b110101, (outs), (ins pcrel_imm_neg:$a), "bl $a", []>;
 
@@ -730,7 +696,7 @@ def BLRB_lu10 : _FLU10<0b110101, (outs), (ins pcrel_imm_neg:$a), "bl $a", []>;
 }
 
 let Defs = [R11], mayLoad = 1, isReMaterializable = 1,
-    hasSideEffects = 0 in {
+    neverHasSideEffects = 1 in {
 def LDWCP_u10 : _FU10<0b111001, (outs), (ins i32imm:$a), "ldw r11, cp[$a]", []>;
 
 def LDWCP_lu10 : _FLU10<0b111001, (outs), (ins i32imm:$a), "ldw r11, cp[$a]",
@@ -773,7 +739,7 @@ def ANDNOT_2r :
              [(set GRRegs:$dst, (and GRRegs:$src1, (not GRRegs:$src2)))]>;
 }
 
-let isReMaterializable = 1, hasSideEffects = 0 in
+let isReMaterializable = 1, neverHasSideEffects = 1 in
 def MKMSK_rus : _FRUSBitp<0b101001, (outs GRRegs:$dst), (ins i32imm:$size),
                           "mkmsk $dst, $size", []>;
 
@@ -903,7 +869,7 @@ def BYTEREV_l2r : _FL2R<0b0000011001, (outs GRRegs:$dst), (ins GRRegs:$src),
                         "byterev $dst, $src",
                         [(set GRRegs:$dst, (bswap GRRegs:$src))]>;
 
-def CLZ_l2r : _FL2R<0b0000111000, (outs GRRegs:$dst), (ins GRRegs:$src),
+def CLZ_l2r : _FL2R<0b000111000, (outs GRRegs:$dst), (ins GRRegs:$src),
                     "clz $dst, $src",
                     [(set GRRegs:$dst, (ctlz GRRegs:$src))]>;
 
@@ -973,13 +939,13 @@ def BR_JT32 : PseudoInstXCore<(outs), (ins InlineJT32:$t, GRRegs:$i),
 let isBranch=1, isIndirectBranch=1, isTerminator=1, isBarrier = 1 in
 def BRU_1r : _F1R<0b001010, (outs), (ins GRRegs:$a), "bru $a", []>;
 
-let Defs=[SP], hasSideEffects=0 in
+let Defs=[SP], neverHasSideEffects=1 in
 def SETSP_1r : _F1R<0b001011, (outs), (ins GRRegs:$a), "set sp, $a", []>;
 
-let hasSideEffects=0 in
+let neverHasSideEffects=1 in
 def SETDP_1r : _F1R<0b001100, (outs), (ins GRRegs:$a), "set dp, $a", []>;
 
-let hasSideEffects=0 in
+let neverHasSideEffects=1 in
 def SETCP_1r : _F1R<0b001101, (outs), (ins GRRegs:$a), "set cp, $a", []>;
 
 let hasCtrlDep = 1 in 
@@ -1020,8 +986,7 @@ def SETEV_1r : _F1R<0b001111, (outs), (ins GRRegs:$a),
 
 def DGETREG_1r : _F1R<0b001110, (outs GRRegs:$a), (ins), "dgetreg $a", []>;
 
-def EDU_1r : _F1R<0b000000, (outs), (ins GRRegs:$a), "edu res[$a]",
-                  [(int_xcore_edu GRRegs:$a)]>;
+def EDU_1r : _F1R<0b000000, (outs), (ins GRRegs:$a), "edu res[$a]", []>;
 
 def EEU_1r : _F1R<0b000001, (outs), (ins GRRegs:$a),
                "eeu res[$a]",
@@ -1035,8 +1000,7 @@ def WAITET_1R : _F1R<0b000010, (outs), (ins GRRegs:$a), "waitet $a", []>;
 
 def TSTART_1R : _F1R<0b000110, (outs), (ins GRRegs:$a), "start t[$a]", []>;
 
-def CLRPT_1R : _F1R<0b100000, (outs), (ins GRRegs:$a), "clrpt res[$a]",
-                    [(int_xcore_clrpt GRRegs:$a)]>;
+def CLRPT_1R : _F1R<0b100000, (outs), (ins GRRegs:$a), "clrpt res[$a]", []>;
 
 // Zero operand short
 
@@ -1114,6 +1078,7 @@ def WAITEU_0R : _F0R<0b0000001100, (outs), (ins),
 // Non-Instruction Patterns
 //===----------------------------------------------------------------------===//
 
+def : Pat<(XCoreBranchLink tglobaladdr:$addr), (BLRF_lu10 tglobaladdr:$addr)>;
 def : Pat<(XCoreBranchLink texternalsym:$addr), (BLRF_lu10 texternalsym:$addr)>;
 
 /// sext_inreg
@@ -1312,9 +1277,3 @@ def : Pat<(setgt GRRegs:$lhs, -1),
 
 def : Pat<(sra (shl GRRegs:$src, immBpwSubBitp:$imm), immBpwSubBitp:$imm),
           (SEXT_rus GRRegs:$src, (bpwsub_xform immBpwSubBitp:$imm))>;
-
-def : Pat<(load (cprelwrapper tconstpool:$b)),
-          (LDWCP_lru6 tconstpool:$b)>;
-
-def : Pat<(cprelwrapper tconstpool:$b),
-          (LDAWCP_lu6 tconstpool:$b)>;

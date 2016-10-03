@@ -63,16 +63,16 @@ namespace llvm {
     /// createSpillSlot - Allocate a spill slot for RC from MFI.
     unsigned createSpillSlot(const TargetRegisterClass *RC);
 
-    VirtRegMap(const VirtRegMap&) = delete;
-    void operator=(const VirtRegMap&) = delete;
+    VirtRegMap(const VirtRegMap&) LLVM_DELETED_FUNCTION;
+    void operator=(const VirtRegMap&) LLVM_DELETED_FUNCTION;
 
   public:
     static char ID;
     VirtRegMap() : MachineFunctionPass(ID), Virt2PhysMap(NO_PHYS_REG),
                    Virt2StackSlotMap(NO_STACK_SLOT), Virt2SplitMap(0) { }
-    bool runOnMachineFunction(MachineFunction &MF) override;
+    virtual bool runOnMachineFunction(MachineFunction &MF);
 
-    void getAnalysisUsage(AnalysisUsage &AU) const override {
+    virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesAll();
       MachineFunctionPass::getAnalysisUsage(AU);
     }
@@ -177,7 +177,7 @@ namespace llvm {
     /// the specified stack slot
     void assignVirt2StackSlot(unsigned virtReg, int frameIndex);
 
-    void print(raw_ostream &OS, const Module* M = nullptr) const override;
+    void print(raw_ostream &OS, const Module* M = 0) const;
     void dump() const;
   };
 

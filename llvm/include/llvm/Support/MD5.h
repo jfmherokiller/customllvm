@@ -25,14 +25,14 @@
  * See md5.c for more information.
  */
 
-#ifndef LLVM_SUPPORT_MD5_H
-#define LLVM_SUPPORT_MD5_H
+#ifndef LLVM_SYSTEM_MD5_H
+#define LLVM_SYSTEM_MD5_H
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Support/DataTypes.h"
-#include "llvm/Support/Endian.h"
 
 namespace llvm {
+
 template <typename T> class ArrayRef;
 
 class MD5 {
@@ -56,27 +56,15 @@ public:
   void update(StringRef Str);
 
   /// \brief Finishes off the hash and puts the result in result.
-  void final(MD5Result &Result);
+  void final(MD5Result &result);
 
   /// \brief Translates the bytes in \p Res to a hex string that is
   /// deposited into \p Str. The result will be of length 32.
-  static void stringifyResult(MD5Result &Result, SmallString<32> &Str);
+  static void stringifyResult(MD5Result &Res, SmallString<32> &Str);
 
 private:
   const uint8_t *body(ArrayRef<uint8_t> Data);
 };
-
-/// Helper to compute and return lower 64 bits of the given string's MD5 hash.
-inline uint64_t MD5Hash(StringRef Str) {
-  MD5 Hash;
-  Hash.update(Str);
-  llvm::MD5::MD5Result Result;
-  Hash.final(Result);
-  // Return the least significant 8 bytes. Our MD5 implementation returns the
-  // result in little endian, so we may need to swap bytes.
-  using namespace llvm::support;
-  return endian::read<uint64_t, little, unaligned>(Result);
-}
 
 }
 

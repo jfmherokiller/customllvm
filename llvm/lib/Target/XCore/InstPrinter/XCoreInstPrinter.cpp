@@ -11,6 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "asm-printer"
 #include "XCoreInstPrinter.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/MC/MCExpr.h"
@@ -21,8 +22,6 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "asm-printer"
-
 #include "XCoreGenAsmWriter.inc"
 
 void XCoreInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
@@ -30,7 +29,7 @@ void XCoreInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
 }
 
 void XCoreInstPrinter::printInst(const MCInst *MI, raw_ostream &O,
-                                 StringRef Annot, const MCSubtargetInfo &STI) {
+                                 StringRef Annot) {
   printInstruction(MI, O);
   printAnnotation(O, Annot);
 }
@@ -45,8 +44,7 @@ printInlineJT32(const MCInst *MI, int opNum, raw_ostream &O) {
   report_fatal_error("can't handle InlineJT32");
 }
 
-static void printExpr(const MCExpr *Expr, const MCAsmInfo *MAI,
-                      raw_ostream &OS) {
+static void printExpr(const MCExpr *Expr, raw_ostream &OS) {
   int Offset = 0;
   const MCSymbolRefExpr *SRE;
 
@@ -61,7 +59,7 @@ static void printExpr(const MCExpr *Expr, const MCAsmInfo *MAI,
   }
   assert(SRE->getKind() == MCSymbolRefExpr::VK_None);
 
-  SRE->getSymbol().print(OS, MAI);
+  OS << SRE->getSymbol();
 
   if (Offset) {
     if (Offset > 0)
@@ -84,5 +82,5 @@ printOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O) {
   }
 
   assert(Op.isExpr() && "unknown operand kind in printOperand");
-  printExpr(Op.getExpr(), &MAI, O);
+  printExpr(Op.getExpr(), O);
 }

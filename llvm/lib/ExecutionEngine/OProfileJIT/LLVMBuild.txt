@@ -21,4 +21,3 @@
 type = OptionalLibrary
 name = OProfileJIT
 parent = ExecutionEngine
-required_libraries = Support Object ExecutionEngine

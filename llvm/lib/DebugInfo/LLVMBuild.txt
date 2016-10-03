@@ -15,10 +15,8 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = DWARF MSF CodeView PDB Symbolize
-
 [component_0]
-type = Group
+type = Library
 name = DebugInfo
-parent = $ROOT
+parent = Libraries
+required_libraries = Object Support

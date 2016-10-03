@@ -33,7 +33,6 @@ void SmallVectorBase::grow_pod(void *FirstEl, size_t MinSizeInBytes,
     // If this wasn't grown from the inline copy, grow the allocated space.
     NewElts = realloc(this->BeginX, NewCapacityInBytes);
   }
-  assert(NewElts && "Out of memory");
 
   this->EndX = (char*)NewElts+CurSizeBytes;
   this->BeginX = NewElts;

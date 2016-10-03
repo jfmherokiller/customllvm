@@ -16,6 +16,7 @@
 #ifndef LLVM_SUPPORT_PATH_H
 #define LLVM_SUPPORT_PATH_H
 
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/DataTypes.h"
 #include <iterator>
@@ -29,13 +30,13 @@ namespace path {
 
 /// @brief Path iterator.
 ///
-/// This is an input iterator that iterates over the individual components in
-/// \a path. The traversal order is as follows:
+/// This is a bidirectional iterator that iterates over the individual
+/// components in \a path. The forward traversal order is as follows:
 /// * The root-name element, if present.
 /// * The root-directory element, if present.
 /// * Each successive filename element, if present.
 /// * Dot, if one or more trailing non-root slash characters are present.
-/// Traversing backwards is possible with \a reverse_iterator
+/// The backwards traversal order is the reverse of forward traversal.
 ///
 /// Iteration examples. Each component is separated by ',':
 /// @code
@@ -46,8 +47,7 @@ namespace path {
 ///   ../        => ..,.
 ///   C:\foo\bar => C:,/,foo,bar
 /// @endcode
-class const_iterator
-    : public std::iterator<std::input_iterator_tag, const StringRef> {
+class const_iterator {
   StringRef Path;      ///< The entire path.
   StringRef Component; ///< The current component. Not necessarily in Path.
   size_t    Position;  ///< The iterators current position within Path.
@@ -57,40 +57,26 @@ class const_iterator
   friend const_iterator end(StringRef path);
 
 public:
+  typedef const StringRef value_type;
+  typedef ptrdiff_t difference_type;
+  typedef value_type &reference;
+  typedef value_type *pointer;
+  typedef std::bidirectional_iterator_tag iterator_category;
+
   reference operator*() const { return Component; }
   pointer   operator->() const { return &Component; }
   const_iterator &operator++();    // preincrement
+  const_iterator &operator++(int); // postincrement
+  const_iterator &operator--();    // predecrement
+  const_iterator &operator--(int); // postdecrement
   bool operator==(const const_iterator &RHS) const;
-  bool operator!=(const const_iterator &RHS) const { return !(*this == RHS); }
+  bool operator!=(const const_iterator &RHS) const;
 
   /// @brief Difference in bytes between this and RHS.
   ptrdiff_t operator-(const const_iterator &RHS) const;
 };
 
-/// @brief Reverse path iterator.
-///
-/// This is an input iterator that iterates over the individual components in
-/// \a path in reverse order. The traversal order is exactly reversed from that
-/// of \a const_iterator
-class reverse_iterator
-    : public std::iterator<std::input_iterator_tag, const StringRef> {
-  StringRef Path;      ///< The entire path.
-  StringRef Component; ///< The current component. Not necessarily in Path.
-  size_t    Position;  ///< The iterators current position within Path.
-
-  friend reverse_iterator rbegin(StringRef path);
-  friend reverse_iterator rend(StringRef path);
-
-public:
-  reference operator*() const { return Component; }
-  pointer   operator->() const { return &Component; }
-  reverse_iterator &operator++();    // preincrement
-  bool operator==(const reverse_iterator &RHS) const;
-  bool operator!=(const reverse_iterator &RHS) const { return !(*this == RHS); }
-
-  /// @brief Difference in bytes between this and RHS.
-  ptrdiff_t operator-(const reverse_iterator &RHS) const;
-};
+typedef std::reverse_iterator<const_iterator> reverse_iterator;
 
 /// @brief Get begin iterator over \a path.
 /// @param path Input path.
@@ -105,12 +91,16 @@ const_iterator end(StringRef path);
 /// @brief Get reverse begin iterator over \a path.
 /// @param path Input path.
 /// @returns Iterator initialized with the first reverse component of \a path.
-reverse_iterator rbegin(StringRef path);
+inline reverse_iterator rbegin(StringRef path) {
+  return reverse_iterator(end(path));
+}
 
 /// @brief Get reverse end iterator over \a path.
 /// @param path Input path.
 /// @returns Iterator initialized to the reverse end of \a path.
-reverse_iterator rend(StringRef path);
+inline reverse_iterator rend(StringRef path) {
+  return reverse_iterator(begin(path));
+}
 
 /// @}
 /// @name Lexical Modifiers
@@ -141,23 +131,6 @@ void remove_filename(SmallVectorImpl<char> &path);
 ///                  optionally start with a '.', if it does not, one will be
 ///                  prepended.
 void replace_extension(SmallVectorImpl<char> &path, const Twine &extension);
-
-/// @brief Replace matching path prefix with another path.
-///
-/// @code
-///   /foo, /old, /new => /foo
-///   /old/foo, /old, /new => /new/foo
-///   /foo, <empty>, /new => /new/foo
-///   /old/foo, /old, <empty> => /foo
-/// @endcode
-///
-/// @param Path If \a Path starts with \a OldPrefix modify to instead
-///        start with \a NewPrefix.
-/// @param OldPrefix The path prefix to strip from \a Path.
-/// @param NewPrefix The path prefix to replace \a NewPrefix with.
-void replace_path_prefix(SmallVectorImpl<char> &Path,
-                         const StringRef &OldPrefix,
-                         const StringRef &NewPrefix);
 
 /// @brief Append to path.
 ///
@@ -221,7 +194,7 @@ void native(SmallVectorImpl<char> &path);
 ///
 /// @param path Input path.
 /// @result The root name of \a path if it has one, otherwise "".
-StringRef root_name(StringRef path);
+const StringRef root_name(StringRef path);
 
 /// @brief Get root directory.
 ///
@@ -234,15 +207,15 @@ StringRef root_name(StringRef path);
 /// @param path Input path.
 /// @result The root directory of \a path if it has one, otherwise
 ///               "".
-StringRef root_directory(StringRef path);
-
+const StringRef root_directory(StringRef path);
+  
 /// @brief Get root path.
 ///
 /// Equivalent to root_name + root_directory.
 ///
 /// @param path Input path.
 /// @result The root path of \a path if it has one, otherwise "".
-StringRef root_path(StringRef path);
+const StringRef root_path(StringRef path);
 
 /// @brief Get relative path.
 ///
@@ -254,7 +227,7 @@ StringRef root_path(StringRef path);
 ///
 /// @param path Input path.
 /// @result The path starting after root_path if one exists, otherwise "".
-StringRef relative_path(StringRef path);
+const StringRef relative_path(StringRef path);
 
 /// @brief Get parent path.
 ///
@@ -266,7 +239,7 @@ StringRef relative_path(StringRef path);
 ///
 /// @param path Input path.
 /// @result The parent path of \a path if one exists, otherwise "".
-StringRef parent_path(StringRef path);
+const StringRef parent_path(StringRef path);
 
 /// @brief Get filename.
 ///
@@ -280,7 +253,7 @@ StringRef parent_path(StringRef path);
 /// @param path Input path.
 /// @result The filename part of \a path. This is defined as the last component
 ///         of \a path.
-StringRef filename(StringRef path);
+const StringRef filename(StringRef path);
 
 /// @brief Get stem.
 ///
@@ -298,7 +271,7 @@ StringRef filename(StringRef path);
 ///
 /// @param path Input path.
 /// @result The stem of \a path.
-StringRef stem(StringRef path);
+const StringRef stem(StringRef path);
 
 /// @brief Get extension.
 ///
@@ -314,7 +287,7 @@ StringRef stem(StringRef path);
 ///
 /// @param path Input path.
 /// @result The extension of \a path.
-StringRef extension(StringRef path);
+const StringRef extension(StringRef path);
 
 /// @brief Check whether the given char is a path separator on the host OS.
 ///
@@ -322,12 +295,7 @@ StringRef extension(StringRef path);
 /// @result true if \a value is a path separator character on the host OS
 bool is_separator(char value);
 
-/// @brief Return the preferred separator for this platform.
-///
-/// @result StringRef of the preferred separator, null-terminated.
-StringRef get_separator();
-
-/// @brief Get the typical temporary directory for the system, e.g.,
+/// @brief Get the typical temporary directory for the system, e.g., 
 /// "/var/tmp" or "C:/TEMP"
 ///
 /// @param erasedOnReboot Whether to favor a path that is erased on reboot
@@ -337,28 +305,6 @@ StringRef get_separator();
 ///
 /// @param result Holds the resulting path name.
 void system_temp_directory(bool erasedOnReboot, SmallVectorImpl<char> &result);
-
-/// @brief Get the user's home directory.
-///
-/// @param result Holds the resulting path name.
-/// @result True if a home directory is set, false otherwise.
-bool home_directory(SmallVectorImpl<char> &result);
-
-/// @brief Get the user's cache directory.
-///
-/// Expect the resulting path to be a directory shared with other
-/// applications/services used by the user. Params \p Path1 to \p Path3 can be
-/// used to append additional directory names to the resulting path. Recommended
-/// pattern is <user_cache_directory>/<vendor>/<application>.
-///
-/// @param Result Holds the resulting path.
-/// @param Path1 Additional path to be appended to the user's cache directory
-/// path. "" can be used to append nothing.
-/// @param Path2 Second additional path to be appended.
-/// @param Path3 Third additional path to be appended.
-/// @result True if a cache directory path is set, false otherwise.
-bool user_cache_directory(SmallVectorImpl<char> &Result, const Twine &Path1,
-                          const Twine &Path2 = "", const Twine &Path3 = "");
 
 /// @brief Has root name?
 ///
@@ -435,19 +381,6 @@ bool is_absolute(const Twine &path);
 /// @param path Input path.
 /// @result True if the path is relative, false if it is not.
 bool is_relative(const Twine &path);
-
-/// @brief Remove redundant leading "./" pieces and consecutive separators.
-///
-/// @param path Input path.
-/// @result The cleaned-up \a path.
-StringRef remove_leading_dotslash(StringRef path);
-
-/// @brief In-place remove any './' and optionally '../' components from a path.
-///
-/// @param path processed path
-/// @param remove_dot_dot specify if '../' should be removed
-/// @result True if path was changed
-bool remove_dots(SmallVectorImpl<char> &path, bool remove_dot_dot = false);
 
 } // end namespace path
 } // end namespace sys

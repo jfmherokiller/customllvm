@@ -29,7 +29,7 @@ void IntervalPartition::releaseMemory() {
     delete Intervals[i];
   IntervalMap.clear();
   Intervals.clear();
-  RootInterval = nullptr;
+  RootInterval = 0;
 }
 
 void IntervalPartition::print(raw_ostream &O, const Module*) const {
@@ -57,8 +57,9 @@ void IntervalPartition::addIntervalToPartition(Interval *I) {
 //
 void IntervalPartition::updatePredecessors(Interval *Int) {
   BasicBlock *Header = Int->getHeaderNode();
-  for (BasicBlock *Successor : Int->Successors)
-    getBlockInterval(Successor)->Predecessors.push_back(Header);
+  for (Interval::succ_iterator I = Int->Successors.begin(),
+         E = Int->Successors.end(); I != E; ++I)
+    getBlockInterval(*I)->Predecessors.push_back(Header);
 }
 
 // IntervalPartition ctor - Build the first level interval partition for the

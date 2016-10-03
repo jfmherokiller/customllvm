@@ -40,11 +40,8 @@ class TargetSchedModel {
   SmallVector<unsigned, 16> ResourceFactors;
   unsigned MicroOpFactor; // Multiply to normalize microops to resource units.
   unsigned ResourceLCM;   // Resource units per cycle. Latency normalization factor.
-
-  unsigned computeInstrLatency(const MCSchedClassDesc &SCDesc) const;
-
 public:
-  TargetSchedModel(): SchedModel(MCSchedModel::GetDefaultSchedModel()), STI(nullptr), TII(nullptr) {}
+  TargetSchedModel(): STI(0), TII(0) {}
 
   /// \brief Initialize the machine model for instruction scheduling.
   ///
@@ -78,13 +75,7 @@ public:
   const InstrItineraryData *getInstrItineraries() const {
     if (hasInstrItineraries())
       return &InstrItins;
-    return nullptr;
-  }
-
-  /// \brief Return true if this machine model includes an instruction-level
-  /// scheduling model or cycle-to-cycle itinerary data.
-  bool hasInstrSchedModelOrItineraries() const {
-    return hasInstrSchedModel() || hasInstrItineraries();
+    return 0;
   }
 
   /// \brief Identify the processor corresponding to the current subtarget.
@@ -95,7 +86,7 @@ public:
 
   /// \brief Return the number of issue slots required for this MI.
   unsigned getNumMicroOps(const MachineInstr *MI,
-                          const MCSchedClassDesc *SC = nullptr) const;
+                          const MCSchedClassDesc *SC = 0) const;
 
   /// \brief Get the number of kinds of resources for this target.
   unsigned getNumProcResourceKinds() const {
@@ -106,14 +97,6 @@ public:
   const MCProcResourceDesc *getProcResource(unsigned PIdx) const {
     return SchedModel.getProcResource(PIdx);
   }
-
-#ifndef NDEBUG
-  const char *getResourceName(unsigned PIdx) const {
-    if (!PIdx)
-      return "MOps";
-    return SchedModel.getProcResource(PIdx)->Name;
-  }
-#endif
 
   typedef const MCWriteProcResEntry *ProcResIter;
 
@@ -167,7 +150,7 @@ public:
   /// model.
   ///
   /// Compute and return the expected latency of this instruction independent of
-  /// a particular use. computeOperandLatency is the preferred API, but this is
+  /// a particular use. computeOperandLatency is the prefered API, but this is
   /// occasionally useful to help estimate instruction cost.
   ///
   /// If UseDefaultDefLatency is false and no new machine sched model is
@@ -176,7 +159,6 @@ public:
   /// if converter after moving it to TargetSchedModel).
   unsigned computeInstrLatency(const MachineInstr *MI,
                                bool UseDefaultDefLatency = true) const;
-  unsigned computeInstrLatency(unsigned Opcode) const;
 
   /// \brief Output dependency latency of a pair of defs of the same register.
   ///

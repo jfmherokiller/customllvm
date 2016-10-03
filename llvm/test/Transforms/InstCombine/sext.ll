@@ -145,7 +145,7 @@ define i32 @test13(i32 %x) nounwind {
 ; CHECK-LABEL: @test13(
 ; CHECK-NEXT: %and = lshr i32 %x, 3
 ; CHECK-NEXT: %1 = and i32 %and, 1
-; CHECK-NEXT: %sext = add nsw i32 %1, -1
+; CHECK-NEXT: %sext = add i32 %1, -1
 ; CHECK-NEXT: ret i32 %sext
 }
 
@@ -157,7 +157,7 @@ define i32 @test14(i16 %x) nounwind {
 ; CHECK-LABEL: @test14(
 ; CHECK-NEXT: %and = lshr i16 %x, 4
 ; CHECK-NEXT: %1 = and i16 %and, 1
-; CHECK-NEXT: %sext = add nsw i16 %1, -1
+; CHECK-NEXT: %sext = add i16 %1, -1
 ; CHECK-NEXT: %ext = sext i16 %sext to i32
 ; CHECK-NEXT: ret i32 %ext
 }
@@ -192,16 +192,4 @@ define i32 @test17(i1 %x) nounwind {
 ; CHECK-LABEL: @test17(
 ; CHECK-NEXT: [[TEST17:%.*]] = zext i1 %x to i32
 ; CHECK-NEXT: ret i32 [[TEST17]]
-}
-
-define i32 @test18(i16 %x) {
-  %cmp = icmp slt i16 %x, 0
-  %sel = select i1 %cmp, i16 0, i16 %x
-  %ext = sext i16 %sel to i32
-  ret i32 %ext
-; CHECK-LABEL: @test18(
-; CHECK-NEXT: %[[cmp:.*]] = icmp slt i16 %x, 0
-; CHECK-NEXT: %[[sel:.*]] = select i1 %[[cmp]], i16 0, i16 %x
-; CHECK-NEXT: %[[ext:.*]] = zext i16 %[[sel]] to i32
-; CHECK-NEXT: ret i32 %[[ext]]
 }

@@ -15,19 +15,18 @@
 #include "ScheduleDAGSDNodes.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/Assembly/Writer.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
+#include "llvm/DebugInfo.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/DebugInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/GraphWriter.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "dag-printer"
 
 namespace llvm {
   template<>
@@ -80,16 +79,9 @@ namespace llvm {
       return true;
     }
 
-    static std::string getNodeIdentifierLabel(const SDNode *Node,
-                                              const SelectionDAG *Graph) {
-      std::string R;
-      raw_string_ostream OS(R);
-#ifndef NDEBUG
-      OS << 't' << Node->PersistentId;
-#else
-      OS << static_cast<const void *>(Node);
-#endif
-      return R;
+    static bool hasNodeAddressLabel(const SDNode *Node,
+                                    const SelectionDAG *Graph) {
+      return true;
     }
 
     /// If you want to override the dot attributes printed for a particular
@@ -133,9 +125,9 @@ namespace llvm {
 
     static void addCustomGraphFeatures(SelectionDAG *G,
                                        GraphWriter<SelectionDAG*> &GW) {
-      GW.emitSimpleNode(nullptr, "plaintext=circle", "GraphRoot");
+      GW.emitSimpleNode(0, "plaintext=circle", "GraphRoot");
       if (G->getRoot().getNode())
-        GW.emitEdge(nullptr, -1, G->getRoot().getNode(), G->getRoot().getResNo(),
+        GW.emitEdge(0, -1, G->getRoot().getNode(), G->getRoot().getResNo(),
                     "color=blue,style=dashed");
     }
   };
@@ -298,10 +290,10 @@ std::string ScheduleDAGSDNodes::getGraphNodeLabel(const SUnit *SU) const {
 void ScheduleDAGSDNodes::getCustomGraphFeatures(GraphWriter<ScheduleDAG*> &GW) const {
   if (DAG) {
     // Draw a special "GraphRoot" node to indicate the root of the graph.
-    GW.emitSimpleNode(nullptr, "plaintext=circle", "GraphRoot");
+    GW.emitSimpleNode(0, "plaintext=circle", "GraphRoot");
     const SDNode *N = DAG->getRoot().getNode();
     if (N && N->getNodeId() != -1)
-      GW.emitEdge(nullptr, -1, &SUnits[N->getNodeId()], -1,
+      GW.emitEdge(0, -1, &SUnits[N->getNodeId()], -1,
                   "color=blue,style=dashed");
   }
 }

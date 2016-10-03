@@ -11,15 +11,12 @@
 #define LLVM_MC_MCWINCOFFOBJECTWRITER_H
 
 namespace llvm {
-class MCAsmBackend;
-class MCFixup;
-class MCObjectWriter;
-class MCValue;
-class raw_ostream;
-class raw_pwrite_stream;
+  class MCFixup;
+  class MCObjectWriter;
+  class MCValue;
+  class raw_ostream;
 
   class MCWinCOFFObjectTargetWriter {
-    virtual void anchor();
     const unsigned Machine;
 
   protected:
@@ -29,10 +26,9 @@ class raw_pwrite_stream;
     virtual ~MCWinCOFFObjectTargetWriter() {}
 
     unsigned getMachine() const { return Machine; }
-    virtual unsigned getRelocType(const MCValue &Target, const MCFixup &Fixup,
-                                  bool IsCrossSection,
-                                  const MCAsmBackend &MAB) const = 0;
-    virtual bool recordRelocation(const MCFixup &) const { return true; }
+    virtual unsigned getRelocType(const MCValue &Target,
+                                  const MCFixup &Fixup,
+                                  bool IsCrossSection) const = 0;
   };
 
   /// \brief Construct a new Win COFF writer instance.
@@ -41,7 +37,7 @@ class raw_pwrite_stream;
   /// \param OS - The stream to write to.
   /// \returns The constructed object writer.
   MCObjectWriter *createWinCOFFObjectWriter(MCWinCOFFObjectTargetWriter *MOTW,
-                                            raw_pwrite_stream &OS);
+                                            raw_ostream &OS);
 } // End llvm namespace
 
 #endif

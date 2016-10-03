@@ -1,7 +1,5 @@
 @ RUN: llvm-mc %s -triple=armv7-unknown-linux-gnueabi -filetype=obj -o - \
-@ RUN:   | llvm-readobj -s -sd -sr > %t
-@ RUN: FileCheck %s < %t
-@ RUN: FileCheck --check-prefix=RELOC %s < %t
+@ RUN:   | llvm-readobj -s -sd -sr | FileCheck %s
 
 @ Check the .handlerdata directive (without .personality directive)
 
@@ -45,14 +43,11 @@ func1:
 @ We should see a relocation entry to __aeabi_unwind_cpp_pr0, so that the
 @ linker can keep __aeabi_unwind_cpp_pr0.
 @-------------------------------------------------------------------------------
-@ RELOC: Section {
-@ RELOC:  Name: .rel.ARM.exidx.TEST1
-@ RELOC:  Relocations [
-@ RELOC:    0x0 R_ARM_NONE __aeabi_unwind_cpp_pr0 0x0
-@ RELOC:    0x0 R_ARM_PREL31 .TEST1 0x0
-@ RELOC:    0x4 R_ARM_PREL31 .ARM.extab.TEST1 0x0
-@ RELOC:  ]
-@ RELOC: }
+@ CHECK:  Relocations [
+@ CHECK:    0x0 R_ARM_PREL31 .TEST1 0x0
+@ CHECK:    0x0 R_ARM_NONE __aeabi_unwind_cpp_pr0 0x0
+@ CHECK:    0x4 R_ARM_PREL31 .ARM.extab.TEST1 0x0
+@ CHECK:  ]
 
 
 
@@ -105,11 +100,8 @@ func2:
 @ We should see a relocation entry to __aeabi_unwind_cpp_pr0, so that the
 @ linker can keep __aeabi_unwind_cpp_pr0.
 @-------------------------------------------------------------------------------
-@ RELOC: Section {
-@ RELOC:  Name: .rel.ARM.exidx.TEST2
-@ RELOC:  Relocations [
-@ RELOC:    0x0 R_ARM_NONE __aeabi_unwind_cpp_pr1 0x0
-@ RELOC:    0x0 R_ARM_PREL31 .TEST2 0x0
-@ RELOC:    0x4 R_ARM_PREL31 .ARM.extab.TEST2 0x0
-@ RELOC:  ]
-@ RELOC: }
+@ CHECK:  Relocations [
+@ CHECK:    0x0 R_ARM_PREL31 .TEST2 0x0
+@ CHECK:    0x0 R_ARM_NONE __aeabi_unwind_cpp_pr1 0x0
+@ CHECK:    0x4 R_ARM_PREL31 .ARM.extab.TEST2 0x0
+@ CHECK:  ]

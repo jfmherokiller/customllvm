@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TABLEGEN_STRINGTOOFFSETTABLE_H
-#define LLVM_TABLEGEN_STRINGTOOFFSETTABLE_H
+#ifndef TBLGEN_STRING_TO_OFFSET_TABLE_H
+#define TBLGEN_STRING_TO_OFFSET_TABLE_H
 
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
@@ -25,21 +25,21 @@ namespace llvm {
 class StringToOffsetTable {
   StringMap<unsigned> StringOffset;
   std::string AggregateString;
-
 public:
+  
   unsigned GetOrAddStringOffset(StringRef Str, bool appendZero = true) {
-    auto IterBool =
-        StringOffset.insert(std::make_pair(Str, AggregateString.size()));
-    if (IterBool.second) {
+    StringMapEntry<unsigned> &Entry = StringOffset.GetOrCreateValue(Str, -1U);
+    if (Entry.getValue() == -1U) {
       // Add the string to the aggregate if this is the first time found.
+      Entry.setValue(AggregateString.size());
       AggregateString.append(Str.begin(), Str.end());
       if (appendZero)
         AggregateString += '\0';
     }
-
-    return IterBool.first->second;
+    
+    return Entry.getValue();
   }
-
+  
   void EmitString(raw_ostream &O) {
     // Escape the string.
     SmallString<256> Str;
@@ -55,11 +55,11 @@ public:
       }
       O << AggregateString[i];
       ++CharsPrinted;
-
+      
       // Print escape sequences all together.
       if (AggregateString[i] != '\\')
         continue;
-
+      
       assert(i+1 < AggregateString.size() && "Incomplete escape sequence!");
       if (isdigit(AggregateString[i+1])) {
         assert(isdigit(AggregateString[i+2]) && 
@@ -75,26 +75,6 @@ public:
       }
     }
     O << "\"";
-  }
-
-  /// Emit the string using character literals. MSVC has a limitation that
-  /// string literals cannot be longer than 64K.
-  void EmitCharArray(raw_ostream &O) {
-    assert(AggregateString.find(')') == std::string::npos &&
-           "can't emit raw string with closing parens");
-    int Count = 0;
-    O << ' ';
-    for (char C : AggregateString) {
-      O << " \'";
-      O.write_escaped(StringRef(&C, 1));
-      O << "\',";
-      Count++;
-      if (Count > 14) {
-        O << "\n ";
-        Count = 0;
-      }
-    }
-    O << '\n';
   }
 };
 

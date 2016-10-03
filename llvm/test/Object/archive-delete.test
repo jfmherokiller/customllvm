@@ -1,5 +1,7 @@
 Test the 'd' operation in llvm-ar
 
+REQUIRES: shell
+
 RUN: cd %T
 
 RUN: rm -f %t.a

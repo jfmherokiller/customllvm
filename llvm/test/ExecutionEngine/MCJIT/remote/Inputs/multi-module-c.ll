@@ -1,4 +1,4 @@
-define i32 @FC() nounwind {
+define i32 @FC() {
   ret i32 0
 }
 

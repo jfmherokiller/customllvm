@@ -1,5 +1,5 @@
 ; RUN: not llvm-as %s -o /dev/null 2>&1 | FileCheck %s
-; CHECK: invalid type for alloca
+; CHECK: Cannot allocate unsized type
 ; PR2113
 
 define void @test() {

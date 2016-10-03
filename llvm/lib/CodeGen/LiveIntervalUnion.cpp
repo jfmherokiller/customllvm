@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "regalloc"
 #include "llvm/CodeGen/LiveIntervalUnion.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SparseBitVector.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -23,18 +23,16 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "regalloc"
-
 
 // Merge a LiveInterval's segments. Guarantee no overlaps.
-void LiveIntervalUnion::unify(LiveInterval &VirtReg, const LiveRange &Range) {
-  if (Range.empty())
+void LiveIntervalUnion::unify(LiveInterval &VirtReg) {
+  if (VirtReg.empty())
     return;
   ++Tag;
 
   // Insert each of the virtual register's live segments into the map.
-  LiveRange::const_iterator RegPos = Range.begin();
-  LiveRange::const_iterator RegEnd = Range.end();
+  LiveInterval::iterator RegPos = VirtReg.begin();
+  LiveInterval::iterator RegEnd = VirtReg.end();
   SegmentIter SegPos = Segments.find(RegPos->start);
 
   while (SegPos.valid()) {
@@ -54,14 +52,14 @@ void LiveIntervalUnion::unify(LiveInterval &VirtReg, const LiveRange &Range) {
 }
 
 // Remove a live virtual register's segments from this union.
-void LiveIntervalUnion::extract(LiveInterval &VirtReg, const LiveRange &Range) {
-  if (Range.empty())
+void LiveIntervalUnion::extract(LiveInterval &VirtReg) {
+  if (VirtReg.empty())
     return;
   ++Tag;
 
   // Remove each of the virtual register's live segments from the map.
-  LiveRange::const_iterator RegPos = Range.begin();
-  LiveRange::const_iterator RegEnd = Range.end();
+  LiveInterval::iterator RegPos = VirtReg.begin();
+  LiveInterval::iterator RegEnd = VirtReg.end();
   SegmentIter SegPos = Segments.find(RegPos->start);
 
   for (;;) {
@@ -71,7 +69,7 @@ void LiveIntervalUnion::extract(LiveInterval &VirtReg, const LiveRange &Range) {
       return;
 
     // Skip all segments that may have been coalesced.
-    RegPos = Range.advanceTo(RegPos, SegPos.start());
+    RegPos = VirtReg.advanceTo(RegPos, SegPos.start());
     if (RegPos == RegEnd)
       return;
 
@@ -103,7 +101,9 @@ void LiveIntervalUnion::verify(LiveVirtRegBitSet& VisitedVRegs) {
 // Scan the vector of interfering virtual registers in this union. Assume it's
 // quite small.
 bool LiveIntervalUnion::Query::isSeenInterference(LiveInterval *VirtReg) const {
-  return is_contained(InterferingVRegs, VirtReg);
+  SmallVectorImpl<LiveInterval*>::const_iterator I =
+    std::find(InterferingVRegs.begin(), InterferingVRegs.end(), VirtReg);
+  return I != InterferingVRegs.end();
 }
 
 // Collect virtual registers in this union that interfere with this
@@ -138,7 +138,7 @@ collectInterferingVRegs(unsigned MaxInterferingRegs) {
   }
 
   LiveInterval::iterator VirtRegEnd = VirtReg->end();
-  LiveInterval *RecentReg = nullptr;
+  LiveInterval *RecentReg = 0;
   while (LiveUnionI.valid()) {
     assert(VirtRegI != VirtRegEnd && "Reached end of VirtReg");
 
@@ -200,5 +200,5 @@ void LiveIntervalUnion::Array::clear() {
     LIUs[i].~LiveIntervalUnion();
   free(LIUs);
   Size =  0;
-  LIUs = nullptr;
+  LIUs = 0;
 }

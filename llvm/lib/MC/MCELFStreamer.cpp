@@ -12,105 +12,90 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCELFStreamer.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/MC/MCAsmBackend.h"
-#include "llvm/MC/MCAsmLayout.h"
-#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCELF.h"
+#include "llvm/MC/MCELFSymbolFlags.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCObjectStreamer.h"
-#include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionELF.h"
-#include "llvm/MC/MCSymbolELF.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 
-bool MCELFStreamer::isBundleLocked() const {
-  return getCurrentSectionOnly()->isBundleLocked();
+
+inline void MCELFStreamer::SetSection(StringRef Section, unsigned Type,
+                                      unsigned Flags, SectionKind Kind) {
+  SwitchSection(getContext().getELFSection(Section, Type, Flags, Kind));
+}
+
+inline void MCELFStreamer::SetSectionData() {
+  SetSection(".data",
+             ELF::SHT_PROGBITS,
+             ELF::SHF_WRITE | ELF::SHF_ALLOC,
+             SectionKind::getDataRel());
+  EmitCodeAlignment(4, 0);
+}
+
+inline void MCELFStreamer::SetSectionText() {
+  SetSection(".text",
+             ELF::SHT_PROGBITS,
+             ELF::SHF_EXECINSTR | ELF::SHF_ALLOC,
+             SectionKind::getText());
+  EmitCodeAlignment(4, 0);
+}
+
+inline void MCELFStreamer::SetSectionBss() {
+  SetSection(".bss",
+             ELF::SHT_NOBITS,
+             ELF::SHF_WRITE | ELF::SHF_ALLOC,
+             SectionKind::getBSS());
+  EmitCodeAlignment(4, 0);
 }
 
 MCELFStreamer::~MCELFStreamer() {
 }
 
-void MCELFStreamer::mergeFragment(MCDataFragment *DF,
-                                  MCDataFragment *EF) {
-  MCAssembler &Assembler = getAssembler();
-
-  if (Assembler.isBundlingEnabled() && Assembler.getRelaxAll()) {
-    uint64_t FSize = EF->getContents().size();
-
-    if (FSize > Assembler.getBundleAlignSize())
-      report_fatal_error("Fragment can't be larger than a bundle size");
-
-    uint64_t RequiredBundlePadding = computeBundlePadding(
-        Assembler, EF, DF->getContents().size(), FSize);
-
-    if (RequiredBundlePadding > UINT8_MAX)
-      report_fatal_error("Padding cannot exceed 255 bytes");
-
-    if (RequiredBundlePadding > 0) {
-      SmallString<256> Code;
-      raw_svector_ostream VecOS(Code);
-      MCObjectWriter *OW = Assembler.getBackend().createObjectWriter(VecOS);
-
-      EF->setBundlePadding(static_cast<uint8_t>(RequiredBundlePadding));
-
-      Assembler.writeFragmentPadding(*EF, FSize, OW);
-      delete OW;
-
-      DF->getContents().append(Code.begin(), Code.end());
-    }
-  }
-
-  flushPendingLabels(DF, DF->getContents().size());
-
-  for (unsigned i = 0, e = EF->getFixups().size(); i != e; ++i) {
-    EF->getFixups()[i].setOffset(EF->getFixups()[i].getOffset() +
-                                 DF->getContents().size());
-    DF->getFixups().push_back(EF->getFixups()[i]);
-  }
-  DF->setHasInstructions(true);
-  DF->getContents().append(EF->getContents().begin(), EF->getContents().end());
+void MCELFStreamer::InitToTextSection() {
+  SetSectionText();
 }
 
-void MCELFStreamer::InitSections(bool NoExecStack) {
-  MCContext &Ctx = getContext();
-  SwitchSection(Ctx.getObjectFileInfo()->getTextSection());
-  EmitCodeAlignment(4);
-
-  if (NoExecStack)
-    SwitchSection(Ctx.getAsmInfo()->getNonexecutableStackSection(Ctx));
+void MCELFStreamer::InitSections() {
+  // This emulates the same behavior of GNU as. This makes it easier
+  // to compare the output as the major sections are in the same order.
+  SetSectionText();
+  SetSectionData();
+  SetSectionBss();
+  SetSectionText();
 }
 
-void MCELFStreamer::EmitLabel(MCSymbol *S) {
-  auto *Symbol = cast<MCSymbolELF>(S);
+void MCELFStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
 
   MCObjectStreamer::EmitLabel(Symbol);
 
   const MCSectionELF &Section =
-      static_cast<const MCSectionELF &>(*getCurrentSectionOnly());
+    static_cast<const MCSectionELF&>(Symbol->getSection());
+  MCSymbolData &SD = getAssembler().getSymbolData(*Symbol);
   if (Section.getFlags() & ELF::SHF_TLS)
-    Symbol->setType(ELF::STT_TLS);
+    MCELF::SetType(SD, ELF::STT_TLS);
+}
+
+void MCELFStreamer::EmitDebugLabel(MCSymbol *Symbol) {
+  EmitLabel(Symbol);
 }
 
 void MCELFStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
-  // Let the target do whatever target specific stuff it needs to do.
-  getAssembler().getBackend().handleAssemblerFlag(Flag);
-  // Do any generic stuff we need to do.
   switch (Flag) {
   case MCAF_SyntaxUnified: return; // no-op here.
   case MCAF_Code16: return; // Change parsing mode; no-op here.
@@ -124,46 +109,22 @@ void MCELFStreamer::EmitAssemblerFlag(MCAssemblerFlag Flag) {
   llvm_unreachable("invalid assembler flag!");
 }
 
-// If bundle alignment is used and there are any instructions in the section, it
-// needs to be aligned to at least the bundle size.
-static void setSectionAlignmentForBundling(const MCAssembler &Assembler,
-                                           MCSection *Section) {
-  if (Section && Assembler.isBundlingEnabled() && Section->hasInstructions() &&
-      Section->getAlignment() < Assembler.getBundleAlignSize())
-    Section->setAlignment(Assembler.getBundleAlignSize());
-}
-
-void MCELFStreamer::ChangeSection(MCSection *Section,
+void MCELFStreamer::ChangeSection(const MCSection *Section,
                                   const MCExpr *Subsection) {
-  MCSection *CurSection = getCurrentSectionOnly();
-  if (CurSection && isBundleLocked())
+  MCSectionData *CurSection = getCurrentSectionData();
+  if (CurSection && CurSection->isBundleLocked())
     report_fatal_error("Unterminated .bundle_lock when changing a section");
-
-  MCAssembler &Asm = getAssembler();
-  // Ensure the previous section gets aligned if necessary.
-  setSectionAlignmentForBundling(Asm, CurSection);
-  auto *SectionELF = static_cast<const MCSectionELF *>(Section);
-  const MCSymbol *Grp = SectionELF->getGroup();
+  const MCSymbol *Grp = static_cast<const MCSectionELF *>(Section)->getGroup();
   if (Grp)
-    Asm.registerSymbol(*Grp);
-
+    getAssembler().getOrCreateSymbolData(*Grp);
   this->MCObjectStreamer::ChangeSection(Section, Subsection);
-  MCContext &Ctx = getContext();
-  auto *Begin = cast_or_null<MCSymbolELF>(Section->getBeginSymbol());
-  if (!Begin) {
-    Begin = Ctx.getOrCreateSectionSymbol(*SectionELF);
-    Section->setBeginSymbol(Begin);
-  }
-  if (Begin->isUndefined()) {
-    Asm.registerSymbol(*Begin);
-    Begin->setType(ELF::STT_SECTION);
-  }
 }
 
 void MCELFStreamer::EmitWeakReference(MCSymbol *Alias, const MCSymbol *Symbol) {
-  getAssembler().registerSymbol(*Symbol);
-  const MCExpr *Value = MCSymbolRefExpr::create(
-      Symbol, MCSymbolRefExpr::VK_WEAKREF, getContext());
+  getAssembler().getOrCreateSymbolData(*Symbol);
+  MCSymbolData &AliasSD = getAssembler().getOrCreateSymbolData(*Alias);
+  AliasSD.setFlags(AliasSD.getFlags() | ELF_Other_Weakref);
+  const MCExpr *Value = MCSymbolRefExpr::Create(Symbol, getContext());
   Alias->setVariableValue(Value);
 }
 
@@ -175,19 +136,20 @@ void MCELFStreamer::EmitWeakReference(MCSymbol *Alias, const MCSymbol *Symbol) {
 // If neither T1 < T2 nor T2 < T1 according to this ordering, use T2 (the user
 // provided type).
 static unsigned CombineSymbolTypes(unsigned T1, unsigned T2) {
-  for (unsigned Type : {ELF::STT_NOTYPE, ELF::STT_OBJECT, ELF::STT_FUNC,
-                        ELF::STT_GNU_IFUNC, ELF::STT_TLS}) {
-    if (T1 == Type)
+  unsigned TypeOrdering[] = {ELF::STT_NOTYPE, ELF::STT_OBJECT, ELF::STT_FUNC,
+                             ELF::STT_GNU_IFUNC, ELF::STT_TLS};
+  for (unsigned i = 0; i != array_lengthof(TypeOrdering); ++i) {
+    if (T1 == TypeOrdering[i])
       return T2;
-    if (T2 == Type)
+    if (T2 == TypeOrdering[i])
       return T1;
   }
 
   return T2;
 }
 
-bool MCELFStreamer::EmitSymbolAttribute(MCSymbol *S, MCSymbolAttr Attribute) {
-  auto *Symbol = cast<MCSymbolELF>(S);
+bool MCELFStreamer::EmitSymbolAttribute(MCSymbol *Symbol,
+                                        MCSymbolAttr Attribute) {
   // Indirect symbols are handled differently, to match how 'as' handles
   // them. This makes writing matching .o files easier.
   if (Attribute == MCSA_IndirectSymbol) {
@@ -195,15 +157,15 @@ bool MCELFStreamer::EmitSymbolAttribute(MCSymbol *S, MCSymbolAttr Attribute) {
     // important for matching the string table that 'as' generates.
     IndirectSymbolData ISD;
     ISD.Symbol = Symbol;
-    ISD.Section = getCurrentSectionOnly();
+    ISD.SectionData = getCurrentSectionData();
     getAssembler().getIndirectSymbols().push_back(ISD);
     return true;
   }
 
   // Adding a symbol attribute always introduces the symbol, note that an
-  // important side effect of calling registerSymbol here is to register
+  // important side effect of calling getOrCreateSymbolData here is to register
   // the symbol with the assembler.
-  getAssembler().registerSymbol(*Symbol);
+  MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
 
   // The implementation of symbol attributes is designed to match 'as', but it
   // leaves much to desired. It doesn't really make sense to arbitrarily add and
@@ -223,139 +185,132 @@ bool MCELFStreamer::EmitSymbolAttribute(MCSymbol *S, MCSymbolAttr Attribute) {
     return false;
 
   case MCSA_NoDeadStrip:
+  case MCSA_ELF_TypeGnuUniqueObject:
     // Ignore for now.
     break;
 
-  case MCSA_ELF_TypeGnuUniqueObject:
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_OBJECT));
-    Symbol->setBinding(ELF::STB_GNU_UNIQUE);
-    Symbol->setExternal(true);
-    break;
-
   case MCSA_Global:
-    Symbol->setBinding(ELF::STB_GLOBAL);
-    Symbol->setExternal(true);
+    MCELF::SetBinding(SD, ELF::STB_GLOBAL);
+    SD.setExternal(true);
+    BindingExplicitlySet.insert(Symbol);
     break;
 
   case MCSA_WeakReference:
   case MCSA_Weak:
-    Symbol->setBinding(ELF::STB_WEAK);
-    Symbol->setExternal(true);
+    MCELF::SetBinding(SD, ELF::STB_WEAK);
+    SD.setExternal(true);
+    BindingExplicitlySet.insert(Symbol);
     break;
 
   case MCSA_Local:
-    Symbol->setBinding(ELF::STB_LOCAL);
-    Symbol->setExternal(false);
+    MCELF::SetBinding(SD, ELF::STB_LOCAL);
+    SD.setExternal(false);
+    BindingExplicitlySet.insert(Symbol);
     break;
 
   case MCSA_ELF_TypeFunction:
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_FUNC));
+    MCELF::SetType(SD, CombineSymbolTypes(MCELF::GetType(SD),
+                                          ELF::STT_FUNC));
     break;
 
   case MCSA_ELF_TypeIndFunction:
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_GNU_IFUNC));
+    MCELF::SetType(SD, CombineSymbolTypes(MCELF::GetType(SD),
+                                          ELF::STT_GNU_IFUNC));
     break;
 
   case MCSA_ELF_TypeObject:
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_OBJECT));
+    MCELF::SetType(SD, CombineSymbolTypes(MCELF::GetType(SD),
+                                          ELF::STT_OBJECT));
     break;
 
   case MCSA_ELF_TypeTLS:
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_TLS));
+    MCELF::SetType(SD, CombineSymbolTypes(MCELF::GetType(SD),
+                                          ELF::STT_TLS));
     break;
 
   case MCSA_ELF_TypeCommon:
     // TODO: Emit these as a common symbol.
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_OBJECT));
+    MCELF::SetType(SD, CombineSymbolTypes(MCELF::GetType(SD),
+                                          ELF::STT_OBJECT));
     break;
 
   case MCSA_ELF_TypeNoType:
-    Symbol->setType(CombineSymbolTypes(Symbol->getType(), ELF::STT_NOTYPE));
+    MCELF::SetType(SD, CombineSymbolTypes(MCELF::GetType(SD),
+                                          ELF::STT_NOTYPE));
     break;
 
   case MCSA_Protected:
-    Symbol->setVisibility(ELF::STV_PROTECTED);
+    MCELF::SetVisibility(SD, ELF::STV_PROTECTED);
     break;
 
   case MCSA_Hidden:
-    Symbol->setVisibility(ELF::STV_HIDDEN);
+    MCELF::SetVisibility(SD, ELF::STV_HIDDEN);
     break;
 
   case MCSA_Internal:
-    Symbol->setVisibility(ELF::STV_INTERNAL);
+    MCELF::SetVisibility(SD, ELF::STV_INTERNAL);
     break;
-
-  case MCSA_AltEntry:
-    llvm_unreachable("ELF doesn't support the .alt_entry attribute");
   }
 
   return true;
 }
 
-void MCELFStreamer::EmitCommonSymbol(MCSymbol *S, uint64_t Size,
-                                     unsigned ByteAlignment) {
-  auto *Symbol = cast<MCSymbolELF>(S);
-  getAssembler().registerSymbol(*Symbol);
+void MCELFStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
+                                       unsigned ByteAlignment) {
+  MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
 
-  if (!Symbol->isBindingSet()) {
-    Symbol->setBinding(ELF::STB_GLOBAL);
-    Symbol->setExternal(true);
+  if (!BindingExplicitlySet.count(Symbol)) {
+    MCELF::SetBinding(SD, ELF::STB_GLOBAL);
+    SD.setExternal(true);
   }
 
-  Symbol->setType(ELF::STT_OBJECT);
+  MCELF::SetType(SD, ELF::STT_OBJECT);
 
-  if (Symbol->getBinding() == ELF::STB_LOCAL) {
-    MCSection &Section = *getAssembler().getContext().getELFSection(
-        ".bss", ELF::SHT_NOBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC);
-    MCSectionSubPair P = getCurrentSection();
-    SwitchSection(&Section);
+  if (MCELF::GetBinding(SD) == ELF_STB_Local) {
+    const MCSection *Section = getAssembler().getContext().getELFSection(".bss",
+                                                         ELF::SHT_NOBITS,
+                                                         ELF::SHF_WRITE |
+                                                         ELF::SHF_ALLOC,
+                                                         SectionKind::getBSS());
 
-    EmitValueToAlignment(ByteAlignment, 0, 1, 0);
-    EmitLabel(Symbol);
-    EmitZeros(Size);
+    AssignSection(Symbol, Section);
 
-    // Update the maximum alignment of the section if necessary.
-    if (ByteAlignment > Section.getAlignment())
-      Section.setAlignment(ByteAlignment);
-
-    SwitchSection(P.first, P.second);
+    struct LocalCommon L = {&SD, Size, ByteAlignment};
+    LocalCommons.push_back(L);
   } else {
-    if(Symbol->declareCommon(Size, ByteAlignment))
-      report_fatal_error("Symbol: " + Symbol->getName() +
-                         " redeclared as different type");
+    SD.setCommon(Size, ByteAlignment);
   }
 
-  cast<MCSymbolELF>(Symbol)
-      ->setSize(MCConstantExpr::create(Size, getContext()));
+  SD.setSize(MCConstantExpr::Create(Size, getContext()));
 }
 
-void MCELFStreamer::emitELFSize(MCSymbolELF *Symbol, const MCExpr *Value) {
-  Symbol->setSize(Value);
+void MCELFStreamer::EmitELFSize(MCSymbol *Symbol, const MCExpr *Value) {
+  MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
+  SD.setSize(Value);
 }
 
-void MCELFStreamer::EmitLocalCommonSymbol(MCSymbol *S, uint64_t Size,
+void MCELFStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                           unsigned ByteAlignment) {
-  auto *Symbol = cast<MCSymbolELF>(S);
   // FIXME: Should this be caught and done earlier?
-  getAssembler().registerSymbol(*Symbol);
-  Symbol->setBinding(ELF::STB_LOCAL);
-  Symbol->setExternal(false);
+  MCSymbolData &SD = getAssembler().getOrCreateSymbolData(*Symbol);
+  MCELF::SetBinding(SD, ELF::STB_LOCAL);
+  SD.setExternal(false);
+  BindingExplicitlySet.insert(Symbol);
   EmitCommonSymbol(Symbol, Size, ByteAlignment);
 }
 
-void MCELFStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
-                                  SMLoc Loc) {
-  if (isBundleLocked())
+void MCELFStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size) {
+  if (getCurrentSectionData()->isBundleLocked())
     report_fatal_error("Emitting values inside a locked bundle is forbidden");
   fixSymbolsInTLSFixups(Value);
-  MCObjectStreamer::EmitValueImpl(Value, Size, Loc);
+  MCObjectStreamer::EmitValueImpl(Value, Size);
 }
 
 void MCELFStreamer::EmitValueToAlignment(unsigned ByteAlignment,
                                          int64_t Value,
                                          unsigned ValueSize,
                                          unsigned MaxBytesToEmit) {
-  if (isBundleLocked())
+  if (getCurrentSectionData()->isBundleLocked())
     report_fatal_error("Emitting values inside a locked bundle is forbidden");
   MCObjectStreamer::EmitValueToAlignment(ByteAlignment, Value,
                                          ValueSize, MaxBytesToEmit);
@@ -369,8 +324,9 @@ void MCELFStreamer::EmitFileDirective(StringRef Filename) {
 }
 
 void MCELFStreamer::EmitIdent(StringRef IdentString) {
-  MCSection *Comment = getAssembler().getContext().getELFSection(
-      ".comment", ELF::SHT_PROGBITS, ELF::SHF_MERGE | ELF::SHF_STRINGS, 1, "");
+  const MCSection *Comment = getAssembler().getContext().getELFSection(
+      ".comment", ELF::SHT_PROGBITS, ELF::SHF_MERGE | ELF::SHF_STRINGS,
+      SectionKind::getReadOnly(), 1, "");
   PushSection();
   SwitchSection(Comment);
   if (!SeenIdent) {
@@ -410,10 +366,16 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_TLSLD:
     case MCSymbolRefExpr::VK_TLSLDM:
     case MCSymbolRefExpr::VK_TPOFF:
-    case MCSymbolRefExpr::VK_TPREL:
     case MCSymbolRefExpr::VK_DTPOFF:
-    case MCSymbolRefExpr::VK_DTPREL:
+    case MCSymbolRefExpr::VK_ARM_TLSGD:
+    case MCSymbolRefExpr::VK_ARM_TPOFF:
+    case MCSymbolRefExpr::VK_ARM_GOTTPOFF:
+    case MCSymbolRefExpr::VK_Mips_TLSGD:
+    case MCSymbolRefExpr::VK_Mips_GOTTPREL:
+    case MCSymbolRefExpr::VK_Mips_TPREL_HI:
+    case MCSymbolRefExpr::VK_Mips_TPREL_LO:
     case MCSymbolRefExpr::VK_PPC_DTPMOD:
+    case MCSymbolRefExpr::VK_PPC_TPREL:
     case MCSymbolRefExpr::VK_PPC_TPREL_LO:
     case MCSymbolRefExpr::VK_PPC_TPREL_HI:
     case MCSymbolRefExpr::VK_PPC_TPREL_HA:
@@ -421,6 +383,7 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_PPC_TPREL_HIGHERA:
     case MCSymbolRefExpr::VK_PPC_TPREL_HIGHEST:
     case MCSymbolRefExpr::VK_PPC_TPREL_HIGHESTA:
+    case MCSymbolRefExpr::VK_PPC_DTPREL:
     case MCSymbolRefExpr::VK_PPC_DTPREL_LO:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HI:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HA:
@@ -449,8 +412,8 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_PPC_TLSLD:
       break;
     }
-    getAssembler().registerSymbol(symRef.getSymbol());
-    cast<MCSymbolELF>(symRef.getSymbol()).setType(ELF::STT_TLS);
+    MCSymbolData &SD = getAssembler().getOrCreateSymbolData(symRef.getSymbol());
+    MCELF::SetType(SD, ELF::STT_TLS);
     break;
   }
 
@@ -460,22 +423,21 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
   }
 }
 
-void MCELFStreamer::EmitInstToFragment(const MCInst &Inst,
-                                       const MCSubtargetInfo &STI) {
-  this->MCObjectStreamer::EmitInstToFragment(Inst, STI);
+void MCELFStreamer::EmitInstToFragment(const MCInst &Inst) {
+  this->MCObjectStreamer::EmitInstToFragment(Inst);
   MCRelaxableFragment &F = *cast<MCRelaxableFragment>(getCurrentFragment());
 
   for (unsigned i = 0, e = F.getFixups().size(); i != e; ++i)
     fixSymbolsInTLSFixups(F.getFixups()[i].getValue());
 }
 
-void MCELFStreamer::EmitInstToData(const MCInst &Inst,
-                                   const MCSubtargetInfo &STI) {
+void MCELFStreamer::EmitInstToData(const MCInst &Inst) {
   MCAssembler &Assembler = getAssembler();
   SmallVector<MCFixup, 4> Fixups;
   SmallString<256> Code;
   raw_svector_ostream VecOS(Code);
-  Assembler.getEmitter().encodeInstruction(Inst, VecOS, Fixups, STI);
+  Assembler.getEmitter().EncodeInstruction(Inst, VecOS, Fixups);
+  VecOS.flush();
 
   for (unsigned i = 0, e = Fixups.size(); i != e; ++i)
     fixSymbolsInTLSFixups(Fixups[i].getValue());
@@ -498,21 +460,12 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst,
   MCDataFragment *DF;
 
   if (Assembler.isBundlingEnabled()) {
-    MCSection &Sec = *getCurrentSectionOnly();
-    if (Assembler.getRelaxAll() && isBundleLocked())
-      // If the -mc-relax-all flag is used and we are bundle-locked, we re-use
-      // the current bundle group.
-      DF = BundleGroups.back();
-    else if (Assembler.getRelaxAll() && !isBundleLocked())
-      // When not in a bundle-locked group and the -mc-relax-all flag is used,
-      // we create a new temporary fragment which will be later merged into
-      // the current fragment.
-      DF = new MCDataFragment();
-    else if (isBundleLocked() && !Sec.isBundleGroupBeforeFirstInst())
+    MCSectionData *SD = getCurrentSectionData();
+    if (SD->isBundleLocked() && !SD->isBundleGroupBeforeFirstInst())
       // If we are bundle-locked, we re-use the current fragment.
       // The bundle-locking directive ensures this is a new data fragment.
       DF = cast<MCDataFragment>(getCurrentFragment());
-    else if (!isBundleLocked() && Fixups.size() == 0) {
+    else if (!SD->isBundleLocked() && Fixups.size() == 0) {
       // Optimize memory usage by emitting the instruction to a
       // MCCompactEncodedInstFragment when not in a bundle-locked group and
       // there are no fixups registered.
@@ -523,18 +476,16 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst,
     } else {
       DF = new MCDataFragment();
       insert(DF);
-    }
-    if (Sec.getBundleLockState() == MCSection::BundleLockedAlignToEnd) {
-      // If this fragment is for a group marked "align_to_end", set a flag
-      // in the fragment. This can happen after the fragment has already been
-      // created if there are nested bundle_align groups and an inner one
-      // is the one marked align_to_end.
-      DF->setAlignToBundleEnd(true);
+      if (SD->getBundleLockState() == MCSectionData::BundleLockedAlignToEnd) {
+        // If this is a new fragment created for a bundle-locked group, and the
+        // group was marked as "align_to_end", set a flag in the fragment.
+        DF->setAlignToBundleEnd(true);
+      }
     }
 
     // We're now emitting an instruction in a bundle group, so this flag has
     // to be turned off.
-    Sec.setBundleGroupBeforeFirstInst(false);
+    SD->setBundleGroupBeforeFirstInst(false);
   } else {
     DF = getOrCreateDataFragment();
   }
@@ -546,101 +497,97 @@ void MCELFStreamer::EmitInstToData(const MCInst &Inst,
   }
   DF->setHasInstructions(true);
   DF->getContents().append(Code.begin(), Code.end());
-
-  if (Assembler.isBundlingEnabled() && Assembler.getRelaxAll()) {
-    if (!isBundleLocked()) {
-      mergeFragment(getOrCreateDataFragment(), DF);
-      delete DF;
-    }
-  }
 }
 
 void MCELFStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
   assert(AlignPow2 <= 30 && "Invalid bundle alignment");
   MCAssembler &Assembler = getAssembler();
-  if (AlignPow2 > 0 && (Assembler.getBundleAlignSize() == 0 ||
-                        Assembler.getBundleAlignSize() == 1U << AlignPow2))
-    Assembler.setBundleAlignSize(1U << AlignPow2);
+  if (Assembler.getBundleAlignSize() == 0 && AlignPow2 > 0)
+    Assembler.setBundleAlignSize(1 << AlignPow2);
   else
-    report_fatal_error(".bundle_align_mode cannot be changed once set");
+    report_fatal_error(".bundle_align_mode should be only set once per file");
 }
 
 void MCELFStreamer::EmitBundleLock(bool AlignToEnd) {
-  MCSection &Sec = *getCurrentSectionOnly();
+  MCSectionData *SD = getCurrentSectionData();
 
   // Sanity checks
   //
   if (!getAssembler().isBundlingEnabled())
     report_fatal_error(".bundle_lock forbidden when bundling is disabled");
+  else if (SD->isBundleLocked())
+    report_fatal_error("Nesting of .bundle_lock is forbidden");
 
-  if (!isBundleLocked())
-    Sec.setBundleGroupBeforeFirstInst(true);
-
-  if (getAssembler().getRelaxAll() && !isBundleLocked()) {
-    // TODO: drop the lock state and set directly in the fragment
-    MCDataFragment *DF = new MCDataFragment();
-    BundleGroups.push_back(DF);
-  }
-
-  Sec.setBundleLockState(AlignToEnd ? MCSection::BundleLockedAlignToEnd
-                                    : MCSection::BundleLocked);
+  SD->setBundleLockState(AlignToEnd ? MCSectionData::BundleLockedAlignToEnd :
+                                      MCSectionData::BundleLocked);
+  SD->setBundleGroupBeforeFirstInst(true);
 }
 
 void MCELFStreamer::EmitBundleUnlock() {
-  MCSection &Sec = *getCurrentSectionOnly();
+  MCSectionData *SD = getCurrentSectionData();
 
   // Sanity checks
   if (!getAssembler().isBundlingEnabled())
     report_fatal_error(".bundle_unlock forbidden when bundling is disabled");
-  else if (!isBundleLocked())
+  else if (!SD->isBundleLocked())
     report_fatal_error(".bundle_unlock without matching lock");
-  else if (Sec.isBundleGroupBeforeFirstInst())
+  else if (SD->isBundleGroupBeforeFirstInst())
     report_fatal_error("Empty bundle-locked group is forbidden");
 
-  // When the -mc-relax-all flag is used, we emit instructions to fragments
-  // stored on a stack. When the bundle unlock is emitted, we pop a fragment
-  // from the stack a merge it to the one below.
-  if (getAssembler().getRelaxAll()) {
-    assert(!BundleGroups.empty() && "There are no bundle groups");
-    MCDataFragment *DF = BundleGroups.back();
+  SD->setBundleLockState(MCSectionData::NotBundleLocked);
+}
 
-    // FIXME: Use BundleGroups to track the lock state instead.
-    Sec.setBundleLockState(MCSection::NotBundleLocked);
+void MCELFStreamer::Flush() {
+  for (std::vector<LocalCommon>::const_iterator i = LocalCommons.begin(),
+                                                e = LocalCommons.end();
+       i != e; ++i) {
+    MCSymbolData *SD = i->SD;
+    uint64_t Size = i->Size;
+    unsigned ByteAlignment = i->ByteAlignment;
+    const MCSymbol &Symbol = SD->getSymbol();
+    const MCSection &Section = Symbol.getSection();
 
-    // FIXME: Use more separate fragments for nested groups.
-    if (!isBundleLocked()) {
-      mergeFragment(getOrCreateDataFragment(), DF);
-      BundleGroups.pop_back();
-      delete DF;
-    }
+    MCSectionData &SectData = getAssembler().getOrCreateSectionData(Section);
+    new MCAlignFragment(ByteAlignment, 0, 1, ByteAlignment, &SectData);
 
-    if (Sec.getBundleLockState() != MCSection::BundleLockedAlignToEnd)
-      getOrCreateDataFragment()->setAlignToBundleEnd(false);
-  } else
-    Sec.setBundleLockState(MCSection::NotBundleLocked);
+    MCFragment *F = new MCFillFragment(0, 0, Size, &SectData);
+    SD->setFragment(F);
+
+    // Update the maximum alignment of the section if necessary.
+    if (ByteAlignment > SectData.getAlignment())
+      SectData.setAlignment(ByteAlignment);
+  }
+
+  LocalCommons.clear();
 }
 
 void MCELFStreamer::FinishImpl() {
-  // Ensure the last section gets aligned if necessary.
-  MCSection *CurSection = getCurrentSectionOnly();
-  setSectionAlignmentForBundling(getAssembler(), CurSection);
+  EmitFrames(NULL, true);
 
-  EmitFrames(nullptr);
+  Flush();
 
   this->MCObjectStreamer::FinishImpl();
 }
 
-MCStreamer *llvm::createELFStreamer(MCContext &Context, MCAsmBackend &MAB,
-                                    raw_pwrite_stream &OS, MCCodeEmitter *CE,
-                                    bool RelaxAll) {
-  MCELFStreamer *S = new MCELFStreamer(Context, MAB, OS, CE);
+MCStreamer *llvm::createELFStreamer(MCContext &Context,
+                                    MCTargetStreamer *Streamer,
+                                    MCAsmBackend &MAB, raw_ostream &OS,
+                                    MCCodeEmitter *CE, bool RelaxAll,
+                                    bool NoExecStack) {
+  MCELFStreamer *S = new MCELFStreamer(Context, Streamer, MAB, OS, CE);
   if (RelaxAll)
     S->getAssembler().setRelaxAll(true);
+  if (NoExecStack)
+    S->getAssembler().setNoExecStack(true);
   return S;
 }
 
 void MCELFStreamer::EmitThumbFunc(MCSymbol *Func) {
   llvm_unreachable("Generic ELF doesn't support this directive");
+}
+
+MCSymbolData &MCELFStreamer::getOrCreateSymbolData(MCSymbol *Symbol) {
+  return getAssembler().getOrCreateSymbolData(*Symbol);
 }
 
 void MCELFStreamer::EmitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {
@@ -663,12 +610,12 @@ void MCELFStreamer::EndCOFFSymbolDef() {
   llvm_unreachable("ELF doesn't support this directive");
 }
 
-void MCELFStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
+void MCELFStreamer::EmitZerofill(const MCSection *Section, MCSymbol *Symbol,
                                  uint64_t Size, unsigned ByteAlignment) {
   llvm_unreachable("ELF doesn't support this directive");
 }
 
-void MCELFStreamer::EmitTBSSSymbol(MCSection *Section, MCSymbol *Symbol,
+void MCELFStreamer::EmitTBSSSymbol(const MCSection *Section, MCSymbol *Symbol,
                                    uint64_t Size, unsigned ByteAlignment) {
   llvm_unreachable("ELF doesn't support this directive");
 }

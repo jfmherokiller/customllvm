@@ -9,10 +9,9 @@
 
 #include "SystemZMCInstLower.h"
 #include "SystemZAsmPrinter.h"
-#include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCExpr.h"
-#include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCStreamer.h"
+#include "llvm/Target/Mangler.h"
 
 using namespace llvm;
 
@@ -23,8 +22,6 @@ static MCSymbolRefExpr::VariantKind getVariantKind(unsigned Flags) {
       return MCSymbolRefExpr::VK_None;
     case SystemZII::MO_GOT:
       return MCSymbolRefExpr::VK_GOT;
-    case SystemZII::MO_INDNTPOFF:
-      return MCSymbolRefExpr::VK_INDNTPOFF;
   }
   llvm_unreachable("Unrecognised MO_ACCESS_MODEL");
 }
@@ -68,11 +65,11 @@ SystemZMCInstLower::getExpr(const MachineOperand &MO,
   default:
     llvm_unreachable("unknown operand type");
   }
-  const MCExpr *Expr = MCSymbolRefExpr::create(Symbol, Kind, Ctx);
+  const MCExpr *Expr = MCSymbolRefExpr::Create(Symbol, Kind, Ctx);
   if (HasOffset)
     if (int64_t Offset = MO.getOffset()) {
-      const MCExpr *OffsetExpr = MCConstantExpr::create(Offset, Ctx);
-      Expr = MCBinaryExpr::createAdd(Expr, OffsetExpr, Ctx);
+      const MCExpr *OffsetExpr = MCConstantExpr::Create(Offset, Ctx);
+      Expr = MCBinaryExpr::CreateAdd(Expr, OffsetExpr, Ctx);
     }
   return Expr;
 }
@@ -80,14 +77,14 @@ SystemZMCInstLower::getExpr(const MachineOperand &MO,
 MCOperand SystemZMCInstLower::lowerOperand(const MachineOperand &MO) const {
   switch (MO.getType()) {
   case MachineOperand::MO_Register:
-    return MCOperand::createReg(MO.getReg());
+    return MCOperand::CreateReg(MO.getReg());
 
   case MachineOperand::MO_Immediate:
-    return MCOperand::createImm(MO.getImm());
+    return MCOperand::CreateImm(MO.getImm());
 
   default: {
     MCSymbolRefExpr::VariantKind Kind = getVariantKind(MO.getTargetFlags());
-    return MCOperand::createExpr(getExpr(MO, Kind));
+    return MCOperand::CreateExpr(getExpr(MO, Kind));
   }
   }
 }

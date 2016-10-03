@@ -8,43 +8,27 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Mips.h"
-#include "MipsTargetMachine.h"
+#include "MipsISelDAGToDAG.h"
+#include "MipsModuleISelDAGToDAG.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
-using namespace llvm;
-
-#define DEBUG_TYPE "mips-isel"
-
-namespace {
-  class MipsModuleDAGToDAGISel : public MachineFunctionPass {
-  public:
-    static char ID;
-
-    explicit MipsModuleDAGToDAGISel(MipsTargetMachine &TM_)
-      : MachineFunctionPass(ID), TM(TM_) {}
-
-    // Pass Name
-    const char *getPassName() const override {
-      return "MIPS DAG->DAG Pattern Instruction Selection";
-    }
-
-    bool runOnMachineFunction(MachineFunction &MF) override;
-
-  protected:
-    MipsTargetMachine &TM;
-  };
-
-  char MipsModuleDAGToDAGISel::ID = 0;
-}
+namespace llvm {
 
 bool MipsModuleDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
   DEBUG(errs() << "In MipsModuleDAGToDAGISel::runMachineFunction\n");
-  TM.resetSubtarget(&MF);
+  const_cast<MipsSubtarget&>(Subtarget).resetSubtarget(&MF);
   return false;
 }
 
-llvm::FunctionPass *llvm::createMipsModuleISelDagPass(MipsTargetMachine &TM) {
+char MipsModuleDAGToDAGISel::ID = 0;
+
+}
+
+
+llvm::FunctionPass *llvm::createMipsModuleISelDag(MipsTargetMachine &TM) {
   return new MipsModuleDAGToDAGISel(TM);
 }
+
+

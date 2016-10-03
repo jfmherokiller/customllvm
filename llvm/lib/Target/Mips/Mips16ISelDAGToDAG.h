@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_MIPS_MIPS16ISELDAGTODAG_H
-#define LLVM_LIB_TARGET_MIPS_MIPS16ISELDAGTODAG_H
+#ifndef MIPS16ISELDAGTODAG_H
+#define MIPS16ISELDAGTODAG_H
 
 #include "MipsISelDAGToDAG.h"
 
@@ -20,26 +20,24 @@ namespace llvm {
 
 class Mips16DAGToDAGISel : public MipsDAGToDAGISel {
 public:
-  explicit Mips16DAGToDAGISel(MipsTargetMachine &TM, CodeGenOpt::Level OL)
-      : MipsDAGToDAGISel(TM, OL) {}
+  explicit Mips16DAGToDAGISel(MipsTargetMachine &TM) : MipsDAGToDAGISel(TM) {}
 
 private:
-  std::pair<SDNode *, SDNode *> selectMULT(SDNode *N, unsigned Opc,
-                                           const SDLoc &DL, EVT Ty, bool HasLo,
-                                           bool HasHi);
+  std::pair<SDNode*, SDNode*> selectMULT(SDNode *N, unsigned Opc, SDLoc DL,
+                                         EVT Ty, bool HasLo, bool HasHi);
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
+  SDValue getMips16SPAliasReg();
 
-  bool selectAddr(bool SPAllowed, SDValue Addr, SDValue &Base,
-                  SDValue &Offset);
-  bool selectAddr16(SDValue Addr, SDValue &Base,
-                    SDValue &Offset) override;
-  bool selectAddr16SP(SDValue Addr, SDValue &Base,
-                      SDValue &Offset) override;
+  virtual bool runOnMachineFunction(MachineFunction &MF);
 
-  bool trySelect(SDNode *Node) override;
+  void getMips16SPRefReg(SDNode *Parent, SDValue &AliasReg);
 
-  void processFunctionAfterISel(MachineFunction &MF) override;
+  virtual bool selectAddr16(SDNode *Parent, SDValue N, SDValue &Base,
+                            SDValue &Offset, SDValue &Alias);
+
+  virtual std::pair<bool, SDNode*> selectNode(SDNode *Node);
+
+  virtual void processFunctionAfterISel(MachineFunction &MF);
 
   // Insert instructions to initialize the global base register in the
   // first MBB of the function.
@@ -48,8 +46,8 @@ private:
   void initMips16SPAliasReg(MachineFunction &MF);
 };
 
-FunctionPass *createMips16ISelDag(MipsTargetMachine &TM,
-                                  CodeGenOpt::Level OptLevel);
+FunctionPass *createMips16ISelDag(MipsTargetMachine &TM);
+
 }
 
 #endif

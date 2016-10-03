@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE ::llvm::ScoreboardHazardRecognizer::DebugType
 #include "llvm/CodeGen/ScoreboardHazardRecognizer.h"
 #include "llvm/CodeGen/ScheduleDAG.h"
 #include "llvm/MC/MCInstrItineraries.h"
@@ -23,13 +24,20 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE DebugType
+#ifndef NDEBUG
+const char *ScoreboardHazardRecognizer::DebugType = "";
+#endif
 
-ScoreboardHazardRecognizer::ScoreboardHazardRecognizer(
-    const InstrItineraryData *II, const ScheduleDAG *SchedDAG,
-    const char *ParentDebugType)
-    : ScheduleHazardRecognizer(), DebugType(ParentDebugType), ItinData(II),
-      DAG(SchedDAG), IssueWidth(0), IssueCount(0) {
+ScoreboardHazardRecognizer::
+ScoreboardHazardRecognizer(const InstrItineraryData *II,
+                           const ScheduleDAG *SchedDAG,
+                           const char *ParentDebugType) :
+  ScheduleHazardRecognizer(), ItinData(II), DAG(SchedDAG), IssueWidth(0),
+  IssueCount(0) {
+
+#ifndef NDEBUG
+  DebugType = ParentDebugType;
+#endif
 
   // Determine the maximum depth of any itinerary. This determines the depth of
   // the scoreboard. We always make the scoreboard at least 1 cycle deep to
@@ -69,7 +77,7 @@ ScoreboardHazardRecognizer::ScoreboardHazardRecognizer(
     DEBUG(dbgs() << "Disabled scoreboard hazard recognizer\n");
   else {
     // A nonempty itinerary must have a SchedModel.
-    IssueWidth = ItinData->SchedModel.IssueWidth;
+    IssueWidth = ItinData->SchedModel->IssueWidth;
     DEBUG(dbgs() << "Using scoreboard hazard recognizer: Depth = "
           << ScoreboardDepth << '\n');
   }
@@ -82,7 +90,7 @@ void ScoreboardHazardRecognizer::Reset() {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void ScoreboardHazardRecognizer::Scoreboard::dump() const {
+void ScoreboardHazardRecognizer::Scoreboard::dump() const {
   dbgs() << "Scoreboard:\n";
 
   unsigned last = Depth - 1;
@@ -118,7 +126,7 @@ ScoreboardHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
   // free FU's in the scoreboard at the appropriate future cycles.
 
   const MCInstrDesc *MCID = DAG->getInstrDesc(SU);
-  if (!MCID) {
+  if (MCID == NULL) {
     // Don't check hazards for non-machineinstr Nodes.
     return NoHazard;
   }
@@ -145,7 +153,7 @@ ScoreboardHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
       case InstrStage::Required:
         // Required FUs conflict with both reserved and required ones
         freeUnits &= ~ReservedScoreboard[StageCycle];
-        LLVM_FALLTHROUGH;
+        // FALLTHROUGH
       case InstrStage::Reserved:
         // Reserved FUs can conflict only with required ones.
         freeUnits &= ~RequiredScoreboard[StageCycle];
@@ -197,7 +205,7 @@ void ScoreboardHazardRecognizer::EmitInstruction(SUnit *SU) {
       case InstrStage::Required:
         // Required FUs conflict with both reserved and required ones
         freeUnits &= ~ReservedScoreboard[cycle + i];
-        LLVM_FALLTHROUGH;
+        // FALLTHROUGH
       case InstrStage::Reserved:
         // Reserved FUs can conflict only with required ones.
         freeUnits &= ~RequiredScoreboard[cycle + i];

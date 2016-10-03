@@ -92,10 +92,10 @@ struct VariadicOperandTraits {
 template <unsigned MINARITY = 1>
 struct HungoffOperandTraits {
   static Use *op_begin(User* U) {
-    return U->getOperandList();
+    return U->OperandList;
   }
   static Use *op_end(User* U) {
-    return U->getOperandList() + U->getNumOperands();
+    return U->OperandList + U->getNumOperands();
   }
   static unsigned operands(const User *U) {
     return U->getNumOperands();

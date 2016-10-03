@@ -10,7 +10,6 @@
 #ifndef LLVM_OPTION_OPTTABLE_H
 #define LLVM_OPTION_OPTTABLE_H
 
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Option/OptSpecifier.h"
 
@@ -50,7 +49,8 @@ public:
 
 private:
   /// \brief The static option information table.
-  ArrayRef<Info> OptionInfos;
+  const Info *OptionInfos;
+  unsigned NumOptionInfos;
   bool IgnoreCase;
 
   unsigned TheInputOptionID;
@@ -73,13 +73,13 @@ private:
   }
 
 protected:
-  OptTable(ArrayRef<Info> OptionInfos, bool IgnoreCase = false);
-
+  OptTable(const Info *_OptionInfos, unsigned _NumOptionInfos,
+           bool _IgnoreCase = false);
 public:
   ~OptTable();
 
   /// \brief Return the total number of option classes.
-  unsigned getNumOptions() const { return OptionInfos.size(); }
+  unsigned getNumOptions() const { return NumOptionInfos; }
 
   /// \brief Get the given Opt's Option instance, lazily creating it
   /// if necessary.
@@ -140,6 +140,8 @@ public:
   /// The only error that can occur in this routine is if an argument is
   /// missing values; in this case \p MissingArgCount will be non-zero.
   ///
+  /// \param ArgBegin - The beginning of the argument vector.
+  /// \param ArgEnd - The end of the argument vector.
   /// \param MissingArgIndex - On error, the index of the option which could
   /// not be parsed.
   /// \param MissingArgCount - On error, the number of missing options.
@@ -149,9 +151,12 @@ public:
   /// is the default and means exclude nothing.
   /// \return An InputArgList; on error this will contain all the options
   /// which could be parsed.
-  InputArgList ParseArgs(ArrayRef<const char *> Args, unsigned &MissingArgIndex,
-                         unsigned &MissingArgCount, unsigned FlagsToInclude = 0,
-                         unsigned FlagsToExclude = 0) const;
+  InputArgList *ParseArgs(const char* const *ArgBegin,
+                          const char* const *ArgEnd,
+                          unsigned &MissingArgIndex,
+                          unsigned &MissingArgCount,
+                          unsigned FlagsToInclude = 0,
+                          unsigned FlagsToExclude = 0) const;
 
   /// \brief Render the help text for an option table.
   ///

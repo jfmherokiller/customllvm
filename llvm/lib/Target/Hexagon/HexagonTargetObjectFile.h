@@ -1,4 +1,4 @@
-//===-- HexagonTargetObjectFile.h -----------------------------------------===//
+//===-- HexagonTargetAsmInfo.h - Hexagon asm properties --------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_HEXAGON_HEXAGONTARGETOBJECTFILE_H
-#define LLVM_LIB_TARGET_HEXAGON_HEXAGONTARGETOBJECTFILE_H
+#ifndef HexagonTARGETOBJECTFILE_H
+#define HexagonTARGETOBJECTFILE_H
 
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/MC/MCSectionELF.h"
@@ -16,32 +16,24 @@
 namespace llvm {
 
   class HexagonTargetObjectFile : public TargetLoweringObjectFileELF {
+    const MCSectionELF *SmallDataSection;
+    const MCSectionELF *SmallBSSSection;
   public:
-    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
+    virtual void Initialize(MCContext &Ctx, const TargetMachine &TM);
 
-    MCSection *SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
-                                      const TargetMachine &TM) const override;
+    /// IsGlobalInSmallSection - Return true if this global address should be
+    /// placed into small data/bss section.
+    bool IsGlobalInSmallSection(const GlobalValue *GV,
+                                const TargetMachine &TM,
+                                SectionKind Kind) const;
+    bool IsGlobalInSmallSection(const GlobalValue *GV,
+                                const TargetMachine &TM) const;
 
-    MCSection *getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
-                                        const TargetMachine &TM) const override;
-
-    bool isGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM)
-        const;
-
-    bool isSmallDataEnabled() const;
-
-    unsigned getSmallDataSize() const;
-
-  private:
-    MCSectionELF *SmallDataSection;
-    MCSectionELF *SmallBSSSection;
-
-    unsigned getSmallestAddressableSize(const Type *Ty, const GlobalValue *GV,
-        const TargetMachine &TM) const;
-
-    MCSection *selectSmallSectionForGlobal(const GlobalValue *GV,
-                                           SectionKind Kind,
-                                           const TargetMachine &TM) const;
+    bool IsSmallDataEnabled () const;
+    const MCSection* SelectSectionForGlobal(const GlobalValue *GV,
+                                            SectionKind Kind,
+                                            Mangler *Mang,
+                                            const TargetMachine &TM) const;
   };
 
 } // namespace llvm

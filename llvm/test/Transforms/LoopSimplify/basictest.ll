@@ -1,5 +1,4 @@
 ; RUN: opt < %s -loop-simplify
-; RUN: opt < %s -passes=loop-simplify
 
 ; This function should get a preheader inserted before BB3, that is jumped
 ; to by BB1 & BB2

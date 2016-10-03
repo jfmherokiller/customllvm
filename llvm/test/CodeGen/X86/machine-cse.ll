@@ -11,7 +11,7 @@ entry:
 ; CHECK-LABEL: t:
 ; CHECK: leaq (%rax,%rax,4)
   %0 = zext i32 %base to i64
-  %1 = getelementptr inbounds %struct.s2, %struct.s2* null, i64 %0
+  %1 = getelementptr inbounds %struct.s2* null, i64 %0
   br i1 undef, label %bb1, label %bb2
 
 bb1:
@@ -19,7 +19,7 @@ bb1:
 ; CHECK-NOT: shlq $9
 ; CHECK-NOT: leaq
 ; CHECK: call
-  %2 = getelementptr inbounds %struct.s2, %struct.s2* null, i64 %0, i32 0
+  %2 = getelementptr inbounds %struct.s2* null, i64 %0, i32 0
   call void @bar(i32* %2) nounwind
   unreachable
 
@@ -53,16 +53,16 @@ entry:
 
 sw.bb:                                            ; preds = %entry, %entry, %entry
 ; CHECK: %sw.bb
-; CHECK-NOT: imull
+; CHECK: imull
   %mul = mul nsw i32 %test_case, 3
   %mul20 = mul nsw i32 %mul, %scale
   br i1 undef, label %if.end34, label %sw.bb307
 
 if.end34:                                         ; preds = %sw.bb
 ; CHECK: %if.end34
-; CHECK: imull
 ; CHECK: leal
-  tail call void (...) @printf(i32 %test_case, i32 %mul20) nounwind
+; CHECK-NOT: imull
+  tail call void (...)* @printf(i32 %test_case, i32 %mul20) nounwind
   %tmp = mul i32 %scale, %test_case
   %tmp752 = mul i32 %tmp, 3
   %tmp753 = zext i32 %tmp752 to i64
@@ -104,13 +104,12 @@ return:                                           ; preds = %if.end, %entry
 ; rdar://11393714
 define i8* @bsd_memchr(i8* %s, i32 %a, i32 %c, i64 %n) nounwind ssp {
 ; CHECK: %entry
-; CHECK-NOT: xorl
+; CHECK: xorl
 ; CHECK: %preheader
-; CHECK-NOT: xorl
 ; CHECK: %do.body
 ; CHECK-NOT: xorl
 ; CHECK: %do.cond
-; CHECK: xorl
+; CHECK-NOT: xorl
 ; CHECK: %return
 entry:
   %cmp = icmp eq i64 %n, 0
@@ -127,7 +126,7 @@ do.body:
   br i1 %cmp3, label %return, label %do.cond
 
 do.cond:
-  %incdec.ptr = getelementptr inbounds i8, i8* %p.0, i64 1
+  %incdec.ptr = getelementptr inbounds i8* %p.0, i64 1
   %dec = add i64 %n.addr.0, -1
   %cmp6 = icmp eq i64 %dec, 0
   br i1 %cmp6, label %return, label %do.body
@@ -148,7 +147,7 @@ define i32 @t2() {
   br i1 %c, label %a, label %b
 
 a:
-  %l = load i32, i32* @t2_global
+  %l = load i32* @t2_global
   ret i32 %l
 
 b:

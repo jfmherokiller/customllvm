@@ -1,4 +1,4 @@
-; RUN: llc -o - %s -mtriple=arm64-apple-ios7.0 | FileCheck %s
+; RUN: llc < %s -mtriple=aarch64-none-linux-gnu  | FileCheck %s
 
 define i8* @rt0(i32 %x) nounwind readnone {
 entry:

@@ -4,12 +4,11 @@
 %0 = type { i32, i32 }
 
 define void @t(%0*, i32, i32, i32, i32) nounwind {
-  tail call void @llvm.dbg.value(metadata %0* %0, i64 0, metadata !0, metadata !DIExpression()), !dbg !DILocation(scope: !1)
+  tail call void @llvm.dbg.value(metadata !{%0* %0}, i64 0, metadata !0)
   unreachable
 }
 
-declare void @llvm.dbg.value(metadata, i64, metadata, metadata) nounwind readnone
+declare void @llvm.dbg.value(metadata, i64, metadata) nounwind readnone
 
 ; !0 should conform to the format of DIVariable.
-!0 = !DILocalVariable(name: "a", arg: 1, scope: !1)
-!1 = distinct !DISubprogram()
+!0 = metadata !{i32 786689, null, metadata !"a", null, i32 0, null, i32 0, i32 0} ;

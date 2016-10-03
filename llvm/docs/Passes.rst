@@ -253,6 +253,20 @@ This pass decodes the debug info metadata in a module and prints in a
 For example, run this pass from ``opt`` along with the ``-analyze`` option, and
 it'll print to standard output.
 
+``-no-aa``: No Alias Analysis (always returns 'may' alias)
+----------------------------------------------------------
+
+This is the default implementation of the Alias Analysis interface.  It always
+returns "I don't know" for alias queries.  NoAA is unlike other alias analysis
+implementations, in that it does not chain to a previous analysis.  As such it
+doesn't follow many of the rules that other alias analyses must.
+
+``-no-profile``: No Profile Information
+---------------------------------------
+
+The default "no profile" implementation of the abstract ``ProfileInfo``
+interface.
+
 ``-postdomfrontier``: Post-Dominance Frontier Construction
 ----------------------------------------------------------
 
@@ -288,6 +302,15 @@ standard error in a human-readable form.
 This pass, only available in ``opt``, printsthe SCCs of each function CFG to
 standard error in a human-readable fom.
 
+``-print-dbginfo``: Print debug info in human readable form
+-----------------------------------------------------------
+
+Pass that prints instructions, and associated debug info:
+
+#. source/line/col information
+#. original variable name
+#. original type name
+
 ``-print-dom-info``: Dominator Info Printer
 -------------------------------------------
 
@@ -321,6 +344,23 @@ This pass simply prints out the entire module when it is executed.
 This pass is used to seek out all of the types in use by the program.  Note
 that this analysis explicitly does not include types only used by the symbol
 table.
+
+``-profile-estimator``: Estimate profiling information
+------------------------------------------------------
+
+Profiling information that estimates the profiling information in a very crude
+and unimaginative way.
+
+``-profile-loader``: Load profile information from ``llvmprof.out``
+-------------------------------------------------------------------
+
+A concrete implementation of profiling information that loads the information
+from a profile dump file.
+
+``-profile-verifier``: Verify profiling information
+---------------------------------------------------
+
+Pass that checks profiling information for plausibility.
 
 ``-regions``: Detect single entry single exit regions
 -----------------------------------------------------
@@ -436,7 +476,7 @@ transformation obviously invalidates the CFG, but can update forward dominator
 -------------------------------------------------
 
 This pass munges the code in the input function to better prepare it for
-SelectionDAG-based code generation.  This works around limitations in its
+SelectionDAG-based code generation.  This works around limitations in it's
 basic-block-at-a-time approach.  It should eventually be removed.
 
 ``-constmerge``: Merge Duplicate Global Constants
@@ -508,8 +548,6 @@ instructions that are obviously dead.
 
 A trivial dead store elimination that only considers basic-block local
 redundant stores.
-
-.. _passes-functionattrs:
 
 ``-functionattrs``: Deduce function attributes
 ----------------------------------------------
@@ -595,13 +633,31 @@ where it is profitable, the loop could be transformed to count down to zero
 
 Bottom-up inlining of functions into callees.
 
+``-insert-edge-profiling``: Insert instrumentation for edge profiling
+---------------------------------------------------------------------
+
+This pass instruments the specified program with counters for edge profiling.
+Edge profiling can give a reasonable approximation of the hot paths through a
+program, and is used for a wide variety of program transformations.
+
+Note that this implementation is very naïve.  It inserts a counter for *every*
+edge in the program, instead of using control flow information to prune the
+number of counters inserted.
+
+``-insert-optimal-edge-profiling``: Insert optimal instrumentation for edge profiling
+-------------------------------------------------------------------------------------
+
+This pass instruments the specified program with counters for edge profiling.
+Edge profiling can give a reasonable approximation of the hot paths through a
+program, and is used for a wide variety of program transformations.
+
 .. _passes-instcombine:
 
 ``-instcombine``: Combine redundant instructions
 ------------------------------------------------
 
 Combine instructions to form fewer, simple instructions.  This pass does not
-modify the CFG. This pass is where algebraic simplification happens.
+modify the CFG This pass is where algebraic simplification happens.
 
 This pass combines things like:
 
@@ -633,13 +689,6 @@ program:
 #. Multiplies with a constant power-of-two argument are transformed into
    shifts.
 #. … etc.
-
-This pass can also simplify calls to specific well-known function calls (e.g.
-runtime library functions).  For example, a call ``exit(3)`` that occurs within
-the ``main()`` function can be transformed into simply ``return 3``. Whether or
-not library calls are simplified is controlled by the
-:ref:`-functionattrs <passes-functionattrs>` pass and LLVM's knowledge of
-library calls on different targets.
 
 ``-internalize``: Internalize Global Symbols
 --------------------------------------------
@@ -844,14 +893,33 @@ this would require knowledge of the entire call graph of the program including
 any libraries which may not be available in bitcode form); it simply lowers
 every atomic intrinsic.
 
-``-lowerinvoke``: Lower invokes to calls, for unwindless code generators
-------------------------------------------------------------------------
+``-lowerinvoke``: Lower invoke and unwind, for unwindless code generators
+-------------------------------------------------------------------------
 
 This transformation is designed for use by code generators which do not yet
-support stack unwinding.  This pass converts ``invoke`` instructions to
-``call`` instructions, so that any exception-handling ``landingpad`` blocks
-become dead code (which can be removed by running the ``-simplifycfg`` pass
-afterwards).
+support stack unwinding.  This pass supports two models of exception handling
+lowering, the "cheap" support and the "expensive" support.
+
+"Cheap" exception handling support gives the program the ability to execute any
+program which does not "throw an exception", by turning "``invoke``"
+instructions into calls and by turning "``unwind``" instructions into calls to
+``abort()``.  If the program does dynamically use the "``unwind``" instruction,
+the program will print a message then abort.
+
+"Expensive" exception handling support gives the full exception handling
+support to the program at the cost of making the "``invoke``" instruction
+really expensive.  It basically inserts ``setjmp``/``longjmp`` calls to emulate
+the exception handling as necessary.
+
+Because the "expensive" support slows down programs a lot, and EH is only used
+for a subset of the programs, it must be specifically enabled by the
+``-enable-correct-eh-support`` option.
+
+Note that after this pass runs the CFG is not entirely accurate (exceptional
+control flow edges are not correct anymore) so only very simple things should
+be done after the ``lowerinvoke`` pass has run (like generation of native
+code).  This should not be used as a general purpose "my LLVM-to-LLVM pass
+doesn't support the ``invoke`` instruction yet" lowering pass.
 
 ``-lowerswitch``: Lower ``SwitchInst``\ s to branches
 -----------------------------------------------------
@@ -883,24 +951,17 @@ calls, or transforming sets of stores into ``memset``\ s.
 
 This pass looks for equivalent functions that are mergable and folds them.
 
-Total-ordering is introduced among the functions set: we define comparison
-that answers for every two functions which of them is greater. It allows to
-arrange functions into the binary tree.
+A hash is computed from the function, based on its type and number of basic
+blocks.
 
-For every new function we check for equivalent in tree.
+Once all hashes are computed, we perform an expensive equality comparison on
+each function pair.  This takes n^2/2 comparisons per bucket, so it's important
+that the hash function be high quality.  The equality comparison iterates
+through each instruction in each basic block.
 
-If equivalent exists we fold such functions. If both functions are overridable,
-we move the functionality into a new internal function and leave two
-overridable thunks to it.
-
-If there is no equivalent, then we add this function to tree.
-
-Lookup routine has O(log(n)) complexity, while whole merging process has
-complexity of O(n*log(n)).
-
-Read
-:doc:`this <MergeFunctions>`
-article for more details.
+When a match is found the functions are folded.  If both functions are
+overridable, we move the functionality into a new internal function and leave
+two overridable thunks to it.
 
 ``-mergereturn``: Unify function exit nodes
 -------------------------------------------
@@ -947,7 +1008,7 @@ that this should make CFG hacking much easier.  To make later hacking easier,
 the entry block is split into two, such that all introduced ``alloca``
 instructions (and nothing else) are in the entry block.
 
-``-sroa``: Scalar Replacement of Aggregates
+``-scalarrepl``: Scalar Replacement of Aggregates (DT)
 ------------------------------------------------------
 
 The well-known scalar replacement of aggregates transformation.  This transform
@@ -955,6 +1016,12 @@ breaks up ``alloca`` instructions of aggregate type (structure or array) into
 individual ``alloca`` instructions for each member if possible.  Then, if
 possible, it transforms the individual ``alloca`` instructions into nice clean
 scalar SSA form.
+
+This combines a simple scalar replacement of aggregates algorithm with the
+:ref:`mem2reg <passes-mem2reg>` algorithm because they often interact,
+especially for C++ programs.  As such, iterating between ``scalarrepl``, then
+:ref:`mem2reg <passes-mem2reg>` until we run out of things to promote works
+well.
 
 .. _passes-sccp:
 
@@ -971,6 +1038,14 @@ as:
 
 Note that this pass has a habit of making definitions be dead.  It is a good
 idea to run a :ref:`DCE <passes-dce>` pass sometime after running this pass.
+
+``-simplify-libcalls``: Simplify well-known library calls
+---------------------------------------------------------
+
+Applies a variety of small optimizations for calls to specific well-known
+function calls (e.g. runtime library functions).  For example, a call
+``exit(3)`` that occurs within the ``main()`` function can be transformed into
+simply ``return 3``.
 
 .. _passes-simplifycfg:
 
@@ -1104,6 +1179,13 @@ This is a little utility pass that gives instructions names, this is mostly
 useful when diffing the effect of an optimization because deleting an unnamed
 instruction can change all other instruction numbering, making the diff very
 noisy.
+
+``-preverify``: Preliminary module verification
+-----------------------------------------------
+
+Ensures that the module is in the form required by the :ref:`Module Verifier
+<passes-verify>` pass.  Running the verifier runs this pass automatically, so
+there should be no need to use it directly.
 
 .. _passes-verify:
 

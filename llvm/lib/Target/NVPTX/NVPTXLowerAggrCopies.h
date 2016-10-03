@@ -12,13 +12,36 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_NVPTX_NVPTXLOWERAGGRCOPIES_H
-#define LLVM_LIB_TARGET_NVPTX_NVPTXLOWERAGGRCOPIES_H
+#ifndef NVPTX_LOWER_AGGR_COPIES_H
+#define NVPTX_LOWER_AGGR_COPIES_H
+
+#include "llvm/CodeGen/MachineFunctionAnalysis.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/Pass.h"
 
 namespace llvm {
-class FunctionPass;
 
-FunctionPass *createLowerAggrCopies();
+// actual analysis class, which is a functionpass
+struct NVPTXLowerAggrCopies : public FunctionPass {
+  static char ID;
+
+  NVPTXLowerAggrCopies() : FunctionPass(ID) {}
+
+  void getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.addRequired<DataLayout>();
+    AU.addPreserved<MachineFunctionAnalysis>();
+  }
+
+  virtual bool runOnFunction(Function &F);
+
+  static const unsigned MaxAggrCopySize = 128;
+
+  virtual const char *getPassName() const {
+    return "Lower aggregate copies/intrinsics into loops";
+  }
+};
+
+extern FunctionPass *createLowerAggrCopies();
 }
 
 #endif

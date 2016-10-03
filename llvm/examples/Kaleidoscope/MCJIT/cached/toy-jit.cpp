@@ -1,19 +1,20 @@
 #define MINIMAL_STDERR_OUTPUT
 
 #include "llvm/Analysis/Passes.h"
+#include "llvm/Analysis/Verifier.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JIT.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
+#include "llvm/PassManager.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 #include <cctype>
 #include <cstdio>
@@ -623,8 +624,7 @@ static PrototypeAST *ParseExtern() {
 
 static Module *TheModule;
 static FunctionPassManager *TheFPM;
-static LLVMContext TheContext;
-static IRBuilder<> Builder(TheContext);
+static IRBuilder<> Builder(getGlobalContext());
 static std::map<std::string, AllocaInst*> NamedValues;
 
 Value *ErrorV(const char *Str) { Error(Str); return 0; }
@@ -635,11 +635,12 @@ static AllocaInst *CreateEntryBlockAlloca(Function *TheFunction,
                                           const std::string &VarName) {
   IRBuilder<> TmpB(&TheFunction->getEntryBlock(),
                  TheFunction->getEntryBlock().begin());
-  return TmpB.CreateAlloca(Type::getDoubleTy(TheContext), 0, VarName.c_str());
+  return TmpB.CreateAlloca(Type::getDoubleTy(getGlobalContext()), 0,
+                           VarName.c_str());
 }
 
 Value *NumberExprAST::Codegen() {
-  return ConstantFP::get(TheContext, APFloat(Val));
+  return ConstantFP::get(getGlobalContext(), APFloat(Val));
 }
 
 Value *VariableExprAST::Codegen() {
@@ -672,7 +673,7 @@ Value *BinaryExprAST::Codegen() {
     // For now, I'm building without RTTI because LLVM builds that way by
     // default and so we need to build that way to use the command line supprt.
     // If you build LLVM with RTTI this can be changed back to a dynamic_cast.
-    VariableExprAST *LHSE = static_cast<VariableExprAST*>(LHS);
+    VariableExprAST *LHSE = reinterpret_cast<VariableExprAST*>(LHS);
     if (!LHSE)
       return ErrorV("destination of '=' must be a variable");
     // Codegen the RHS.
@@ -699,7 +700,8 @@ Value *BinaryExprAST::Codegen() {
   case '<':
     L = Builder.CreateFCmpULT(L, R, "cmptmp");
     // Convert bool 0/1 to double 0.0 or 1.0
-    return Builder.CreateUIToFP(L, Type::getDoubleTy(TheContext), "booltmp");
+    return Builder.CreateUIToFP(L, Type::getDoubleTy(getGlobalContext()),
+                                "booltmp");
   default: break;
   }
   
@@ -739,17 +741,18 @@ Value *IfExprAST::Codegen() {
   if (CondV == 0) return 0;
   
   // Convert condition to a bool by comparing equal to 0.0.
-  CondV = Builder.CreateFCmpONE(
-      CondV, ConstantFP::get(TheContext, APFloat(0.0)), "ifcond");
-
+  CondV = Builder.CreateFCmpONE(CondV, 
+                              ConstantFP::get(getGlobalContext(), APFloat(0.0)),
+                                "ifcond");
+  
   Function *TheFunction = Builder.GetInsertBlock()->getParent();
   
   // Create blocks for the then and else cases.  Insert the 'then' block at the
   // end of the function.
-  BasicBlock *ThenBB = BasicBlock::Create(TheContext, "then", TheFunction);
-  BasicBlock *ElseBB = BasicBlock::Create(TheContext, "else");
-  BasicBlock *MergeBB = BasicBlock::Create(TheContext, "ifcont");
-
+  BasicBlock *ThenBB = BasicBlock::Create(getGlobalContext(), "then", TheFunction);
+  BasicBlock *ElseBB = BasicBlock::Create(getGlobalContext(), "else");
+  BasicBlock *MergeBB = BasicBlock::Create(getGlobalContext(), "ifcont");
+  
   Builder.CreateCondBr(CondV, ThenBB, ElseBB);
   
   // Emit then value.
@@ -776,8 +779,9 @@ Value *IfExprAST::Codegen() {
   // Emit merge block.
   TheFunction->getBasicBlockList().push_back(MergeBB);
   Builder.SetInsertPoint(MergeBB);
-  PHINode *PN = Builder.CreatePHI(Type::getDoubleTy(TheContext), 2, "iftmp");
-
+  PHINode *PN = Builder.CreatePHI(Type::getDoubleTy(getGlobalContext()), 2,
+                                  "iftmp");
+  
   PN->addIncoming(ThenV, ThenBB);
   PN->addIncoming(ElseV, ElseBB);
   return PN;
@@ -818,8 +822,8 @@ Value *ForExprAST::Codegen() {
   
   // Make the new basic block for the loop header, inserting after current
   // block.
-  BasicBlock *LoopBB = BasicBlock::Create(TheContext, "loop", TheFunction);
-
+  BasicBlock *LoopBB = BasicBlock::Create(getGlobalContext(), "loop", TheFunction);
+  
   // Insert an explicit fall through from the current block to the LoopBB.
   Builder.CreateBr(LoopBB);
 
@@ -844,7 +848,7 @@ Value *ForExprAST::Codegen() {
     if (StepVal == 0) return 0;
   } else {
     // If not specified, use 1.0.
-    StepVal = ConstantFP::get(TheContext, APFloat(1.0));
+    StepVal = ConstantFP::get(getGlobalContext(), APFloat(1.0));
   }
   
   // Compute the end condition.
@@ -858,13 +862,13 @@ Value *ForExprAST::Codegen() {
   Builder.CreateStore(NextVar, Alloca);
   
   // Convert condition to a bool by comparing equal to 0.0.
-  EndCond = Builder.CreateFCmpONE(
-      EndCond, ConstantFP::get(TheContext, APFloat(0.0)), "loopcond");
-
+  EndCond = Builder.CreateFCmpONE(EndCond, 
+                              ConstantFP::get(getGlobalContext(), APFloat(0.0)),
+                                  "loopcond");
+  
   // Create the "after loop" block and insert it.
-  BasicBlock *AfterBB =
-      BasicBlock::Create(TheContext, "afterloop", TheFunction);
-
+  BasicBlock *AfterBB = BasicBlock::Create(getGlobalContext(), "afterloop", TheFunction);
+  
   // Insert the conditional branch into the end of LoopEndBB.
   Builder.CreateCondBr(EndCond, LoopBB, AfterBB);
   
@@ -879,7 +883,7 @@ Value *ForExprAST::Codegen() {
 
   
   // for expr always returns 0.0.
-  return Constant::getNullValue(Type::getDoubleTy(TheContext));
+  return Constant::getNullValue(Type::getDoubleTy(getGlobalContext()));
 }
 
 Value *VarExprAST::Codegen() {
@@ -902,7 +906,7 @@ Value *VarExprAST::Codegen() {
       InitVal = Init->Codegen();
       if (InitVal == 0) return 0;
     } else { // If not specified, use 0.0.
-      InitVal = ConstantFP::get(TheContext, APFloat(0.0));
+      InitVal = ConstantFP::get(getGlobalContext(), APFloat(0.0));
     }
     
     AllocaInst *Alloca = CreateEntryBlockAlloca(TheFunction, VarName);
@@ -930,9 +934,10 @@ Value *VarExprAST::Codegen() {
 
 Function *PrototypeAST::Codegen() {
   // Make the function type:  double(double,double) etc.
-  std::vector<Type *> Doubles(Args.size(), Type::getDoubleTy(TheContext));
-  FunctionType *FT =
-      FunctionType::get(Type::getDoubleTy(TheContext), Doubles, false);
+  std::vector<Type*> Doubles(Args.size(), 
+                             Type::getDoubleTy(getGlobalContext()));
+  FunctionType *FT = FunctionType::get(Type::getDoubleTy(getGlobalContext()),
+                                       Doubles, false);
 
   Function *F = Function::Create(FT, Function::ExternalLinkage, Name, TheModule);
   // If F conflicted, there was already something named 'Name'.  If it has a
@@ -990,7 +995,7 @@ Function *FunctionAST::Codegen() {
     BinopPrecedence[Proto->getOperatorName()] = Proto->getBinaryPrecedence();
 
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(TheContext, "entry", TheFunction);
+  BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", TheFunction);
   Builder.SetInsertPoint(BB);
   
   // Add all arguments to the symbol table and create their allocas.
@@ -1118,7 +1123,7 @@ double printlf() {
 
 Module* parseInputIR(std::string InputFile) {
   SMDiagnostic Err;
-  Module *M = ParseIRFile(InputFile, Err, TheContext);
+  Module *M = ParseIRFile(InputFile, Err, getGlobalContext());
   if (!M) {
     Err.print("IR parsing failed: ", errs());
     return NULL;
@@ -1133,7 +1138,7 @@ Module* parseInputIR(std::string InputFile) {
 
 int main(int argc, char **argv) {
   InitializeNativeTarget();
-  LLVMContext &Context = TheContext;
+  LLVMContext &Context = getGlobalContext();
 
   cl::ParseCommandLineOptions(argc, argv,
                               "Kaleidoscope example program\n");

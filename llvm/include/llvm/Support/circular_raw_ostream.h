@@ -17,7 +17,8 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-namespace llvm {
+namespace llvm 
+{
   /// circular_raw_ostream - A raw_ostream which *can* save its data
   /// to a circular buffer, or can pass it through directly to an
   /// underlying stream if specified with a buffer of zero.
@@ -80,12 +81,12 @@ namespace llvm {
       Filled = false;
     }
 
-    void write_impl(const char *Ptr, size_t Size) override;
+    virtual void write_impl(const char *Ptr, size_t Size) LLVM_OVERRIDE;
 
     /// current_pos - Return the current position within the stream,
     /// not counting the bytes currently in the buffer.
     ///
-    uint64_t current_pos() const override {
+    virtual uint64_t current_pos() const LLVM_OVERRIDE {
       // This has the same effect as calling TheStream.current_pos(),
       // but that interface is private.
       return TheStream->tell() - TheStream->GetNumBytesInBuffer();
@@ -106,17 +107,30 @@ namespace llvm {
     /// management of it, etc.
     ///
     circular_raw_ostream(raw_ostream &Stream, const char *Header,
-                         size_t BuffSize = 0, bool Owns = REFERENCE_ONLY)
-        : raw_ostream(/*unbuffered*/ true), TheStream(nullptr),
-          OwnsStream(Owns), BufferSize(BuffSize), BufferArray(nullptr),
-          Filled(false), Banner(Header) {
+                         size_t BuffSize = 0, bool Owns = REFERENCE_ONLY) 
+        : raw_ostream(/*unbuffered*/true),
+            TheStream(0),
+            OwnsStream(Owns),
+            BufferSize(BuffSize),
+            BufferArray(0),
+            Filled(false),
+            Banner(Header) {
       if (BufferSize != 0)
         BufferArray = new char[BufferSize];
       Cur = BufferArray;
       setStream(Stream, Owns);
     }
+    explicit circular_raw_ostream()
+        : raw_ostream(/*unbuffered*/true),
+            TheStream(0),
+            OwnsStream(REFERENCE_ONLY),
+            BufferArray(0),
+            Filled(false),
+            Banner("") {
+      Cur = BufferArray;
+    }
 
-    ~circular_raw_ostream() override {
+    ~circular_raw_ostream() {
       flush();
       flushBufferWithBanner();
       releaseStream();
@@ -152,5 +166,6 @@ namespace llvm {
     }
   };
 } // end llvm namespace
+
 
 #endif

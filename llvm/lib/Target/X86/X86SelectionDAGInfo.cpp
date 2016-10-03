@@ -11,53 +11,29 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "X86InstrInfo.h"
-#include "X86ISelLowering.h"
-#include "X86RegisterInfo.h"
-#include "X86Subtarget.h"
-#include "X86SelectionDAGInfo.h"
+#define DEBUG_TYPE "x86-selectiondag-info"
+#include "X86TargetMachine.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/Target/TargetLowering.h"
-
 using namespace llvm;
 
-#define DEBUG_TYPE "x86-selectiondag-info"
-
-bool X86SelectionDAGInfo::isBaseRegConflictPossible(
-    SelectionDAG &DAG, ArrayRef<MCPhysReg> ClobberSet) const {
-  // We cannot use TRI->hasBasePointer() until *after* we select all basic
-  // blocks.  Legalization may introduce new stack temporaries with large
-  // alignment requirements.  Fall back to generic code if there are any
-  // dynamic stack adjustments (hopefully rare) and the base pointer would
-  // conflict if we had to use it.
-  MachineFrameInfo &MFI = DAG.getMachineFunction().getFrameInfo();
-  if (!MFI.hasVarSizedObjects() && !MFI.hasOpaqueSPAdjustment())
-    return false;
-
-  const X86RegisterInfo *TRI = static_cast<const X86RegisterInfo *>(
-      DAG.getSubtarget().getRegisterInfo());
-  unsigned BaseReg = TRI->getBaseRegister();
-  for (unsigned R : ClobberSet)
-    if (BaseReg == R)
-      return true;
-  return false;
+X86SelectionDAGInfo::X86SelectionDAGInfo(const X86TargetMachine &TM) :
+  TargetSelectionDAGInfo(TM),
+  Subtarget(&TM.getSubtarget<X86Subtarget>()),
+  TLI(*TM.getTargetLowering()) {
 }
 
-SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
-    SelectionDAG &DAG, const SDLoc &dl, SDValue Chain, SDValue Dst, SDValue Src,
-    SDValue Size, unsigned Align, bool isVolatile,
-    MachinePointerInfo DstPtrInfo) const {
-  ConstantSDNode *ConstantSize = dyn_cast<ConstantSDNode>(Size);
-  const X86Subtarget &Subtarget =
-      DAG.getMachineFunction().getSubtarget<X86Subtarget>();
+X86SelectionDAGInfo::~X86SelectionDAGInfo() {
+}
 
-#ifndef NDEBUG
-  // If the base register might conflict with our physical registers, bail out.
-  const MCPhysReg ClobberSet[] = {X86::RCX, X86::RAX, X86::RDI,
-                                  X86::ECX, X86::EAX, X86::EDI};
-  assert(!isBaseRegConflictPossible(DAG, ClobberSet));
-#endif
+SDValue
+X86SelectionDAGInfo::EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
+                                             SDValue Chain,
+                                             SDValue Dst, SDValue Src,
+                                             SDValue Size, unsigned Align,
+                                             bool isVolatile,
+                                         MachinePointerInfo DstPtrInfo) const {
+  ConstantSDNode *ConstantSize = dyn_cast<ConstantSDNode>(Size);
 
   // If to a segment-relative address space, use the default lowering.
   if (DstPtrInfo.getAddrSpace() >= 256)
@@ -66,16 +42,17 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
   // If not DWORD aligned or size is more than the threshold, call the library.
   // The libc version is likely to be faster for these cases. It can use the
   // address value and run time information about the CPU.
-  if ((Align & 3) != 0 || !ConstantSize ||
-      ConstantSize->getZExtValue() > Subtarget.getMaxInlineSizeThreshold()) {
+  if ((Align & 3) != 0 ||
+      !ConstantSize ||
+      ConstantSize->getZExtValue() >
+        Subtarget->getMaxInlineSizeThreshold()) {
     // Check to see if there is a specialized entry-point for memory zeroing.
     ConstantSDNode *V = dyn_cast<ConstantSDNode>(Src);
 
-    if (const char *bzeroEntry = V &&
-        V->isNullValue() ? Subtarget.getBZeroEntry() : nullptr) {
-      const TargetLowering &TLI = DAG.getTargetLoweringInfo();
-      EVT IntPtr = TLI.getPointerTy(DAG.getDataLayout());
-      Type *IntPtrTy = DAG.getDataLayout().getIntPtrType(*DAG.getContext());
+    if (const char *bzeroEntry =  V &&
+        V->isNullValue() ? Subtarget->getBZeroEntry() : 0) {
+      EVT IntPtr = TLI.getPointerTy();
+      Type *IntPtrTy = getDataLayout()->getIntPtrType(*DAG.getContext());
       TargetLowering::ArgListTy Args;
       TargetLowering::ArgListEntry Entry;
       Entry.Node = Dst;
@@ -83,14 +60,15 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
       Args.push_back(Entry);
       Entry.Node = Size;
       Args.push_back(Entry);
-
-      TargetLowering::CallLoweringInfo CLI(DAG);
-      CLI.setDebugLoc(dl).setChain(Chain)
-        .setCallee(CallingConv::C, Type::getVoidTy(*DAG.getContext()),
-                   DAG.getExternalSymbol(bzeroEntry, IntPtr), std::move(Args))
-        .setDiscardResult();
-
-      std::pair<SDValue,SDValue> CallResult = TLI.LowerCallTo(CLI);
+      TargetLowering::
+      CallLoweringInfo CLI(Chain, Type::getVoidTy(*DAG.getContext()),
+                        false, false, false, false,
+                        0, CallingConv::C, /*isTailCall=*/false,
+                        /*doesNotRet=*/false, /*isReturnValueUsed=*/false,
+                        DAG.getExternalSymbol(bzeroEntry, IntPtr), Args,
+                        DAG, dl);
+      std::pair<SDValue,SDValue> CallResult =
+        TLI.LowerCallTo(CLI);
       return CallResult.second;
     }
 
@@ -99,7 +77,7 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
   }
 
   uint64_t SizeVal = ConstantSize->getZExtValue();
-  SDValue InFlag;
+  SDValue InFlag(0, 0);
   EVT AVT;
   SDValue Count;
   ConstantSDNode *ValC = dyn_cast<ConstantSDNode>(Src);
@@ -121,7 +99,7 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
       ValReg = X86::EAX;
       Val = (Val << 8)  | Val;
       Val = (Val << 16) | Val;
-      if (Subtarget.is64Bit() && ((Align & 0x7) == 0)) {  // QWORD aligned
+      if (Subtarget->is64Bit() && ((Align & 0x7) == 0)) {  // QWORD aligned
         AVT = MVT::i64;
         ValReg = X86::RAX;
         Val = (Val << 32) | Val;
@@ -130,50 +108,52 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
     default:  // Byte aligned
       AVT = MVT::i8;
       ValReg = X86::AL;
-      Count = DAG.getIntPtrConstant(SizeVal, dl);
+      Count = DAG.getIntPtrConstant(SizeVal);
       break;
     }
 
     if (AVT.bitsGT(MVT::i8)) {
       unsigned UBytes = AVT.getSizeInBits() / 8;
-      Count = DAG.getIntPtrConstant(SizeVal / UBytes, dl);
+      Count = DAG.getIntPtrConstant(SizeVal / UBytes);
       BytesLeft = SizeVal % UBytes;
     }
 
-    Chain = DAG.getCopyToReg(Chain, dl, ValReg, DAG.getConstant(Val, dl, AVT),
-                             InFlag);
+    Chain  = DAG.getCopyToReg(Chain, dl, ValReg, DAG.getConstant(Val, AVT),
+                              InFlag);
     InFlag = Chain.getValue(1);
   } else {
     AVT = MVT::i8;
-    Count  = DAG.getIntPtrConstant(SizeVal, dl);
+    Count  = DAG.getIntPtrConstant(SizeVal);
     Chain  = DAG.getCopyToReg(Chain, dl, X86::AL, Src, InFlag);
     InFlag = Chain.getValue(1);
   }
 
-  Chain = DAG.getCopyToReg(Chain, dl, Subtarget.is64Bit() ? X86::RCX : X86::ECX,
-                           Count, InFlag);
+  Chain  = DAG.getCopyToReg(Chain, dl, Subtarget->is64Bit() ? X86::RCX :
+                                                              X86::ECX,
+                            Count, InFlag);
   InFlag = Chain.getValue(1);
-  Chain = DAG.getCopyToReg(Chain, dl, Subtarget.is64Bit() ? X86::RDI : X86::EDI,
-                           Dst, InFlag);
+  Chain  = DAG.getCopyToReg(Chain, dl, Subtarget->is64Bit() ? X86::RDI :
+                                                              X86::EDI,
+                            Dst, InFlag);
   InFlag = Chain.getValue(1);
 
   SDVTList Tys = DAG.getVTList(MVT::Other, MVT::Glue);
   SDValue Ops[] = { Chain, DAG.getValueType(AVT), InFlag };
-  Chain = DAG.getNode(X86ISD::REP_STOS, dl, Tys, Ops);
+  Chain = DAG.getNode(X86ISD::REP_STOS, dl, Tys, Ops, array_lengthof(Ops));
 
   if (TwoRepStos) {
     InFlag = Chain.getValue(1);
     Count  = Size;
     EVT CVT = Count.getValueType();
     SDValue Left = DAG.getNode(ISD::AND, dl, CVT, Count,
-                               DAG.getConstant((AVT == MVT::i64) ? 7 : 3, dl,
-                                               CVT));
-    Chain = DAG.getCopyToReg(Chain, dl, (CVT == MVT::i64) ? X86::RCX : X86::ECX,
-                             Left, InFlag);
+                               DAG.getConstant((AVT == MVT::i64) ? 7 : 3, CVT));
+    Chain  = DAG.getCopyToReg(Chain, dl, (CVT == MVT::i64) ? X86::RCX :
+                                                             X86::ECX,
+                              Left, InFlag);
     InFlag = Chain.getValue(1);
     Tys = DAG.getVTList(MVT::Other, MVT::Glue);
     SDValue Ops[] = { Chain, DAG.getValueType(MVT::i8), InFlag };
-    Chain = DAG.getNode(X86ISD::REP_STOS, dl, Tys, Ops);
+    Chain = DAG.getNode(X86ISD::REP_STOS, dl, Tys, Ops, array_lengthof(Ops));
   } else if (BytesLeft) {
     // Handle the last 1 - 7 bytes.
     unsigned Offset = SizeVal - BytesLeft;
@@ -182,30 +162,30 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemset(
 
     Chain = DAG.getMemset(Chain, dl,
                           DAG.getNode(ISD::ADD, dl, AddrVT, Dst,
-                                      DAG.getConstant(Offset, dl, AddrVT)),
+                                      DAG.getConstant(Offset, AddrVT)),
                           Src,
-                          DAG.getConstant(BytesLeft, dl, SizeVT),
-                          Align, isVolatile, false,
-                          DstPtrInfo.getWithOffset(Offset));
+                          DAG.getConstant(BytesLeft, SizeVT),
+                          Align, isVolatile, DstPtrInfo.getWithOffset(Offset));
   }
 
   // TODO: Use a Tokenfactor, as in memcpy, instead of a single chain.
   return Chain;
 }
 
-SDValue X86SelectionDAGInfo::EmitTargetCodeForMemcpy(
-    SelectionDAG &DAG, const SDLoc &dl, SDValue Chain, SDValue Dst, SDValue Src,
-    SDValue Size, unsigned Align, bool isVolatile, bool AlwaysInline,
-    MachinePointerInfo DstPtrInfo, MachinePointerInfo SrcPtrInfo) const {
+SDValue
+X86SelectionDAGInfo::EmitTargetCodeForMemcpy(SelectionDAG &DAG, SDLoc dl,
+                                        SDValue Chain, SDValue Dst, SDValue Src,
+                                        SDValue Size, unsigned Align,
+                                        bool isVolatile, bool AlwaysInline,
+                                         MachinePointerInfo DstPtrInfo,
+                                         MachinePointerInfo SrcPtrInfo) const {
   // This requires the copy size to be a constant, preferably
   // within a subtarget-specific limit.
   ConstantSDNode *ConstantSize = dyn_cast<ConstantSDNode>(Size);
-  const X86Subtarget &Subtarget =
-      DAG.getMachineFunction().getSubtarget<X86Subtarget>();
   if (!ConstantSize)
     return SDValue();
   uint64_t SizeVal = ConstantSize->getZExtValue();
-  if (!AlwaysInline && SizeVal > Subtarget.getMaxInlineSizeThreshold())
+  if (!AlwaysInline && SizeVal > Subtarget->getMaxInlineSizeThreshold())
     return SDValue();
 
   /// If not DWORD aligned, it is more efficient to call the library.  However
@@ -220,10 +200,12 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemcpy(
       SrcPtrInfo.getAddrSpace() >= 256)
     return SDValue();
 
-  // If the base register might conflict with our physical registers, bail out.
-  const MCPhysReg ClobberSet[] = {X86::RCX, X86::RSI, X86::RDI,
-                                  X86::ECX, X86::ESI, X86::EDI};
-  if (isBaseRegConflictPossible(DAG, ClobberSet))
+  // ESI might be used as a base pointer, in that case we can't simply overwrite
+  // the register.  Fall back to generic code.
+  const X86RegisterInfo *TRI =
+      static_cast<const X86RegisterInfo *>(DAG.getTarget().getRegisterInfo());
+  if (TRI->hasBasePointer(DAG.getMachineFunction()) &&
+      TRI->getBaseRegister() == X86::ESI)
     return SDValue();
 
   MVT AVT;
@@ -236,27 +218,31 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemcpy(
     AVT = MVT::i32;
   else
     // QWORD aligned
-    AVT = Subtarget.is64Bit() ? MVT::i64 : MVT::i32;
+    AVT = Subtarget->is64Bit() ? MVT::i64 : MVT::i32;
 
   unsigned UBytes = AVT.getSizeInBits() / 8;
   unsigned CountVal = SizeVal / UBytes;
-  SDValue Count = DAG.getIntPtrConstant(CountVal, dl);
+  SDValue Count = DAG.getIntPtrConstant(CountVal);
   unsigned BytesLeft = SizeVal % UBytes;
 
-  SDValue InFlag;
-  Chain = DAG.getCopyToReg(Chain, dl, Subtarget.is64Bit() ? X86::RCX : X86::ECX,
-                           Count, InFlag);
+  SDValue InFlag(0, 0);
+  Chain  = DAG.getCopyToReg(Chain, dl, Subtarget->is64Bit() ? X86::RCX :
+                                                              X86::ECX,
+                            Count, InFlag);
   InFlag = Chain.getValue(1);
-  Chain = DAG.getCopyToReg(Chain, dl, Subtarget.is64Bit() ? X86::RDI : X86::EDI,
-                           Dst, InFlag);
+  Chain  = DAG.getCopyToReg(Chain, dl, Subtarget->is64Bit() ? X86::RDI :
+                                                              X86::EDI,
+                            Dst, InFlag);
   InFlag = Chain.getValue(1);
-  Chain = DAG.getCopyToReg(Chain, dl, Subtarget.is64Bit() ? X86::RSI : X86::ESI,
-                           Src, InFlag);
+  Chain  = DAG.getCopyToReg(Chain, dl, Subtarget->is64Bit() ? X86::RSI :
+                                                              X86::ESI,
+                            Src, InFlag);
   InFlag = Chain.getValue(1);
 
   SDVTList Tys = DAG.getVTList(MVT::Other, MVT::Glue);
   SDValue Ops[] = { Chain, DAG.getValueType(AVT), InFlag };
-  SDValue RepMovs = DAG.getNode(X86ISD::REP_MOVS, dl, Tys, Ops);
+  SDValue RepMovs = DAG.getNode(X86ISD::REP_MOVS, dl, Tys, Ops,
+                                array_lengthof(Ops));
 
   SmallVector<SDValue, 4> Results;
   Results.push_back(RepMovs);
@@ -268,16 +254,15 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemcpy(
     EVT SizeVT = Size.getValueType();
     Results.push_back(DAG.getMemcpy(Chain, dl,
                                     DAG.getNode(ISD::ADD, dl, DstVT, Dst,
-                                                DAG.getConstant(Offset, dl,
-                                                                DstVT)),
+                                                DAG.getConstant(Offset, DstVT)),
                                     DAG.getNode(ISD::ADD, dl, SrcVT, Src,
-                                                DAG.getConstant(Offset, dl,
-                                                                SrcVT)),
-                                    DAG.getConstant(BytesLeft, dl, SizeVT),
-                                    Align, isVolatile, AlwaysInline, false,
+                                                DAG.getConstant(Offset, SrcVT)),
+                                    DAG.getConstant(BytesLeft, SizeVT),
+                                    Align, isVolatile, AlwaysInline,
                                     DstPtrInfo.getWithOffset(Offset),
                                     SrcPtrInfo.getWithOffset(Offset)));
   }
 
-  return DAG.getNode(ISD::TokenFactor, dl, MVT::Other, Results);
+  return DAG.getNode(ISD::TokenFactor, dl, MVT::Other,
+                     &Results[0], Results.size());
 }

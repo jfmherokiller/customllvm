@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "sparseprop"
 #include "llvm/Analysis/SparsePropagation.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
@@ -19,8 +20,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "sparseprop"
 
 //===----------------------------------------------------------------------===//
 //                  AbstractLatticeFunction Implementation
@@ -148,7 +147,7 @@ void SparseSolver::getFeasibleSuccessors(TerminatorInst &TI,
       return;
 
     Constant *C = LatticeFunc->GetConstant(BCValue, BI->getCondition(), *this);
-    if (!C || !isa<ConstantInt>(C)) {
+    if (C == 0 || !isa<ConstantInt>(C)) {
       // Non-constant values can go either way.
       Succs[0] = Succs[1] = true;
       return;
@@ -190,7 +189,7 @@ void SparseSolver::getFeasibleSuccessors(TerminatorInst &TI,
     return;
   
   Constant *C = LatticeFunc->GetConstant(SCValue, SI.getCondition(), *this);
-  if (!C || !isa<ConstantInt>(C)) {
+  if (C == 0 || !isa<ConstantInt>(C)) {
     // All destinations are executable!
     Succs.assign(TI.getNumSuccessors(), true);
     return;
@@ -304,10 +303,11 @@ void SparseSolver::Solve(Function &F) {
 
       // "I" got into the work list because it made a transition.  See if any
       // users are both live and in need of updating.
-      for (User *U : I->users()) {
-        Instruction *UI = cast<Instruction>(U);
-        if (BBExecutable.count(UI->getParent()))   // Inst is executable?
-          visitInst(*UI);
+      for (Value::use_iterator UI = I->use_begin(), E = I->use_end();
+           UI != E; ++UI) {
+        Instruction *U = cast<Instruction>(*UI);
+        if (BBExecutable.count(U->getParent()))   // Inst is executable?
+          visitInst(*U);
       }
     }
 
@@ -320,25 +320,25 @@ void SparseSolver::Solve(Function &F) {
 
       // Notify all instructions in this basic block that they are newly
       // executable.
-      for (Instruction &I : *BB)
-        visitInst(I);
+      for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+        visitInst(*I);
     }
   }
 }
 
 void SparseSolver::Print(Function &F, raw_ostream &OS) const {
   OS << "\nFUNCTION: " << F.getName() << "\n";
-  for (auto &BB : F) {
-    if (!BBExecutable.count(&BB))
+  for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+    if (!BBExecutable.count(BB))
       OS << "INFEASIBLE: ";
     OS << "\t";
-    if (BB.hasName())
-      OS << BB.getName() << ":\n";
+    if (BB->hasName())
+      OS << BB->getName() << ":\n";
     else
       OS << "; anon bb\n";
-    for (auto &I : BB) {
-      LatticeFunc->PrintValue(getLatticeState(&I), OS);
-      OS << I << "\n";
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+      LatticeFunc->PrintValue(getLatticeState(I), OS);
+      OS << *I << "\n";
     }
     
     OS << "\n";

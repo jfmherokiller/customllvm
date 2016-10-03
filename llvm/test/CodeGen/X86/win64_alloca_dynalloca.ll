@@ -1,6 +1,5 @@
 ; RUN: llc < %s -mcpu=generic -enable-misched=false -mtriple=x86_64-mingw32     | FileCheck %s -check-prefix=M64
 ; RUN: llc < %s -mcpu=generic -enable-misched=false -mtriple=x86_64-win32       | FileCheck %s -check-prefix=W64
-; RUN: llc < %s -mcpu=generic -enable-misched=false -mtriple=x86_64-win32 -code-model=large | FileCheck %s -check-prefix=L64
 ; RUN: llc < %s -mcpu=generic -enable-misched=false -mtriple=x86_64-win32-macho | FileCheck %s -check-prefix=EFI
 ; PR8777
 ; PR8778
@@ -13,25 +12,20 @@ entry:
 
   %buf0 = alloca i8, i64 4096, align 1
 
-; ___chkstk_ms does not adjust %rsp.
-; M64:       $4096, %eax
-; M64: callq ___chkstk_ms
-; M64: subq  %rax, %rsp
-; M64: leaq 128(%rsp), %rbp
+; ___chkstk must adjust %rsp.
+; M64: movq  %rsp, %rbp
+; M64:       $4096, %rax
+; M64: callq ___chkstk
+; M64-NOT:   %rsp
 
 ; __chkstk does not adjust %rsp.
-; W64:       $4096, %eax
+; W64: movq  %rsp, %rbp
+; W64:       $4096, %rax
 ; W64: callq __chkstk
 ; W64: subq  %rax, %rsp
-; W64: leaq 128(%rsp), %rbp
-
-; Use %r11 for the large model.
-; L64:       $4096, %eax
-; L64: movabsq $__chkstk, %r11
-; L64: callq *%r11
-; L64: subq  %rax, %rsp
 
 ; Freestanding
+; EFI: movq  %rsp, %rbp
 ; EFI:       $[[B0OFS:4096|4104]], %rsp
 ; EFI-NOT:   call
 
@@ -39,8 +33,8 @@ entry:
 
 ; M64: leaq  15(%{{.*}}), %rax
 ; M64: andq  $-16, %rax
-; M64: callq ___chkstk_ms
-; M64: subq  %rax, %rsp
+; M64: callq ___chkstk
+; M64-NOT:   %rsp
 ; M64: movq  %rsp, %rax
 
 ; W64: leaq  15(%{{.*}}), %rax
@@ -48,13 +42,6 @@ entry:
 ; W64: callq __chkstk
 ; W64: subq  %rax, %rsp
 ; W64: movq  %rsp, %rax
-
-; L64: leaq  15(%{{.*}}), %rax
-; L64: andq  $-16, %rax
-; L64: movabsq $__chkstk, %r11
-; L64: callq *%r11
-; L64: subq  %rax, %rsp
-; L64: movq  %rsp, %rax
 
 ; EFI: leaq  15(%{{.*}}), [[R1:%r.*]]
 ; EFI: andq  $-16, [[R1]]
@@ -66,12 +53,12 @@ entry:
 
 ; M64: subq  $48, %rsp
 ; M64: movq  %rax, 32(%rsp)
-; M64: leaq  -128(%rbp), %r9
+; M64: leaq  -4096(%rbp), %r9
 ; M64: callq bar
 
 ; W64: subq  $48, %rsp
 ; W64: movq  %rax, 32(%rsp)
-; W64: leaq  -128(%rbp), %r9
+; W64: leaq  -4096(%rbp), %r9
 ; W64: callq bar
 
 ; EFI: subq  $48, %rsp
@@ -81,9 +68,9 @@ entry:
 
   ret i64 %r
 
-; M64: leaq    3968(%rbp), %rsp
+; M64: movq    %rbp, %rsp
 
-; W64: leaq    3968(%rbp), %rsp
+; W64: movq    %rbp, %rsp
 
 }
 
@@ -97,8 +84,7 @@ entry:
 
 ; M64: leaq  15(%{{.*}}), %rax
 ; M64: andq  $-16, %rax
-; M64: callq ___chkstk_ms
-; M64: subq  %rax, %rsp
+; M64: callq ___chkstk
 ; M64: movq  %rsp, [[R2:%r.*]]
 ; M64: andq  $-128, [[R2]]
 ; M64: movq  [[R2]], %rsp

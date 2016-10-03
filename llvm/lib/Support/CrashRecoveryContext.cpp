@@ -8,11 +8,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/CrashRecoveryContext.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Config/config.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/ThreadLocal.h"
+#include <cstdio>
 #include <setjmp.h>
 using namespace llvm;
 
@@ -20,17 +22,11 @@ namespace {
 
 struct CrashRecoveryContextImpl;
 
-static ManagedStatic<
-    sys::ThreadLocal<const CrashRecoveryContextImpl> > CurrentContext;
+static ManagedStatic<sys::ThreadLocal<const CrashRecoveryContextImpl> > CurrentContext;
 
 struct CrashRecoveryContextImpl {
-  // When threads are disabled, this links up all active
-  // CrashRecoveryContextImpls.  When threads are enabled there's one thread
-  // per CrashRecoveryContext and CurrentContext is a thread-local, so only one
-  // CrashRecoveryContextImpl is active per thread and this is always null.
-  const CrashRecoveryContextImpl *Next;
-
   CrashRecoveryContext *CRC;
+  std::string Backtrace;
   ::jmp_buf JumpBuffer;
   volatile unsigned Failed : 1;
   unsigned SwitchedThread : 1;
@@ -39,26 +35,21 @@ public:
   CrashRecoveryContextImpl(CrashRecoveryContext *CRC) : CRC(CRC),
                                                         Failed(false),
                                                         SwitchedThread(false) {
-    Next = CurrentContext->get();
     CurrentContext->set(this);
   }
   ~CrashRecoveryContextImpl() {
     if (!SwitchedThread)
-      CurrentContext->set(Next);
+      CurrentContext->erase();
   }
 
   /// \brief Called when the separate crash-recovery thread was finished, to
   /// indicate that we don't need to clear the thread-local CurrentContext.
-  void setSwitchedThread() { 
-#if defined(LLVM_ENABLE_THREADS) && LLVM_ENABLE_THREADS != 0
-    SwitchedThread = true;
-#endif
-  }
+  void setSwitchedThread() { SwitchedThread = true; }
 
   void HandleCrash() {
     // Eliminate the current context entry, to avoid re-entering in case the
     // cleanup code crashes.
-    CurrentContext->set(Next);
+    CurrentContext->erase();
 
     assert(!Failed && "Crash recovery context already failed!");
     Failed = true;
@@ -75,7 +66,7 @@ public:
 static ManagedStatic<sys::Mutex> gCrashRecoveryContextMutex;
 static bool gCrashRecoveryEnabled = false;
 
-static ManagedStatic<sys::ThreadLocal<const CrashRecoveryContext>>
+static ManagedStatic<sys::ThreadLocal<const CrashRecoveryContextCleanup> >
        tlIsRecoveringFromCrash;
 
 CrashRecoveryContextCleanup::~CrashRecoveryContextCleanup() {}
@@ -83,8 +74,7 @@ CrashRecoveryContextCleanup::~CrashRecoveryContextCleanup() {}
 CrashRecoveryContext::~CrashRecoveryContext() {
   // Reclaim registered resources.
   CrashRecoveryContextCleanup *i = head;
-  const CrashRecoveryContext *PC = tlIsRecoveringFromCrash->get();
-  tlIsRecoveringFromCrash->set(this);
+  tlIsRecoveringFromCrash->set(head);
   while (i) {
     CrashRecoveryContextCleanup *tmp = i;
     i = tmp->next;
@@ -92,23 +82,23 @@ CrashRecoveryContext::~CrashRecoveryContext() {
     tmp->recoverResources();
     delete tmp;
   }
-  tlIsRecoveringFromCrash->set(PC);
+  tlIsRecoveringFromCrash->erase();
   
   CrashRecoveryContextImpl *CRCI = (CrashRecoveryContextImpl *) Impl;
   delete CRCI;
 }
 
 bool CrashRecoveryContext::isRecoveringFromCrash() {
-  return tlIsRecoveringFromCrash->get() != nullptr;
+  return tlIsRecoveringFromCrash->get() != 0;
 }
 
 CrashRecoveryContext *CrashRecoveryContext::GetCurrent() {
   if (!gCrashRecoveryEnabled)
-    return nullptr;
+    return 0;
 
   const CrashRecoveryContextImpl *CRCI = CurrentContext->get();
   if (!CRCI)
-    return nullptr;
+    return 0;
 
   return CRCI->CRC;
 }
@@ -130,7 +120,7 @@ CrashRecoveryContext::unregisterCleanup(CrashRecoveryContextCleanup *cleanup) {
   if (cleanup == head) {
     head = cleanup->next;
     if (head)
-      head->prev = nullptr;
+      head->prev = 0;
   }
   else {
     cleanup->prev->next = cleanup->next;
@@ -142,7 +132,7 @@ CrashRecoveryContext::unregisterCleanup(CrashRecoveryContextCleanup *cleanup) {
 
 #ifdef LLVM_ON_WIN32
 
-#include "Windows/WindowsSupport.h"
+#include "Windows/Windows.h"
 
 // On Windows, we can make use of vectored exception handling to
 // catch most crashing situations.  Note that this does mean
@@ -241,9 +231,8 @@ void CrashRecoveryContext::Disable() {
 
 #include <signal.h>
 
-static const int Signals[] =
-    { SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP };
-static const unsigned NumSignals = array_lengthof(Signals);
+static const int Signals[] = { SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP };
+static const unsigned NumSignals = sizeof(Signals) / sizeof(Signals[0]);
 static struct sigaction PrevActions[NumSignals];
 
 static void CrashRecoverySignalHandler(int Signal) {
@@ -272,7 +261,7 @@ static void CrashRecoverySignalHandler(int Signal) {
   sigset_t SigMask;
   sigemptyset(&SigMask);
   sigaddset(&SigMask, Signal);
-  sigprocmask(SIG_UNBLOCK, &SigMask, nullptr);
+  sigprocmask(SIG_UNBLOCK, &SigMask, 0);
 
   if (CRCI)
     const_cast<CrashRecoveryContextImpl*>(CRCI)->HandleCrash();
@@ -307,12 +296,12 @@ void CrashRecoveryContext::Disable() {
 
   // Restore the previous signal handlers.
   for (unsigned i = 0; i != NumSignals; ++i)
-    sigaction(Signals[i], &PrevActions[i], nullptr);
+    sigaction(Signals[i], &PrevActions[i], 0);
 }
 
 #endif
 
-bool CrashRecoveryContext::RunSafely(function_ref<void()> Fn) {
+bool CrashRecoveryContext::RunSafely(void (*Fn)(void*), void *UserData) {
   // If crash recovery is disabled, do nothing.
   if (gCrashRecoveryEnabled) {
     assert(!Impl && "Crash recovery context already initialized!");
@@ -324,7 +313,7 @@ bool CrashRecoveryContext::RunSafely(function_ref<void()> Fn) {
     }
   }
 
-  Fn();
+  Fn(UserData);
   return true;
 }
 
@@ -334,26 +323,20 @@ void CrashRecoveryContext::HandleCrash() {
   CRCI->HandleCrash();
 }
 
-// FIXME: Portability.
-static void setThreadBackgroundPriority() {
-#ifdef __APPLE__
-  setpriority(PRIO_DARWIN_THREAD, 0, PRIO_DARWIN_BG);
-#endif
+const std::string &CrashRecoveryContext::getBacktrace() const {
+  CrashRecoveryContextImpl *CRC = (CrashRecoveryContextImpl *) Impl;
+  assert(CRC && "Crash recovery context never initialized!");
+  assert(CRC->Failed && "No crash was detected!");
+  return CRC->Backtrace;
 }
 
-static bool hasThreadBackgroundPriority() {
-#ifdef __APPLE__
-  return getpriority(PRIO_DARWIN_THREAD, 0) == 1;
-#else
-  return false;
-#endif
-}
+//
 
 namespace {
 struct RunSafelyOnThreadInfo {
-  function_ref<void()> Fn;
+  void (*UserFn)(void*);
+  void *UserData;
   CrashRecoveryContext *CRC;
-  bool UseBackgroundPriority;
   bool Result;
 };
 }
@@ -361,16 +344,11 @@ struct RunSafelyOnThreadInfo {
 static void RunSafelyOnThread_Dispatch(void *UserData) {
   RunSafelyOnThreadInfo *Info =
     reinterpret_cast<RunSafelyOnThreadInfo*>(UserData);
-
-  if (Info->UseBackgroundPriority)
-    setThreadBackgroundPriority();
-
-  Info->Result = Info->CRC->RunSafely(Info->Fn);
+  Info->Result = Info->CRC->RunSafely(Info->UserFn, Info->UserData);
 }
-bool CrashRecoveryContext::RunSafelyOnThread(function_ref<void()> Fn,
+bool CrashRecoveryContext::RunSafelyOnThread(void (*Fn)(void*), void *UserData,
                                              unsigned RequestedStackSize) {
-  bool UseBackgroundPriority = hasThreadBackgroundPriority();
-  RunSafelyOnThreadInfo Info = { Fn, this, UseBackgroundPriority, false };
+  RunSafelyOnThreadInfo Info = { Fn, UserData, this, false };
   llvm_execute_on_thread(RunSafelyOnThread_Dispatch, &Info, RequestedStackSize);
   if (CrashRecoveryContextImpl *CRC = (CrashRecoveryContextImpl *)Impl)
     CRC->setSwitchedThread();

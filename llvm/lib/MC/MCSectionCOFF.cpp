@@ -11,7 +11,6 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/COFF.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
@@ -21,8 +20,6 @@ MCSectionCOFF::~MCSectionCOFF() {} // anchor.
 // should be printed before the section name
 bool MCSectionCOFF::ShouldOmitSectionDirective(StringRef Name,
                                                const MCAsmInfo &MAI) const {
-  if (COMDATSymbol)
-    return false;
 
   // FIXME: Does .section .bss/.data/.text work everywhere??
   if (Name == ".text" || Name == ".data" || Name == ".bss")
@@ -31,9 +28,14 @@ bool MCSectionCOFF::ShouldOmitSectionDirective(StringRef Name,
   return false;
 }
 
-void MCSectionCOFF::setSelection(int Selection) const {
+void MCSectionCOFF::setSelection(int Selection,
+                                 const MCSectionCOFF *Assoc) const {
   assert(Selection != 0 && "invalid COMDAT selection type");
+  assert((Selection == COFF::IMAGE_COMDAT_SELECT_ASSOCIATIVE) ==
+         (Assoc != 0) &&
+    "associative COMDAT section must have an associated section");
   this->Selection = Selection;
+  this->Assoc = Assoc;
   Characteristics |= COFF::IMAGE_SCN_LNK_COMDAT;
 }
 
@@ -48,59 +50,44 @@ void MCSectionCOFF::PrintSwitchToSection(const MCAsmInfo &MAI,
   }
 
   OS << "\t.section\t" << getSectionName() << ",\"";
-  if (getCharacteristics() & COFF::IMAGE_SCN_CNT_INITIALIZED_DATA)
-    OS << 'd';
-  if (getCharacteristics() & COFF::IMAGE_SCN_CNT_UNINITIALIZED_DATA)
-    OS << 'b';
-  if (getCharacteristics() & COFF::IMAGE_SCN_MEM_EXECUTE)
+  if (getKind().isText())
     OS << 'x';
-  if (getCharacteristics() & COFF::IMAGE_SCN_MEM_WRITE)
+  if (getKind().isWriteable())
     OS << 'w';
-  else if (getCharacteristics() & COFF::IMAGE_SCN_MEM_READ)
-    OS << 'r';
   else
-    OS << 'y';
-  if (getCharacteristics() & COFF::IMAGE_SCN_LNK_REMOVE)
+    OS << 'r';
+  if (getCharacteristics() & COFF::IMAGE_SCN_MEM_DISCARDABLE)
     OS << 'n';
-  if (getCharacteristics() & COFF::IMAGE_SCN_MEM_SHARED)
-    OS << 's';
-  if ((getCharacteristics() & COFF::IMAGE_SCN_MEM_DISCARDABLE) &&
-      !isImplicitlyDiscardable(SectionName))
-    OS << 'D';
-  OS << '"';
+  OS << "\"\n";
 
   if (getCharacteristics() & COFF::IMAGE_SCN_LNK_COMDAT) {
-    OS << ",";
     switch (Selection) {
       case COFF::IMAGE_COMDAT_SELECT_NODUPLICATES:
-        OS << "one_only,";
+        OS << "\t.linkonce one_only\n";
         break;
       case COFF::IMAGE_COMDAT_SELECT_ANY:
-        OS << "discard,";
+        OS << "\t.linkonce discard\n";
         break;
       case COFF::IMAGE_COMDAT_SELECT_SAME_SIZE:
-        OS << "same_size,";
+        OS << "\t.linkonce same_size\n";
         break;
       case COFF::IMAGE_COMDAT_SELECT_EXACT_MATCH:
-        OS << "same_contents,";
+        OS << "\t.linkonce same_contents\n";
         break;
       case COFF::IMAGE_COMDAT_SELECT_ASSOCIATIVE:
-        OS << "associative,";
+        OS << "\t.linkonce associative " << Assoc->getSectionName() << "\n";
         break;
       case COFF::IMAGE_COMDAT_SELECT_LARGEST:
-        OS << "largest,";
+        OS << "\t.linkonce largest\n";
         break;
       case COFF::IMAGE_COMDAT_SELECT_NEWEST:
-        OS << "newest,";
+        OS << "\t.linkonce newest\n";
         break;
       default:
         assert (0 && "unsupported COFF selection type");
         break;
     }
-    assert(COMDATSymbol);
-    COMDATSymbol->print(OS, &MAI);
   }
-  OS << '\n';
 }
 
 bool MCSectionCOFF::UseCodeAlign() const {

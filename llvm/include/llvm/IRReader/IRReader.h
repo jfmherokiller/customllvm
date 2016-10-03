@@ -15,36 +15,41 @@
 #ifndef LLVM_IRREADER_IRREADER_H
 #define LLVM_IRREADER_IRREADER_H
 
-#include <memory>
+#include <string>
 
 namespace llvm {
 
-class StringRef;
-class MemoryBufferRef;
 class Module;
+class MemoryBuffer;
 class SMDiagnostic;
 class LLVMContext;
+
+/// If the given MemoryBuffer holds a bitcode image, return a Module for it
+/// which does lazy deserialization of function bodies.  Otherwise, attempt to
+/// parse it as LLVM Assembly and return a fully populated Module. This
+/// function *always* takes ownership of the given MemoryBuffer.
+Module *getLazyIRModule(MemoryBuffer *Buffer, SMDiagnostic &Err,
+                        LLVMContext &Context);
 
 /// If the given file holds a bitcode image, return a Module
 /// for it which does lazy deserialization of function bodies.  Otherwise,
 /// attempt to parse it as LLVM Assembly and return a fully populated
-/// Module. The ShouldLazyLoadMetadata flag is passed down to the bitcode
-/// reader to optionally enable lazy metadata loading.
-std::unique_ptr<Module>
-getLazyIRFileModule(StringRef Filename, SMDiagnostic &Err, LLVMContext &Context,
-                    bool ShouldLazyLoadMetadata = false);
+/// Module.
+Module *getLazyIRFileModule(const std::string &Filename, SMDiagnostic &Err,
+                            LLVMContext &Context);
 
 /// If the given MemoryBuffer holds a bitcode image, return a Module
 /// for it.  Otherwise, attempt to parse it as LLVM Assembly and return
-/// a Module for it.
-std::unique_ptr<Module> parseIR(MemoryBufferRef Buffer, SMDiagnostic &Err,
-                                LLVMContext &Context);
+/// a Module for it. This function *always* takes ownership of the given
+/// MemoryBuffer.
+Module *ParseIR(MemoryBuffer *Buffer, SMDiagnostic &Err, LLVMContext &Context);
 
 /// If the given file holds a bitcode image, return a Module for it.
 /// Otherwise, attempt to parse it as LLVM Assembly and return a Module
 /// for it.
-std::unique_ptr<Module> parseIRFile(StringRef Filename, SMDiagnostic &Err,
-                                    LLVMContext &Context);
+Module *ParseIRFile(const std::string &Filename, SMDiagnostic &Err,
+                    LLVMContext &Context);
+
 }
 
 #endif

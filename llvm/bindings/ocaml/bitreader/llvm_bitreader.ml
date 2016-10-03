@@ -1,4 +1,4 @@
-(*===-- llvm_bitreader.ml - LLVM OCaml Interface --------------*- OCaml -*-===*
+(*===-- llvm_bitreader.ml - LLVM OCaml Interface ----------------*- C++ -*-===*
  *
  *                     The LLVM Compiler Infrastructure
  *
@@ -7,13 +7,14 @@
  *
  *===----------------------------------------------------------------------===*)
 
+
 exception Error of string
 
-let () = Callback.register_exception "Llvm_bitreader.Error" (Error "")
+external register_exns : exn -> unit = "llvm_register_bitreader_exns"
+let _ = register_exns (Error "")
 
-external get_module
-  : Llvm.llcontext -> Llvm.llmemorybuffer -> Llvm.llmodule
-  = "llvm_get_module"
-external parse_bitcode
-  : Llvm.llcontext -> Llvm.llmemorybuffer -> Llvm.llmodule
-  = "llvm_parse_bitcode"
+external get_module : Llvm.llcontext -> Llvm.llmemorybuffer -> Llvm.llmodule
+                    = "llvm_get_module"
+
+external parse_bitcode : Llvm.llcontext -> Llvm.llmemorybuffer -> Llvm.llmodule
+                       = "llvm_parse_bitcode"

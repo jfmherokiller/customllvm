@@ -12,6 +12,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "pre-RA-sched"
 #include "llvm/CodeGen/ScheduleDAG.h"
 #include "llvm/CodeGen/ScheduleHazardRecognizer.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
@@ -21,11 +22,8 @@
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include <climits>
 using namespace llvm;
-
-#define DEBUG_TYPE "pre-RA-sched"
 
 #ifndef NDEBUG
 static cl::opt<bool> StressSchedOpt(
@@ -36,9 +34,11 @@ static cl::opt<bool> StressSchedOpt(
 void SchedulingPriorityQueue::anchor() { }
 
 ScheduleDAG::ScheduleDAG(MachineFunction &mf)
-    : TM(mf.getTarget()), TII(mf.getSubtarget().getInstrInfo()),
-      TRI(mf.getSubtarget().getRegisterInfo()), MF(mf),
-      MRI(mf.getRegInfo()), EntrySU(), ExitSU() {
+  : TM(mf.getTarget()),
+    TII(TM.getInstrInfo()),
+    TRI(TM.getRegisterInfo()),
+    MF(mf), MRI(mf.getRegInfo()),
+    EntrySU(), ExitSU() {
 #ifndef NDEBUG
   StressSched = StressSchedOpt;
 #endif
@@ -55,7 +55,7 @@ void ScheduleDAG::clearDAG() {
 
 /// getInstrDesc helper to handle SDNodes.
 const MCInstrDesc *ScheduleDAG::getNodeDesc(const SDNode *Node) const {
-  if (!Node || !Node->isMachineOpcode()) return nullptr;
+  if (!Node || !Node->isMachineOpcode()) return NULL;
   return &TII->get(Node->getMachineOpcode());
 }
 
@@ -63,7 +63,7 @@ const MCInstrDesc *ScheduleDAG::getNodeDesc(const SDNode *Node) const {
 /// not already.  It also adds the current node as a successor of the
 /// specified node.
 bool SUnit::addPred(const SDep &D, bool Required) {
-  // If this node already has this dependence, don't add a redundant one.
+  // If this node already has this depenence, don't add a redundant one.
   for (SmallVectorImpl<SDep>::iterator I = Preds.begin(), E = Preds.end();
          I != E; ++I) {
     // Zero-latency weak edges may be added purely for heuristic ordering. Don't
@@ -139,7 +139,8 @@ void SUnit::removePred(const SDep &D) {
       SDep P = D;
       P.setSUnit(this);
       SUnit *N = D.getSUnit();
-      SmallVectorImpl<SDep>::iterator Succ = find(N->Succs, P);
+      SmallVectorImpl<SDep>::iterator Succ = std::find(N->Succs.begin(),
+                                                       N->Succs.end(), P);
       assert(Succ != N->Succs.end() && "Mismatching preds / succs lists!");
       N->Succs.erase(Succ);
       Preds.erase(I);
@@ -300,8 +301,8 @@ void SUnit::biasCriticalPath() {
 
   SUnit::pred_iterator BestI = Preds.begin();
   unsigned MaxDepth = BestI->getSUnit()->getDepth();
-  for (SUnit::pred_iterator I = std::next(BestI), E = Preds.end(); I != E;
-       ++I) {
+  for (SUnit::pred_iterator
+         I = llvm::next(BestI), E = Preds.end(); I != E; ++I) {
     if (I->getKind() == SDep::Data && I->getSUnit()->getDepth() > MaxDepth)
       BestI = I;
   }
@@ -337,10 +338,10 @@ void SUnit::dumpAll(const ScheduleDAG *G) const {
          I != E; ++I) {
       dbgs() << "   ";
       switch (I->getKind()) {
-      case SDep::Data:   dbgs() << "data "; break;
-      case SDep::Anti:   dbgs() << "anti "; break;
-      case SDep::Output: dbgs() << "out  "; break;
-      case SDep::Order:  dbgs() << "ord  "; break;
+      case SDep::Data:        dbgs() << "val "; break;
+      case SDep::Anti:        dbgs() << "anti"; break;
+      case SDep::Output:      dbgs() << "out "; break;
+      case SDep::Order:       dbgs() << "ch  "; break;
       }
       dbgs() << "SU(" << I->getSUnit()->NodeNum << ")";
       if (I->isArtificial())
@@ -357,10 +358,10 @@ void SUnit::dumpAll(const ScheduleDAG *G) const {
          I != E; ++I) {
       dbgs() << "   ";
       switch (I->getKind()) {
-      case SDep::Data:   dbgs() << "data "; break;
-      case SDep::Anti:   dbgs() << "anti "; break;
-      case SDep::Output: dbgs() << "out  "; break;
-      case SDep::Order:  dbgs() << "ord  "; break;
+      case SDep::Data:        dbgs() << "val "; break;
+      case SDep::Anti:        dbgs() << "anti"; break;
+      case SDep::Output:      dbgs() << "out "; break;
+      case SDep::Order:       dbgs() << "ch  "; break;
       }
       dbgs() << "SU(" << I->getSUnit()->NodeNum << ")";
       if (I->isArtificial())
@@ -371,6 +372,7 @@ void SUnit::dumpAll(const ScheduleDAG *G) const {
       dbgs() << "\n";
     }
   }
+  dbgs() << "\n";
 }
 #endif
 

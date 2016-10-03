@@ -65,4 +65,3 @@ rm -rf %{buildroot}
 * Mon Feb 09 2003 Brian R. Gaeke
 - Initial working version of RPM spec file.
 
-

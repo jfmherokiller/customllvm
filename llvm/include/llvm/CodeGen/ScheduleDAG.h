@@ -20,11 +20,11 @@
 #include "llvm/ADT/GraphTraits.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
+  class AliasAnalysis;
   class SUnit;
   class MachineConstantPool;
   class MachineFunction;
@@ -95,7 +95,7 @@ namespace llvm {
     /// SDep - Construct a null SDep. This is only for use by container
     /// classes which require default constructors. SUnits may not
     /// have null SDep edges.
-    SDep() : Dep(nullptr, Data) {}
+    SDep() : Dep(0, Data) {}
 
     /// SDep - Construct an SDep with the specified values.
     SDep(SUnit *S, Kind kind, unsigned Reg)
@@ -122,7 +122,18 @@ namespace llvm {
     }
 
     /// Return true if the specified SDep is equivalent except for latency.
-    bool overlaps(const SDep &Other) const;
+    bool overlaps(const SDep &Other) const {
+      if (Dep != Other.Dep) return false;
+      switch (Dep.getInt()) {
+      case Data:
+      case Anti:
+      case Output:
+        return Contents.Reg == Other.Contents.Reg;
+      case Order:
+        return Contents.OrdKind == Other.Contents.OrdKind;
+      }
+      llvm_unreachable("Invalid dependency kind!");
+    }
 
     bool operator==(const SDep &Other) const {
       return overlaps(Other) && Latency == Other.Latency;
@@ -146,13 +157,19 @@ namespace llvm {
     }
 
     //// getSUnit - Return the SUnit to which this edge points.
-    SUnit *getSUnit() const;
+    SUnit *getSUnit() const {
+      return Dep.getPointer();
+    }
 
     //// setSUnit - Assign the SUnit to which this edge points.
-    void setSUnit(SUnit *SU);
+    void setSUnit(SUnit *SU) {
+      Dep.setPointer(SU);
+    }
 
     /// getKind - Return an enum value representing the kind of the dependence.
-    Kind getKind() const;
+    Kind getKind() const {
+      return Dep.getInt();
+    }
 
     /// isCtrl - Shorthand for getKind() != SDep::Data.
     bool isCtrl() const {
@@ -165,18 +182,6 @@ namespace llvm {
     bool isNormalMemory() const {
       return getKind() == Order && (Contents.OrdKind == MayAliasMem
                                     || Contents.OrdKind == MustAliasMem);
-    }
-
-    /// isBarrier - Test if this is an Order dependence that is marked
-    /// as a barrier.
-    bool isBarrier() const {
-      return getKind() == Order && Contents.OrdKind == Barrier;
-    }
-
-    /// isNormalMemoryOrBarrier - Test if this is could be any kind of memory
-    /// dependence.
-    bool isNormalMemoryOrBarrier() const {
-      return (isNormalMemory() || isBarrier());
     }
 
     /// isMustAlias - Test if this is an Order dependence that is marked
@@ -243,7 +248,7 @@ namespace llvm {
   /// SUnit - Scheduling unit. This is a node in the scheduling DAG.
   class SUnit {
   private:
-    enum : unsigned { BoundaryID = ~0u };
+    enum LLVM_ENUM_INT_TYPE(unsigned) { BoundaryID = ~0u };
 
     SDNode *Node;                       // Representative node.
     MachineInstr *Instr;                // Alternatively, a MachineInstr.
@@ -287,8 +292,6 @@ namespace llvm {
     bool isScheduleHigh   : 1;          // True if preferable to schedule high.
     bool isScheduleLow    : 1;          // True if preferable to schedule low.
     bool isCloned         : 1;          // True if this node has been cloned.
-    bool isUnbuffered     : 1;          // Uses an unbuffered resource.
-    bool hasReservedResource : 1;       // Uses a reserved resource.
     Sched::Preference SchedulingPref;   // Scheduling preference.
 
   private:
@@ -306,49 +309,43 @@ namespace llvm {
     /// SUnit - Construct an SUnit for pre-regalloc scheduling to represent
     /// an SDNode and any nodes flagged to it.
     SUnit(SDNode *node, unsigned nodenum)
-      : Node(node), Instr(nullptr), OrigNode(nullptr), SchedClass(nullptr),
-        NodeNum(nodenum), NodeQueueId(0), NumPreds(0), NumSuccs(0),
-        NumPredsLeft(0), NumSuccsLeft(0), WeakPredsLeft(0), WeakSuccsLeft(0),
-        NumRegDefsLeft(0), Latency(0), isVRegCycle(false), isCall(false),
-        isCallOp(false), isTwoAddress(false), isCommutable(false),
-        hasPhysRegUses(false), hasPhysRegDefs(false), hasPhysRegClobbers(false),
-        isPending(false), isAvailable(false), isScheduled(false),
-        isScheduleHigh(false), isScheduleLow(false), isCloned(false),
-        isUnbuffered(false), hasReservedResource(false),
-        SchedulingPref(Sched::None), isDepthCurrent(false),
-        isHeightCurrent(false), Depth(0), Height(0), TopReadyCycle(0),
-        BotReadyCycle(0), CopyDstRC(nullptr), CopySrcRC(nullptr) {}
+      : Node(node), Instr(0), OrigNode(0), SchedClass(0), NodeNum(nodenum),
+        NodeQueueId(0), NumPreds(0), NumSuccs(0), NumPredsLeft(0),
+        NumSuccsLeft(0), WeakPredsLeft(0), WeakSuccsLeft(0), NumRegDefsLeft(0),
+        Latency(0), isVRegCycle(false), isCall(false), isCallOp(false),
+        isTwoAddress(false), isCommutable(false), hasPhysRegUses(false),
+        hasPhysRegDefs(false), hasPhysRegClobbers(false), isPending(false),
+        isAvailable(false), isScheduled(false), isScheduleHigh(false),
+        isScheduleLow(false), isCloned(false), SchedulingPref(Sched::None),
+        isDepthCurrent(false), isHeightCurrent(false), Depth(0), Height(0),
+        TopReadyCycle(0), BotReadyCycle(0), CopyDstRC(NULL), CopySrcRC(NULL) {}
 
     /// SUnit - Construct an SUnit for post-regalloc scheduling to represent
     /// a MachineInstr.
     SUnit(MachineInstr *instr, unsigned nodenum)
-      : Node(nullptr), Instr(instr), OrigNode(nullptr), SchedClass(nullptr),
-        NodeNum(nodenum), NodeQueueId(0), NumPreds(0), NumSuccs(0),
-        NumPredsLeft(0), NumSuccsLeft(0), WeakPredsLeft(0), WeakSuccsLeft(0),
-        NumRegDefsLeft(0), Latency(0), isVRegCycle(false), isCall(false),
-        isCallOp(false), isTwoAddress(false), isCommutable(false),
-        hasPhysRegUses(false), hasPhysRegDefs(false), hasPhysRegClobbers(false),
-        isPending(false), isAvailable(false), isScheduled(false),
-        isScheduleHigh(false), isScheduleLow(false), isCloned(false),
-        isUnbuffered(false), hasReservedResource(false),
-        SchedulingPref(Sched::None), isDepthCurrent(false),
-        isHeightCurrent(false), Depth(0), Height(0), TopReadyCycle(0),
-        BotReadyCycle(0), CopyDstRC(nullptr), CopySrcRC(nullptr) {}
+      : Node(0), Instr(instr), OrigNode(0), SchedClass(0), NodeNum(nodenum),
+        NodeQueueId(0), NumPreds(0), NumSuccs(0), NumPredsLeft(0),
+        NumSuccsLeft(0), WeakPredsLeft(0), WeakSuccsLeft(0), NumRegDefsLeft(0),
+        Latency(0), isVRegCycle(false), isCall(false), isCallOp(false),
+        isTwoAddress(false), isCommutable(false), hasPhysRegUses(false),
+        hasPhysRegDefs(false), hasPhysRegClobbers(false), isPending(false),
+        isAvailable(false), isScheduled(false), isScheduleHigh(false),
+        isScheduleLow(false), isCloned(false), SchedulingPref(Sched::None),
+        isDepthCurrent(false), isHeightCurrent(false), Depth(0), Height(0),
+        TopReadyCycle(0), BotReadyCycle(0), CopyDstRC(NULL), CopySrcRC(NULL) {}
 
     /// SUnit - Construct a placeholder SUnit.
     SUnit()
-      : Node(nullptr), Instr(nullptr), OrigNode(nullptr), SchedClass(nullptr),
-        NodeNum(BoundaryID), NodeQueueId(0), NumPreds(0), NumSuccs(0),
-        NumPredsLeft(0), NumSuccsLeft(0), WeakPredsLeft(0), WeakSuccsLeft(0),
-        NumRegDefsLeft(0), Latency(0), isVRegCycle(false), isCall(false),
-        isCallOp(false), isTwoAddress(false), isCommutable(false),
-        hasPhysRegUses(false), hasPhysRegDefs(false), hasPhysRegClobbers(false),
-        isPending(false), isAvailable(false), isScheduled(false),
-        isScheduleHigh(false), isScheduleLow(false), isCloned(false),
-        isUnbuffered(false), hasReservedResource(false),
-        SchedulingPref(Sched::None), isDepthCurrent(false),
-        isHeightCurrent(false), Depth(0), Height(0), TopReadyCycle(0),
-        BotReadyCycle(0), CopyDstRC(nullptr), CopySrcRC(nullptr) {}
+      : Node(0), Instr(0), OrigNode(0), SchedClass(0), NodeNum(BoundaryID),
+        NodeQueueId(0), NumPreds(0), NumSuccs(0), NumPredsLeft(0),
+        NumSuccsLeft(0), WeakPredsLeft(0), WeakSuccsLeft(0), NumRegDefsLeft(0),
+        Latency(0), isVRegCycle(false), isCall(false), isCallOp(false),
+        isTwoAddress(false), isCommutable(false), hasPhysRegUses(false),
+        hasPhysRegDefs(false), hasPhysRegClobbers(false), isPending(false),
+        isAvailable(false), isScheduled(false), isScheduleHigh(false),
+        isScheduleLow(false), isCloned(false), SchedulingPref(Sched::None),
+        isDepthCurrent(false), isHeightCurrent(false), Depth(0), Height(0),
+        TopReadyCycle(0), BotReadyCycle(0), CopyDstRC(NULL), CopySrcRC(NULL) {}
 
     /// \brief Boundary nodes are placeholders for the boundary of the
     /// scheduling region.
@@ -357,7 +354,7 @@ namespace llvm {
     /// correspond to schedulable entities (e.g. instructions) and do not have a
     /// valid ID. Consequently, always check for boundary nodes before accessing
     /// an assoicative data structure keyed on node ID.
-    bool isBoundaryNode() const { return NodeNum == BoundaryID; }
+    bool isBoundaryNode() const { return NodeNum == BoundaryID; };
 
     /// setNode - Assign the representative SDNode for this SUnit.
     /// This may be used during pre-regalloc scheduling.
@@ -395,17 +392,6 @@ namespace llvm {
     /// not already.  It also adds the current node as a successor of the
     /// specified node.
     bool addPred(const SDep &D, bool Required = true);
-
-    /// addPredBarrier - This adds a barrier edge to SU by calling
-    /// addPred(), with latency 0 generally or latency 1 for a store
-    /// followed by a load.
-    bool addPredBarrier(SUnit *SU) {
-      SDep Dep(SU, SDep::Barrier);
-      unsigned TrueMemOrderLatency =
-        ((SU->getInstr()->mayStore() && this->getInstr()->mayLoad()) ? 1 : 0);
-      Dep.setLatency(TrueMemOrderLatency);
-      return addPred(Dep);
-    }
 
     /// removePred - This removes the specified edge as a pred of the current
     /// node if it exists.  It also removes the current node as a successor of
@@ -483,30 +469,6 @@ namespace llvm {
     void ComputeDepth();
     void ComputeHeight();
   };
-
-  /// Return true if the specified SDep is equivalent except for latency.
-  inline bool SDep::overlaps(const SDep &Other) const {
-    if (Dep != Other.Dep)
-      return false;
-    switch (Dep.getInt()) {
-    case Data:
-    case Anti:
-    case Output:
-      return Contents.Reg == Other.Contents.Reg;
-    case Order:
-      return Contents.OrdKind == Other.Contents.OrdKind;
-    }
-    llvm_unreachable("Invalid dependency kind!");
-  }
-
-  //// getSUnit - Return the SUnit to which this edge points.
-  inline SUnit *SDep::getSUnit() const { return Dep.getPointer(); }
-
-  //// setSUnit - Assign the SUnit to which this edge points.
-  inline void SDep::setSUnit(SUnit *SU) { Dep.setPointer(SU); }
-
-  /// getKind - Return an enum value representing the kind of the dependence.
-  inline SDep::Kind SDep::getKind() const { return Dep.getInt(); }
 
   //===--------------------------------------------------------------------===//
   /// SchedulingPriorityQueue - This interface is used to plug different
@@ -646,6 +608,12 @@ namespace llvm {
     }
     bool operator!=(const SUnitIterator& x) const { return !operator==(x); }
 
+    const SUnitIterator &operator=(const SUnitIterator &I) {
+      assert(I.Node==Node && "Cannot assign iterators to two different nodes!");
+      Operand = I.Operand;
+      return *this;
+    }
+
     pointer operator*() const {
       return Node->Preds[Operand].getSUnit();
     }
@@ -679,24 +647,24 @@ namespace llvm {
   };
 
   template <> struct GraphTraits<SUnit*> {
-    typedef SUnit *NodeRef;
+    typedef SUnit NodeType;
     typedef SUnitIterator ChildIteratorType;
-    static NodeRef getEntryNode(SUnit *N) { return N; }
-    static ChildIteratorType child_begin(NodeRef N) {
+    static inline NodeType *getEntryNode(SUnit *N) { return N; }
+    static inline ChildIteratorType child_begin(NodeType *N) {
       return SUnitIterator::begin(N);
     }
-    static ChildIteratorType child_end(NodeRef N) {
+    static inline ChildIteratorType child_end(NodeType *N) {
       return SUnitIterator::end(N);
     }
   };
 
   template <> struct GraphTraits<ScheduleDAG*> : public GraphTraits<SUnit*> {
-    typedef pointer_iterator<std::vector<SUnit>::iterator> nodes_iterator;
+    typedef std::vector<SUnit>::iterator nodes_iterator;
     static nodes_iterator nodes_begin(ScheduleDAG *G) {
-      return nodes_iterator(G->SUnits.begin());
+      return G->SUnits.begin();
     }
     static nodes_iterator nodes_end(ScheduleDAG *G) {
-      return nodes_iterator(G->SUnits.end());
+      return G->SUnits.end();
     }
   };
 

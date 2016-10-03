@@ -15,12 +15,9 @@
 #ifndef LLVM_ANALYSIS_LOOPINFOIMPL_H
 #define LLVM_ANALYSIS_LOOPINFOIMPL_H
 
-#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/PostOrderIterator.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Analysis/LoopInfo.h"
-#include "llvm/IR/Dominators.h"
 
 namespace llvm {
 
@@ -54,7 +51,7 @@ BlockT *LoopBase<BlockT, LoopT>::getExitingBlock() const {
   getExitingBlocks(ExitingBlocks);
   if (ExitingBlocks.size() == 1)
     return ExitingBlocks[0];
-  return nullptr;
+  return 0;
 }
 
 /// getExitBlocks - Return all of the successor blocks of this loop.  These
@@ -81,7 +78,7 @@ BlockT *LoopBase<BlockT, LoopT>::getExitBlock() const {
   getExitBlocks(ExitBlocks);
   if (ExitBlocks.size() == 1)
     return ExitBlocks[0];
-  return nullptr;
+  return 0;
 }
 
 /// getExitEdges - Return all pairs of (_inside_block_,_outside_block_).
@@ -109,14 +106,14 @@ template<class BlockT, class LoopT>
 BlockT *LoopBase<BlockT, LoopT>::getLoopPreheader() const {
   // Keep track of nodes outside the loop branching to the header...
   BlockT *Out = getLoopPredecessor();
-  if (!Out) return nullptr;
+  if (!Out) return 0;
 
   // Make sure there is only one exit out of the preheader.
   typedef GraphTraits<BlockT*> BlockTraits;
   typename BlockTraits::ChildIteratorType SI = BlockTraits::child_begin(Out);
   ++SI;
   if (SI != BlockTraits::child_end(Out))
-    return nullptr;  // Multiple exits from the block, must not be a preheader.
+    return 0;  // Multiple exits from the block, must not be a preheader.
 
   // The predecessor has exactly one successor, so it is a preheader.
   return Out;
@@ -130,7 +127,7 @@ BlockT *LoopBase<BlockT, LoopT>::getLoopPreheader() const {
 template<class BlockT, class LoopT>
 BlockT *LoopBase<BlockT, LoopT>::getLoopPredecessor() const {
   // Keep track of nodes outside the loop branching to the header...
-  BlockT *Out = nullptr;
+  BlockT *Out = 0;
 
   // Loop over the predecessors of the header node...
   BlockT *Header = getHeader();
@@ -138,10 +135,10 @@ BlockT *LoopBase<BlockT, LoopT>::getLoopPredecessor() const {
   for (typename InvBlockTraits::ChildIteratorType PI =
          InvBlockTraits::child_begin(Header),
          PE = InvBlockTraits::child_end(Header); PI != PE; ++PI) {
-    typename InvBlockTraits::NodeRef N = *PI;
+    typename InvBlockTraits::NodeType *N = *PI;
     if (!contains(N)) {     // If the block is not in the loop...
       if (Out && Out != N)
-        return nullptr;     // Multiple predecessors outside the loop
+        return 0;             // Multiple predecessors outside the loop
       Out = N;
     }
   }
@@ -161,11 +158,11 @@ BlockT *LoopBase<BlockT, LoopT>::getLoopLatch() const {
     InvBlockTraits::child_begin(Header);
   typename InvBlockTraits::ChildIteratorType PE =
     InvBlockTraits::child_end(Header);
-  BlockT *Latch = nullptr;
+  BlockT *Latch = 0;
   for (; PI != PE; ++PI) {
-    typename InvBlockTraits::NodeRef N = *PI;
+    typename InvBlockTraits::NodeType *N = *PI;
     if (contains(N)) {
-      if (Latch) return nullptr;
+      if (Latch) return 0;
       Latch = N;
     }
   }
@@ -189,7 +186,7 @@ addBasicBlockToLoop(BlockT *NewBB, LoopInfoBase<BlockT, LoopT> &LIB) {
   assert((Blocks.empty() || LIB[getHeader()] == this) &&
          "Incorrect LI specified for this loop!");
   assert(NewBB && "Cannot add a null basic block to the loop!");
-  assert(!LIB[NewBB] && "BasicBlock already in the loop!");
+  assert(LIB[NewBB] == 0 && "BasicBlock already in the loop!");
 
   LoopT *L = static_cast<LoopT *>(this);
 
@@ -211,11 +208,12 @@ template<class BlockT, class LoopT>
 void LoopBase<BlockT, LoopT>::
 replaceChildLoopWith(LoopT *OldChild, LoopT *NewChild) {
   assert(OldChild->ParentLoop == this && "This loop is already broken!");
-  assert(!NewChild->ParentLoop && "NewChild already has a parent!");
-  typename std::vector<LoopT *>::iterator I = find(SubLoops, OldChild);
+  assert(NewChild->ParentLoop == 0 && "NewChild already has a parent!");
+  typename std::vector<LoopT *>::iterator I =
+    std::find(SubLoops.begin(), SubLoops.end(), OldChild);
   assert(I != SubLoops.end() && "OldChild not in loop!");
   *I = NewChild;
-  OldChild->ParentLoop = nullptr;
+  OldChild->ParentLoop = 0;
   NewChild->ParentLoop = static_cast<LoopT *>(this);
 }
 
@@ -240,23 +238,28 @@ void LoopBase<BlockT, LoopT>::verifyLoop() const {
   // Check the individual blocks.
   for ( ; BI != BE; ++BI) {
     BlockT *BB = *BI;
-
-    assert(std::any_of(GraphTraits<BlockT*>::child_begin(BB),
-                       GraphTraits<BlockT*>::child_end(BB),
-                       [&](BlockT *B){return contains(B);}) &&
-           "Loop block has no in-loop successors!");
-
-    assert(std::any_of(GraphTraits<Inverse<BlockT*> >::child_begin(BB),
-                       GraphTraits<Inverse<BlockT*> >::child_end(BB),
-                       [&](BlockT *B){return contains(B);}) &&
-           "Loop block has no in-loop predecessors!");
-
+    bool HasInsideLoopSuccs = false;
+    bool HasInsideLoopPreds = false;
     SmallVector<BlockT *, 2> OutsideLoopPreds;
-    std::for_each(GraphTraits<Inverse<BlockT*> >::child_begin(BB),
-                  GraphTraits<Inverse<BlockT*> >::child_end(BB),
-                  [&](BlockT *B){if (!contains(B))
-                      OutsideLoopPreds.push_back(B);
-                  });
+
+    typedef GraphTraits<BlockT*> BlockTraits;
+    for (typename BlockTraits::ChildIteratorType SI =
+           BlockTraits::child_begin(BB), SE = BlockTraits::child_end(BB);
+         SI != SE; ++SI)
+      if (contains(*SI)) {
+        HasInsideLoopSuccs = true;
+        break;
+      }
+    typedef GraphTraits<Inverse<BlockT*> > InvBlockTraits;
+    for (typename InvBlockTraits::ChildIteratorType PI =
+           InvBlockTraits::child_begin(BB), PE = InvBlockTraits::child_end(BB);
+         PI != PE; ++PI) {
+      BlockT *N = *PI;
+      if (contains(N))
+        HasInsideLoopPreds = true;
+      else
+        OutsideLoopPreds.push_back(N);
+    }
 
     if (BB == getHeader()) {
         assert(!OutsideLoopPreds.empty() && "Loop is unreachable!");
@@ -264,13 +267,16 @@ void LoopBase<BlockT, LoopT>::verifyLoop() const {
       // A non-header loop shouldn't be reachable from outside the loop,
       // though it is permitted if the predecessor is not itself actually
       // reachable.
-      BlockT *EntryBB = &BB->getParent()->front();
-      for (BlockT *CB : depth_first(EntryBB))
-        for (unsigned i = 0, e = OutsideLoopPreds.size(); i != e; ++i)
-          assert(CB != OutsideLoopPreds[i] &&
-                 "Loop has multiple entry points!");
+      BlockT *EntryBB = BB->getParent()->begin();
+        for (df_iterator<BlockT *> NI = df_begin(EntryBB),
+               NE = df_end(EntryBB); NI != NE; ++NI)
+          for (unsigned i = 0, e = OutsideLoopPreds.size(); i != e; ++i)
+            assert(*NI != OutsideLoopPreds[i] &&
+                   "Loop has multiple entry points!");
     }
-    assert(BB != &getHeader()->getParent()->front() &&
+    assert(HasInsideLoopPreds && "Loop block has no in-loop predecessors!");
+    assert(HasInsideLoopSuccs && "Loop block has no in-loop successors!");
+    assert(BB != getHeader()->getParent()->begin() &&
            "Loop contains function entry block!");
 
     NumVisited++;
@@ -289,7 +295,8 @@ void LoopBase<BlockT, LoopT>::verifyLoop() const {
 
   // Check the parent loop pointer.
   if (ParentLoop) {
-    assert(is_contained(*ParentLoop, this) &&
+    assert(std::find(ParentLoop->begin(), ParentLoop->end(), this) !=
+           ParentLoop->end() &&
            "Loop is not a subloop of its parent!");
   }
 #endif
@@ -308,24 +315,17 @@ void LoopBase<BlockT, LoopT>::verifyLoopNest(
 }
 
 template<class BlockT, class LoopT>
-void LoopBase<BlockT, LoopT>::print(raw_ostream &OS, unsigned Depth,
-                                    bool Verbose) const {
+void LoopBase<BlockT, LoopT>::print(raw_ostream &OS, unsigned Depth) const {
   OS.indent(Depth*2) << "Loop at depth " << getLoopDepth()
        << " containing: ";
 
-  BlockT *H = getHeader();
   for (unsigned i = 0; i < getBlocks().size(); ++i) {
+    if (i) OS << ",";
     BlockT *BB = getBlocks()[i];
-    if (!Verbose) {
-      if (i) OS << ",";
-      BB->printAsOperand(OS, false);
-    } else OS << "\n";
-
-    if (BB == H) OS << "<header>";
-    if (isLoopLatch(BB)) OS << "<latch>";
-    if (isLoopExiting(BB)) OS << "<exiting>";
-    if (Verbose)
-      BB->print(OS);
+    WriteAsOperand(OS, BB, false);
+    if (BB == getHeader())    OS << "<header>";
+    if (BB == getLoopLatch()) OS << "<latch>";
+    if (isLoopExiting(BB))    OS << "<exiting>";
   }
   OS << "\n";
 
@@ -344,7 +344,7 @@ void LoopBase<BlockT, LoopT>::print(raw_ostream &OS, unsigned Depth,
 template<class BlockT, class LoopT>
 static void discoverAndMapSubloop(LoopT *L, ArrayRef<BlockT*> Backedges,
                                   LoopInfoBase<BlockT, LoopT> *LI,
-                                  const DominatorTreeBase<BlockT> &DomTree) {
+                                  DominatorTreeBase<BlockT> &DomTree) {
   typedef GraphTraits<Inverse<BlockT*> > InvBlockTraits;
 
   unsigned NumBlocks = 0;
@@ -401,6 +401,7 @@ static void discoverAndMapSubloop(LoopT *L, ArrayRef<BlockT*> Backedges,
   L->reserveBlocks(NumBlocks);
 }
 
+namespace {
 /// Populate all loop data in a stable order during a single forward DFS.
 template<class BlockT, class LoopT>
 class PopulateLoopsDFS {
@@ -408,6 +409,9 @@ class PopulateLoopsDFS {
   typedef typename BlockTraits::ChildIteratorType SuccIterTy;
 
   LoopInfoBase<BlockT, LoopT> *LI;
+  DenseSet<const BlockT *> VisitedBlocks;
+  std::vector<std::pair<BlockT*, SuccIterTy> > DFSStack;
+
 public:
   PopulateLoopsDFS(LoopInfoBase<BlockT, LoopT> *li):
     LI(li) {}
@@ -416,13 +420,37 @@ public:
 
 protected:
   void insertIntoLoop(BlockT *Block);
+
+  BlockT *dfsSource() { return DFSStack.back().first; }
+  SuccIterTy &dfsSucc() { return DFSStack.back().second; }
+  SuccIterTy dfsSuccEnd() { return BlockTraits::child_end(dfsSource()); }
+
+  void pushBlock(BlockT *Block) {
+    DFSStack.push_back(std::make_pair(Block, BlockTraits::child_begin(Block)));
+  }
 };
+} // anonymous
 
 /// Top-level driver for the forward DFS within the loop.
 template<class BlockT, class LoopT>
 void PopulateLoopsDFS<BlockT, LoopT>::traverse(BlockT *EntryBlock) {
-  for (BlockT *BB : post_order(EntryBlock))
-    insertIntoLoop(BB);
+  pushBlock(EntryBlock);
+  VisitedBlocks.insert(EntryBlock);
+  while (!DFSStack.empty()) {
+    // Traverse the leftmost path as far as possible.
+    while (dfsSucc() != dfsSuccEnd()) {
+      BlockT *BB = *dfsSucc();
+      ++dfsSucc();
+      if (!VisitedBlocks.insert(BB).second)
+        continue;
+
+      // Push the next DFS successor onto the stack.
+      pushBlock(BB);
+    }
+    // Visit the top of the stack in postorder and backtrack.
+    insertIntoLoop(dfsSource());
+    DFSStack.pop_back();
+  }
 }
 
 /// Add a single Block to its ancestor loops in PostOrder. If the block is a
@@ -467,13 +495,14 @@ void PopulateLoopsDFS<BlockT, LoopT>::insertIntoLoop(BlockT *Block) {
 /// insertions per block.
 template<class BlockT, class LoopT>
 void LoopInfoBase<BlockT, LoopT>::
-analyze(const DominatorTreeBase<BlockT> &DomTree) {
+Analyze(DominatorTreeBase<BlockT> &DomTree) {
 
   // Postorder traversal of the dominator tree.
-  const DomTreeNodeBase<BlockT> *DomRoot = DomTree.getRootNode();
-  for (auto DomNode : post_order(DomRoot)) {
+  DomTreeNodeBase<BlockT>* DomRoot = DomTree.getRootNode();
+  for (po_iterator<DomTreeNodeBase<BlockT>*> DomIter = po_begin(DomRoot),
+         DomEnd = po_end(DomRoot); DomIter != DomEnd; ++DomIter) {
 
-    BlockT *Header = DomNode->getBlock();
+    BlockT *Header = DomIter->getBlock();
     SmallVector<BlockT *, 4> Backedges;
 
     // Check each predecessor of the potential loop header.
@@ -512,85 +541,6 @@ void LoopInfoBase<BlockT, LoopT>::print(raw_ostream &OS) const {
          E = BBMap.end(); I != E; ++I)
     OS << "BB '" << I->first->getName() << "' level = "
        << I->second->getLoopDepth() << "\n";
-#endif
-}
-
-template <typename T>
-bool compareVectors(std::vector<T> &BB1, std::vector<T> &BB2) {
-  std::sort(BB1.begin(), BB1.end());
-  std::sort(BB2.begin(), BB2.end());
-  return BB1 == BB2;
-}
-
-template <class BlockT, class LoopT>
-static void
-addInnerLoopsToHeadersMap(DenseMap<BlockT *, const LoopT *> &LoopHeaders,
-                          const LoopInfoBase<BlockT, LoopT> &LI,
-                          const LoopT &L) {
-  LoopHeaders[L.getHeader()] = &L;
-  for (LoopT *SL : L)
-    addInnerLoopsToHeadersMap(LoopHeaders, LI, *SL);
-}
-
-template <class BlockT, class LoopT>
-void LoopInfoBase<BlockT, LoopT>::verify(
-    const DominatorTreeBase<BlockT> &DomTree) const {
-  DenseSet<const LoopT*> Loops;
-  for (iterator I = begin(), E = end(); I != E; ++I) {
-    assert(!(*I)->getParentLoop() && "Top-level loop has a parent!");
-    (*I)->verifyLoopNest(&Loops);
-  }
-
-  // Verify that blocks are mapped to valid loops.
-#ifndef NDEBUG
-  for (auto &Entry : BBMap) {
-    const BlockT *BB = Entry.first;
-    LoopT *L = Entry.second;
-    assert(Loops.count(L) && "orphaned loop");
-    assert(L->contains(BB) && "orphaned block");
-  }
-
-  // Recompute LoopInfo to verify loops structure.
-  LoopInfoBase<BlockT, LoopT> OtherLI;
-  OtherLI.analyze(DomTree);
-
-  DenseMap<BlockT *, const LoopT *> LoopHeaders1;
-  DenseMap<BlockT *, const LoopT *> LoopHeaders2;
-
-  for (LoopT *L : *this)
-    addInnerLoopsToHeadersMap(LoopHeaders1, *this, *L);
-  for (LoopT *L : OtherLI)
-    addInnerLoopsToHeadersMap(LoopHeaders2, OtherLI, *L);
-  assert(LoopHeaders1.size() == LoopHeaders2.size() &&
-         "LoopInfo is incorrect.");
-
-  auto compareLoops = [&](const LoopT *L1, const LoopT *L2) {
-    BlockT *H1 = L1->getHeader();
-    BlockT *H2 = L2->getHeader();
-    if (H1 != H2)
-      return false;
-    std::vector<BlockT *> BB1 = L1->getBlocks();
-    std::vector<BlockT *> BB2 = L2->getBlocks();
-    if (!compareVectors(BB1, BB2))
-      return false;
-
-    std::vector<BlockT *> SubLoopHeaders1;
-    std::vector<BlockT *> SubLoopHeaders2;
-    for (LoopT *L : *L1)
-      SubLoopHeaders1.push_back(L->getHeader());
-    for (LoopT *L : *L2)
-      SubLoopHeaders2.push_back(L->getHeader());
-
-    if (!compareVectors(SubLoopHeaders1, SubLoopHeaders2))
-      return false;
-    return true;
-  };
-
-  for (auto &I : LoopHeaders1) {
-    BlockT *H = I.first;
-    bool LoopsMatch = compareLoops(LoopHeaders1[H], LoopHeaders2[H]);
-    assert(LoopsMatch && "LoopInfo is incorrect.");
-  }
 #endif
 }
 

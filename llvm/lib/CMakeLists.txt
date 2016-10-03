@@ -1,5 +1,4 @@
-# `Demangle', `Support' and `TableGen' libraries are added on the top-level
-# CMakeLists.txt
+# `Support' and `TableGen' libraries are added on the top-level CMakeLists.txt
 
 add_subdirectory(IR)
 add_subdirectory(IRReader)
@@ -11,14 +10,8 @@ add_subdirectory(Analysis)
 add_subdirectory(LTO)
 add_subdirectory(MC)
 add_subdirectory(Object)
-add_subdirectory(ObjectYAML)
 add_subdirectory(Option)
 add_subdirectory(DebugInfo)
 add_subdirectory(ExecutionEngine)
 add_subdirectory(Target)
 add_subdirectory(AsmParser)
-add_subdirectory(LineEditor)
-add_subdirectory(ProfileData)
-add_subdirectory(Fuzzer)
-add_subdirectory(Passes)
-add_subdirectory(LibDriver)

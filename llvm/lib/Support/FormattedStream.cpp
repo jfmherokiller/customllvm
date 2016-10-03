@@ -13,7 +13,6 @@
 
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FormattedStream.h"
-#include "llvm/Support/raw_ostream.h"
 #include <algorithm>
 
 using namespace llvm;
@@ -82,7 +81,7 @@ void formatted_raw_ostream::write_impl(const char *Ptr, size_t Size) {
   TheStream->write(Ptr, Size);
 
   // Reset the scanning pointer.
-  Scanned = nullptr;
+  Scanned = 0;
 }
 
 /// fouts() - This returns a reference to a formatted_raw_ostream for

@@ -1,19 +1,14 @@
-(* RUN: cp %s %T/ext_exc.ml
- * RUN: %ocamlc -g -w +A -package llvm.bitreader -linkpkg %T/ext_exc.ml -o %t
- * RUN: %t
- * RUN: %ocamlopt -g -w +A -package llvm.bitreader -linkpkg %T/ext_exc.ml -o %t
- * RUN: %t
+(* RUN: rm -rf %t.builddir
+ * RUN: mkdir -p %t.builddir
+ * RUN: cp %s %t.builddir
+ * RUN: %ocamlopt -warn-error A llvm.cmxa llvm_bitreader.cmxa llvm_executionengine.cmxa %t.builddir/ext_exc.ml -o %t
+ * RUN: %t </dev/null
  * XFAIL: vg_leak
  *)
-
 let context = Llvm.global_context ()
-
-let diagnostic_handler _ = ()
-
-(* This used to crash, we must not use 'external' in .mli files, but 'val' if we
+(* this used to crash, we must not use 'external' in .mli files, but 'val' if we
  * want the let _ bindings executed, see http://caml.inria.fr/mantis/view.php?id=4166 *)
 let _ =
-    Llvm.set_diagnostic_handler context (Some diagnostic_handler);
     try
         ignore (Llvm_bitreader.get_module context (Llvm.MemoryBuffer.of_stdin ()))
     with

@@ -21,18 +21,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_X86_X86INSTRBUILDER_H
-#define LLVM_LIB_TARGET_X86_X86INSTRBUILDER_H
+#ifndef X86INSTRBUILDER_H
+#define X86INSTRBUILDER_H
 
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
-#include "llvm/CodeGen/MachineFunction.h"
-#include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
-#include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/MC/MCInstrDesc.h"
-#include <cassert>
 
 namespace llvm {
 
@@ -58,16 +52,16 @@ struct X86AddressMode {
   unsigned GVOpFlags;
 
   X86AddressMode()
-    : BaseType(RegBase), Scale(1), IndexReg(0), Disp(0), GV(nullptr),
-      GVOpFlags(0) {
+    : BaseType(RegBase), Scale(1), IndexReg(0), Disp(0), GV(0), GVOpFlags(0) {
     Base.Reg = 0;
   }
+
 
   void getFullAddress(SmallVectorImpl<MachineOperand> &MO) {
     assert(Scale == 1 || Scale == 2 || Scale == 4 || Scale == 8);
 
     if (BaseType == X86AddressMode::RegBase)
-      MO.push_back(MachineOperand::CreateReg(Base.Reg, false, false, false,
+      MO.push_back(MachineOperand::CreateReg(Base.Reg, false, false,
                                              false, false, false, 0, false));
     else {
       assert(BaseType == X86AddressMode::FrameIndexBase);
@@ -75,46 +69,18 @@ struct X86AddressMode {
     }
 
     MO.push_back(MachineOperand::CreateImm(Scale));
-    MO.push_back(MachineOperand::CreateReg(IndexReg, false, false, false, false,
-                                           false, false, 0, false));
+    MO.push_back(MachineOperand::CreateReg(IndexReg, false, false,
+                                           false, false, false, 0, false));
 
     if (GV)
       MO.push_back(MachineOperand::CreateGA(GV, Disp, GVOpFlags));
     else
       MO.push_back(MachineOperand::CreateImm(Disp));
 
-    MO.push_back(MachineOperand::CreateReg(0, false, false, false, false, false,
-                                           false, 0, false));
+    MO.push_back(MachineOperand::CreateReg(0, false, false,
+                                           false, false, false, 0, false));
   }
 };
-
-/// Compute the addressing mode from an machine instruction starting with the
-/// given operand.
-static inline X86AddressMode getAddressFromInstr(MachineInstr *MI,
-                                                 unsigned Operand) {
-  X86AddressMode AM;
-  MachineOperand &Op = MI->getOperand(Operand);
-  if (Op.isReg()) {
-    AM.BaseType = X86AddressMode::RegBase;
-    AM.Base.Reg = Op.getReg();
-  } else {
-    AM.BaseType = X86AddressMode::FrameIndexBase;
-    AM.Base.FrameIndex = Op.getIndex();
-  }
-  Op = MI->getOperand(Operand + 1);
-  if (Op.isImm())
-    AM.Scale = Op.getImm();
-  Op = MI->getOperand(Operand + 2);
-  if (Op.isImm())
-    AM.IndexReg = Op.getImm();
-  Op = MI->getOperand(Operand + 3);
-  if (Op.isGlobal()) {
-    AM.GV = Op.getGlobal();
-  } else {
-    AM.Disp = Op.getImm();
-  }
-  return AM;
-}
 
 /// addDirectMem - This function is used to add a direct memory reference to the
 /// current instruction -- that is, a dereference of an address in a register,
@@ -182,16 +148,17 @@ static inline const MachineInstrBuilder &
 addFrameReference(const MachineInstrBuilder &MIB, int FI, int Offset = 0) {
   MachineInstr *MI = MIB;
   MachineFunction &MF = *MI->getParent()->getParent();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MachineFrameInfo &MFI = *MF.getFrameInfo();
   const MCInstrDesc &MCID = MI->getDesc();
-  auto Flags = MachineMemOperand::MONone;
+  unsigned Flags = 0;
   if (MCID.mayLoad())
     Flags |= MachineMemOperand::MOLoad;
   if (MCID.mayStore())
     Flags |= MachineMemOperand::MOStore;
-  MachineMemOperand *MMO = MF.getMachineMemOperand(
-      MachinePointerInfo::getFixedStack(MF, FI, Offset), Flags,
-      MFI.getObjectSize(FI), MFI.getObjectAlignment(FI));
+  MachineMemOperand *MMO =
+    MF.getMachineMemOperand(MachinePointerInfo::getFixedStack(FI, Offset),
+                            Flags, MFI.getObjectSize(FI),
+                            MFI.getObjectAlignment(FI));
   return addOffset(MIB.addFrameIndex(FI), Offset)
             .addMemOperand(MMO);
 }
@@ -211,6 +178,6 @@ addConstantPoolReference(const MachineInstrBuilder &MIB, unsigned CPI,
     .addConstantPoolIndex(CPI, 0, OpFlags).addReg(0);
 }
 
-} // end namespace llvm
+} // End llvm namespace
 
-#endif // LLVM_LIB_TARGET_X86_X86INSTRBUILDER_H
+#endif

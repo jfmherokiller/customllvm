@@ -11,12 +11,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_CODEGEN_SELECTIONDAG_SDNODEDBGVALUE_H
-#define LLVM_LIB_CODEGEN_SELECTIONDAG_SDNODEDBGVALUE_H
+#ifndef LLVM_CODEGEN_SDNODEDBGVALUE_H
+#define LLVM_CODEGEN_SDNODEDBGVALUE_H
 
-#include "llvm/IR/DebugLoc.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/DataTypes.h"
-#include <utility>
+#include "llvm/Support/DebugLoc.h"
 
 namespace llvm {
 
@@ -35,6 +35,7 @@ public:
     FRAMEIX = 2             // value is contents of a stack location
   };
 private:
+  enum DbgValueKind kind;
   union {
     struct {
       SDNode *Node;         // valid for expressions
@@ -43,83 +44,69 @@ private:
     const Value *Const;     // valid for constants
     unsigned FrameIx;       // valid for stack objects
   } u;
-  MDNode *Var;
-  MDNode *Expr;
+  MDNode *mdPtr;
   uint64_t Offset;
   DebugLoc DL;
   unsigned Order;
-  enum DbgValueKind kind;
-  bool IsIndirect;
-  bool Invalid = false;
-
+  bool Invalid;
 public:
   // Constructor for non-constants.
-  SDDbgValue(MDNode *Var, MDNode *Expr, SDNode *N, unsigned R, bool indir,
-             uint64_t off, DebugLoc dl, unsigned O)
-      : Var(Var), Expr(Expr), Offset(off), DL(std::move(dl)), Order(O),
-        IsIndirect(indir) {
+  SDDbgValue(MDNode *mdP, SDNode *N, unsigned R, uint64_t off, DebugLoc dl,
+             unsigned O) : mdPtr(mdP), Offset(off), DL(dl), Order(O),
+                           Invalid(false) {
     kind = SDNODE;
     u.s.Node = N;
     u.s.ResNo = R;
   }
 
   // Constructor for constants.
-  SDDbgValue(MDNode *Var, MDNode *Expr, const Value *C, uint64_t off,
-             DebugLoc dl, unsigned O)
-      : Var(Var), Expr(Expr), Offset(off), DL(std::move(dl)), Order(O),
-        IsIndirect(false) {
+  SDDbgValue(MDNode *mdP, const Value *C, uint64_t off, DebugLoc dl,
+             unsigned O) : 
+    mdPtr(mdP), Offset(off), DL(dl), Order(O), Invalid(false) {
     kind = CONST;
     u.Const = C;
   }
 
   // Constructor for frame indices.
-  SDDbgValue(MDNode *Var, MDNode *Expr, unsigned FI, uint64_t off, DebugLoc dl,
-             unsigned O)
-      : Var(Var), Expr(Expr), Offset(off), DL(std::move(dl)), Order(O),
-        IsIndirect(false) {
+  SDDbgValue(MDNode *mdP, unsigned FI, uint64_t off, DebugLoc dl, unsigned O) : 
+    mdPtr(mdP), Offset(off), DL(dl), Order(O), Invalid(false) {
     kind = FRAMEIX;
     u.FrameIx = FI;
   }
 
   // Returns the kind.
-  DbgValueKind getKind() const { return kind; }
+  DbgValueKind getKind() { return kind; }
 
-  // Returns the MDNode pointer for the variable.
-  MDNode *getVariable() const { return Var; }
-
-  // Returns the MDNode pointer for the expression.
-  MDNode *getExpression() const { return Expr; }
+  // Returns the MDNode pointer.
+  MDNode *getMDPtr() { return mdPtr; }
 
   // Returns the SDNode* for a register ref
-  SDNode *getSDNode() const { assert (kind==SDNODE); return u.s.Node; }
+  SDNode *getSDNode() { assert (kind==SDNODE); return u.s.Node; }
 
   // Returns the ResNo for a register ref
-  unsigned getResNo() const { assert (kind==SDNODE); return u.s.ResNo; }
+  unsigned getResNo() { assert (kind==SDNODE); return u.s.ResNo; }
 
   // Returns the Value* for a constant
-  const Value *getConst() const { assert (kind==CONST); return u.Const; }
+  const Value *getConst() { assert (kind==CONST); return u.Const; }
 
   // Returns the FrameIx for a stack object
-  unsigned getFrameIx() const { assert (kind==FRAMEIX); return u.FrameIx; }
-
-  // Returns whether this is an indirect value.
-  bool isIndirect() const { return IsIndirect; }
+  unsigned getFrameIx() { assert (kind==FRAMEIX); return u.FrameIx; }
 
   // Returns the offset.
-  uint64_t getOffset() const { return Offset; }
+  uint64_t getOffset() { return Offset; }
 
   // Returns the DebugLoc.
-  DebugLoc getDebugLoc() const { return DL; }
+  DebugLoc getDebugLoc() { return DL; }
 
   // Returns the SDNodeOrder.  This is the order of the preceding node in the
   // input.
-  unsigned getOrder() const { return Order; }
+  unsigned getOrder() { return Order; }
 
   // setIsInvalidated / isInvalidated - Setter / getter of the "Invalidated"
   // property. A SDDbgValue is invalid if the SDNode that produces the value is
   // deleted.
   void setIsInvalidated() { Invalid = true; }
-  bool isInvalidated() const { return Invalid; }
+  bool isInvalidated() { return Invalid; }
 };
 
 } // end llvm namespace

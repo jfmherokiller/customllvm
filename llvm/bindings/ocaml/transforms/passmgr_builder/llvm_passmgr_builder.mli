@@ -14,41 +14,41 @@
 
 type t
 
-(** See the [llvm::PassManagerBuilder] function. *)
+(** See [llvm::PassManagerBuilder]. *)
 external create : unit -> t
   = "llvm_pmbuilder_create"
 
-(** See the [llvm::PassManagerBuilder::OptLevel] function. *)
+(** See [llvm::PassManagerBuilder::OptLevel]. *)
 external set_opt_level : int -> t -> unit
   = "llvm_pmbuilder_set_opt_level"
 
-(** See the [llvm::PassManagerBuilder::SizeLevel] function. *)
+(** See [llvm::PassManagerBuilder::SizeLevel]. *)
 external set_size_level : int -> t -> unit
   = "llvm_pmbuilder_set_size_level"
 
-(** See the [llvm::PassManagerBuilder::DisableUnitAtATime] function. *)
+(** See [llvm::PassManagerBuilder::DisableUnitAtATime]. *)
 external set_disable_unit_at_a_time : bool -> t -> unit
   = "llvm_pmbuilder_set_disable_unit_at_a_time"
 
-(** See the [llvm::PassManagerBuilder::DisableUnrollLoops] function. *)
+(** See [llvm::PassManagerBuilder::DisableUnrollLoops]. *)
 external set_disable_unroll_loops : bool -> t -> unit
   = "llvm_pmbuilder_set_disable_unroll_loops"
 
-(** See the [llvm::PassManagerBuilder::Inliner] function. *)
+(** See [llvm::PassManagerBuilder::Inliner]. *)
 external use_inliner_with_threshold : int -> t -> unit
   = "llvm_pmbuilder_use_inliner_with_threshold"
 
-(** See the [llvm::PassManagerBuilder::populateFunctionPassManager] function. *)
+(** See [llvm::PassManagerBuilder::populateFunctionPassManager]. *)
 external populate_function_pass_manager
   : [ `Function ] Llvm.PassManager.t -> t -> unit
   = "llvm_pmbuilder_populate_function_pass_manager"
 
-(** See the [llvm::PassManagerBuilder::populateModulePassManager] function. *)
+(** See [llvm::PassManagerBuilder::populateModulePassManager]. *)
 external populate_module_pass_manager
   : [ `Module ] Llvm.PassManager.t -> t -> unit
   = "llvm_pmbuilder_populate_module_pass_manager"
 
-(** See the [llvm::PassManagerBuilder::populateLTOPassManager] function. *)
+(** See [llvm::PassManagerBuilder::populateLTOPassManager]. *)
 external populate_lto_pass_manager
   : [ `Module ] Llvm.PassManager.t -> internalize:bool -> run_inliner:bool -> t -> unit
   = "llvm_pmbuilder_populate_lto_pass_manager"

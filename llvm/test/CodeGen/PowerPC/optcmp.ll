@@ -1,4 +1,4 @@
-; RUN: llc -verify-machineinstrs < %s -mtriple=powerpc64-unknown-linux-gnu -mcpu=a2 -mattr=-crbits -disable-ppc-cmp-opt=0 | FileCheck %s
+; RUN: llc < %s -mtriple=powerpc64-unknown-linux-gnu -mcpu=a2 -disable-ppc-cmp-opt=0 | FileCheck %s
 target datalayout = "E-p:64:64:64-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-f128:128:128-v128:128:128-n32:64"
 target triple = "powerpc64-unknown-linux-gnu"
 
@@ -72,13 +72,13 @@ define i64 @foold(i64 %a, i64 %b, i64* nocapture %c) #0 {
 entry:
   %sub = sub nsw i64 %b, %a
   store i64 %sub, i64* %c, align 8
-  %cmp = icmp slt i64 %a, %b
+  %cmp = icmp eq i64 %a, %b
   %cond = select i1 %cmp, i64 %a, i64 %b
   ret i64 %cond
 
 ; CHECK: @foold
 ; CHECK: subf. [[REG:[0-9]+]], 3, 4
-; CHECK: isel 3, 3, 4, 1
+; CHECK: isel 3, 3, 4, 2
 ; CHECK: std [[REG]], 0(5)
 }
 
@@ -86,13 +86,13 @@ define i64 @foold2(i64 %a, i64 %b, i64* nocapture %c) #0 {
 entry:
   %sub = sub nsw i64 %a, %b
   store i64 %sub, i64* %c, align 8
-  %cmp = icmp slt i64 %a, %b
+  %cmp = icmp eq i64 %a, %b
   %cond = select i1 %cmp, i64 %a, i64 %b
   ret i64 %cond
 
 ; CHECK: @foold2
 ; CHECK: subf. [[REG:[0-9]+]], 4, 3
-; CHECK: isel 3, 3, 4, 0
+; CHECK: isel 3, 3, 4, 2
 ; CHECK: std [[REG]], 0(5)
 }
 
@@ -134,19 +134,3 @@ entry:
 ; CHECK-NOT: fsubs. 0, 1, 2
 ; CHECK: stfs 0, 0(5)
 }
-
-declare i64 @llvm.ctpop.i64(i64);
-
-define signext i64 @fooct(i64 signext %a, i64 signext %b, i64* nocapture %c) #0 {
-entry:
-  %sub = sub nsw i64 %a, %b
-  %subc = call i64 @llvm.ctpop.i64(i64 %sub)
-  store i64 %subc, i64* %c, align 4
-  %cmp = icmp sgt i64 %subc, 0
-  %cond = select i1 %cmp, i64 %a, i64 %b
-  ret i64 %cond
-
-; CHECK: @fooct
-; CHECK-NOT: popcntd.
-}
-

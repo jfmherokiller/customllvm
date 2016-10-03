@@ -30,23 +30,30 @@ by running ``/usr/bin/ld -plugin``. If it complains "missing argument" then
 you have plugin support. If not, such as an "unknown option" error then you
 will either need to build gold or install a version with plugin support.
 
-* Download, configure and build gold with plugin support:
+* To build gold with plugin support:
 
   .. code-block:: bash
 
-     $ git clone --depth 1 git://sourceware.org/git/binutils-gdb.git binutils
+     $ mkdir binutils
+     $ cd binutils
+     $ cvs -z 9 -d :pserver:anoncvs@sourceware.org:/cvs/src login
+     {enter "anoncvs" as the password}
+     $ cvs -z 9 -d :pserver:anoncvs@sourceware.org:/cvs/src co binutils
      $ mkdir build
      $ cd build
-     $ ../binutils/configure --enable-gold --enable-plugins --disable-werror
+     $ ../src/configure --enable-gold --enable-plugins
      $ make all-gold
 
-  That should leave you with ``build/gold/ld-new`` which supports
-  the ``-plugin`` option. Running ``make`` will additionally build
-  ``build/binutils/ar`` and ``nm-new`` binaries supporting plugins.
+  That should leave you with ``binutils/build/gold/ld-new`` which supports
+  the ``-plugin`` option. It also built would have
+  ``binutils/build/binutils/ar`` and ``nm-new`` which support plugins but
+  don't have a visible -plugin option, instead relying on the gold plugin
+  being present in ``../lib/bfd-plugins`` relative to where the binaries
+  are placed.
 
-* Build the LLVMgold plugin. Run CMake with
-  ``-DLLVM_BINUTILS_INCDIR=/path/to/binutils/include``.  The correct include
-  path will contain the file ``plugin-api.h``.
+* Build the LLVMgold plugin: Configure LLVM with
+  ``--with-binutils-include=/path/to/binutils/src/include`` and run
+  ``make``.
 
 Usage
 =====
@@ -65,10 +72,9 @@ the ``lib`` directory under its prefix and pass the ``-plugin`` option to
 ``ld``. It will not look for an alternate linker, which is why you need
 gold to be the installed system linker in your path.
 
-``ar`` and ``nm`` also accept the ``-plugin`` option and it's possible to
-to install ``LLVMgold.so`` to ``/usr/lib/bfd-plugins`` for a seamless setup.
-If you built your own gold, be sure to install the ``ar`` and ``nm-new`` you
-built to ``/usr/bin``.
+If you want ``ar`` and ``nm`` to work seamlessly as well, install
+``LLVMgold.so`` to ``/usr/lib/bfd-plugins``. If you built your own gold, be
+sure to install the ``ar`` and ``nm-new`` you built to ``/usr/bin``.
 
 
 Example of link time optimization

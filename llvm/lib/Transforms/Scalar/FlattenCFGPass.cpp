@@ -11,14 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "flattencfg"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/IR/CFG.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CFG.h"
 #include "llvm/Transforms/Utils/Local.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "flattencfg"
 
 namespace {
 struct FlattenCFGPass : public FunctionPass {
@@ -27,10 +26,10 @@ public:
   FlattenCFGPass() : FunctionPass(ID) {
     initializeFlattenCFGPassPass(*PassRegistry::getPassRegistry());
   }
-  bool runOnFunction(Function &F) override;
+  bool runOnFunction(Function &F);
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<AAResultsWrapperPass>();
+  void getAnalysisUsage(AnalysisUsage &AU) const {
+    AU.addRequired<AliasAnalysis>();
   }
 
 private:
@@ -41,7 +40,7 @@ private:
 char FlattenCFGPass::ID = 0;
 INITIALIZE_PASS_BEGIN(FlattenCFGPass, "flattencfg", "Flatten the CFG", false,
                       false)
-INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
+INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(FlattenCFGPass, "flattencfg", "Flatten the CFG", false,
                     false)
 
@@ -59,7 +58,7 @@ static bool iterativelyFlattenCFG(Function &F, AliasAnalysis *AA) {
     // Loop over all of the basic blocks and remove them if they are unneeded...
     //
     for (Function::iterator BBIt = F.begin(); BBIt != F.end();) {
-      if (FlattenCFG(&*BBIt++, AA)) {
+      if (FlattenCFG(BBIt++, AA)) {
         LocalChange = true;
       }
     }
@@ -69,7 +68,7 @@ static bool iterativelyFlattenCFG(Function &F, AliasAnalysis *AA) {
 }
 
 bool FlattenCFGPass::runOnFunction(Function &F) {
-  AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
+  AA = &getAnalysis<AliasAnalysis>();
   bool EverChanged = false;
   // iterativelyFlattenCFG can make some blocks dead.
   while (iterativelyFlattenCFG(F, AA)) {

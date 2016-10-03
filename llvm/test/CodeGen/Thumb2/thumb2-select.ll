@@ -1,5 +1,4 @@
-; RUN: llc -mtriple=thumb-eabi -mcpu=arm1156t2-s -mattr=+thumb2 -show-mc-encoding %s -o - \
-; RUN:  | FileCheck %s
+; RUN: llc < %s -march=thumb -mattr=+thumb2 -show-mc-encoding | FileCheck %s
 
 define i32 @f1(i32 %a.s) {
 entry:

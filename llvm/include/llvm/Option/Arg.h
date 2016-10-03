@@ -27,10 +27,13 @@ class ArgList;
 /// \brief A concrete instance of a particular driver option.
 ///
 /// The Arg class encodes just enough information to be able to
-/// derive the argument values efficiently.
+/// derive the argument values efficiently. In addition, Arg
+/// instances have an intrusive double linked list which is used by
+/// ArgList to provide efficient iteration over all instances of a
+/// particular option.
 class Arg {
-  Arg(const Arg &) = delete;
-  void operator=(const Arg &) = delete;
+  Arg(const Arg &) LLVM_DELETED_FUNCTION;
+  void operator=(const Arg &) LLVM_DELETED_FUNCTION;
 
 private:
   /// \brief The option this argument is an instance of.
@@ -60,14 +63,14 @@ private:
 
 public:
   Arg(const Option Opt, StringRef Spelling, unsigned Index,
-      const Arg *BaseArg = nullptr);
+      const Arg *BaseArg = 0);
   Arg(const Option Opt, StringRef Spelling, unsigned Index,
-      const char *Value0, const Arg *BaseArg = nullptr);
+      const char *Value0, const Arg *BaseArg = 0);
   Arg(const Option Opt, StringRef Spelling, unsigned Index,
-      const char *Value0, const char *Value1, const Arg *BaseArg = nullptr);
+      const char *Value0, const char *Value1, const Arg *BaseArg = 0);
   ~Arg();
 
-  const Option &getOption() const { return Opt; }
+  const Option getOption() const { return Opt; }
   StringRef getSpelling() const { return Spelling; }
   unsigned getIndex() const { return Index; }
 
@@ -78,7 +81,9 @@ public:
   const Arg &getBaseArg() const {
     return BaseArg ? *BaseArg : *this;
   }
-  void setBaseArg(const Arg *BaseArg) { this->BaseArg = BaseArg; }
+  void setBaseArg(const Arg *_BaseArg) {
+    BaseArg = _BaseArg;
+  }
 
   bool getOwnsValues() const { return OwnsValues; }
   void setOwnsValues(bool Value) const { OwnsValues = Value; }
@@ -93,8 +98,9 @@ public:
     return Values[N];
   }
 
-  SmallVectorImpl<const char *> &getValues() { return Values; }
-  const SmallVectorImpl<const char *> &getValues() const { return Values; }
+  SmallVectorImpl<const char*> &getValues() {
+    return Values;
+  }
 
   bool containsValue(StringRef Value) const {
     for (unsigned i = 0, e = getNumValues(); i != e; ++i)
@@ -113,7 +119,6 @@ public:
   /// when rendered as a input (e.g., Xlinker).
   void renderAsInput(const ArgList &Args, ArgStringList &Output) const;
 
-  void print(raw_ostream &O) const;
   void dump() const;
 
   /// \brief Return a formatted version of the argument and

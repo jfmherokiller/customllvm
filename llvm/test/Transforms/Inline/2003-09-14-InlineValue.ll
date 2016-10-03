@@ -8,7 +8,7 @@ define internal i32 @Callee() {
         ret i32 %J
 }
 
-define i32 @Caller() personality i32 (...)* @__gxx_personality_v0 {
+define i32 @Caller() {
         %V = invoke i32 @Callee( )
                         to label %Ok unwind label %Bad          ; <i32> [#uses=1]
 
@@ -16,7 +16,7 @@ Ok:             ; preds = %0
         ret i32 %V
 
 Bad:            ; preds = %0
-        %exn = landingpad {i8*, i32}
+        %exn = landingpad {i8*, i32} personality i32 (...)* @__gxx_personality_v0
                  cleanup
         ret i32 0
 }

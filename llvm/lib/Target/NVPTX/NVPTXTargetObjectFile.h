@@ -7,11 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_NVPTX_NVPTXTARGETOBJECTFILE_H
-#define LLVM_LIB_TARGET_NVPTX_NVPTXTARGETOBJECTFILE_H
+#ifndef LLVM_TARGET_NVPTX_TARGETOBJECTFILE_H
+#define LLVM_TARGET_NVPTX_TARGETOBJECTFILE_H
 
 #include "NVPTXSection.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
+#include <string>
 
 namespace llvm {
 class GlobalVariable;
@@ -21,34 +22,56 @@ class NVPTXTargetObjectFile : public TargetLoweringObjectFile {
 
 public:
   NVPTXTargetObjectFile() {
-    TextSection = nullptr;
-    DataSection = nullptr;
-    BSSSection = nullptr;
-    ReadOnlySection = nullptr;
+    TextSection = 0;
+    DataSection = 0;
+    BSSSection = 0;
+    ReadOnlySection = 0;
 
-    StaticCtorSection = nullptr;
-    StaticDtorSection = nullptr;
-    LSDASection = nullptr;
-    EHFrameSection = nullptr;
-    DwarfAbbrevSection = nullptr;
-    DwarfInfoSection = nullptr;
-    DwarfLineSection = nullptr;
-    DwarfFrameSection = nullptr;
-    DwarfPubTypesSection = nullptr;
-    DwarfDebugInlineSection = nullptr;
-    DwarfStrSection = nullptr;
-    DwarfLocSection = nullptr;
-    DwarfARangesSection = nullptr;
-    DwarfRangesSection = nullptr;
-    DwarfMacinfoSection = nullptr;
+    StaticCtorSection = 0;
+    StaticDtorSection = 0;
+    LSDASection = 0;
+    EHFrameSection = 0;
+    DwarfAbbrevSection = 0;
+    DwarfInfoSection = 0;
+    DwarfLineSection = 0;
+    DwarfFrameSection = 0;
+    DwarfPubTypesSection = 0;
+    DwarfDebugInlineSection = 0;
+    DwarfStrSection = 0;
+    DwarfLocSection = 0;
+    DwarfARangesSection = 0;
+    DwarfRangesSection = 0;
+    DwarfMacroInfoSection = 0;
   }
 
-  virtual ~NVPTXTargetObjectFile();
+  ~NVPTXTargetObjectFile() {
+    delete TextSection;
+    delete DataSection;
+    delete BSSSection;
+    delete ReadOnlySection;
 
-  void Initialize(MCContext &ctx, const TargetMachine &TM) override {
+    delete StaticCtorSection;
+    delete StaticDtorSection;
+    delete LSDASection;
+    delete EHFrameSection;
+    delete DwarfAbbrevSection;
+    delete DwarfInfoSection;
+    delete DwarfLineSection;
+    delete DwarfFrameSection;
+    delete DwarfPubTypesSection;
+    delete DwarfDebugInlineSection;
+    delete DwarfStrSection;
+    delete DwarfLocSection;
+    delete DwarfARangesSection;
+    delete DwarfRangesSection;
+    delete DwarfMacroInfoSection;
+  }
+
+  virtual void Initialize(MCContext &ctx, const TargetMachine &TM) {
     TargetLoweringObjectFile::Initialize(ctx, TM);
     TextSection = new NVPTXSection(MCSection::SV_ELF, SectionKind::getText());
-    DataSection = new NVPTXSection(MCSection::SV_ELF, SectionKind::getData());
+    DataSection =
+        new NVPTXSection(MCSection::SV_ELF, SectionKind::getDataRel());
     BSSSection = new NVPTXSection(MCSection::SV_ELF, SectionKind::getBSS());
     ReadOnlySection =
         new NVPTXSection(MCSection::SV_ELF, SectionKind::getReadOnly());
@@ -81,23 +104,20 @@ public:
         new NVPTXSection(MCSection::SV_ELF, SectionKind::getMetadata());
     DwarfRangesSection =
         new NVPTXSection(MCSection::SV_ELF, SectionKind::getMetadata());
-    DwarfMacinfoSection =
+    DwarfMacroInfoSection =
         new NVPTXSection(MCSection::SV_ELF, SectionKind::getMetadata());
   }
 
-  MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
-                                   const Constant *C,
-                                   unsigned &Align) const override {
+  virtual const MCSection *getSectionForConstant(SectionKind Kind) const {
     return ReadOnlySection;
   }
 
-  MCSection *getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
-                                      const TargetMachine &TM) const override {
+  virtual const MCSection *
+  getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
+                           Mangler *Mang, const TargetMachine &TM) const {
     return DataSection;
   }
 
-  MCSection *SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
-                                    const TargetMachine &TM) const override;
 };
 
 } // end namespace llvm

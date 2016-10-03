@@ -10,17 +10,16 @@
 // This file implements RegionPass and RGPassManager. All region optimization
 // and transformation passes are derived from RegionPass. RGPassManager is
 // responsible for managing RegionPasses.
-// Most of this code has been COPIED from LoopPass.cpp
+// most of these codes are COPY from LoopPass.cpp
 //
 //===----------------------------------------------------------------------===//
 #include "llvm/Analysis/RegionPass.h"
 #include "llvm/Analysis/RegionIterator.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/Timer.h"
-#include "llvm/Support/raw_ostream.h"
-using namespace llvm;
 
 #define DEBUG_TYPE "regionpassmgr"
+#include "llvm/Support/Debug.h"
+using namespace llvm;
 
 //===----------------------------------------------------------------------===//
 // RGPassManager
@@ -32,39 +31,41 @@ RGPassManager::RGPassManager()
   : FunctionPass(ID), PMDataManager() {
   skipThisRegion = false;
   redoThisRegion = false;
-  RI = nullptr;
-  CurrentRegion = nullptr;
+  RI = NULL;
+  CurrentRegion = NULL;
 }
 
 // Recurse through all subregions and all regions  into RQ.
-static void addRegionIntoQueue(Region &R, std::deque<Region *> &RQ) {
-  RQ.push_back(&R);
-  for (const auto &E : R)
-    addRegionIntoQueue(*E, RQ);
+static void addRegionIntoQueue(Region *R, std::deque<Region *> &RQ) {
+  RQ.push_back(R);
+  for (Region::iterator I = R->begin(), E = R->end(); I != E; ++I)
+    addRegionIntoQueue(*I, RQ);
 }
 
 /// Pass Manager itself does not invalidate any analysis info.
 void RGPassManager::getAnalysisUsage(AnalysisUsage &Info) const {
-  Info.addRequired<RegionInfoPass>();
+  Info.addRequired<RegionInfo>();
   Info.setPreservesAll();
 }
 
 /// run - Execute all of the passes scheduled for execution.  Keep track of
 /// whether any of the passes modifies the function, and if so, return true.
 bool RGPassManager::runOnFunction(Function &F) {
-  RI = &getAnalysis<RegionInfoPass>().getRegionInfo();
+  RI = &getAnalysis<RegionInfo>();
   bool Changed = false;
 
   // Collect inherited analysis from Module level pass manager.
   populateInheritedAnalysis(TPM->activeStack);
 
-  addRegionIntoQueue(*RI->getTopLevelRegion(), RQ);
+  addRegionIntoQueue(RI->getTopLevelRegion(), RQ);
 
   if (RQ.empty()) // No regions, skip calling finalizers
     return false;
 
   // Initialization
-  for (Region *R : RQ) {
+  for (std::deque<Region *>::const_iterator I = RQ.begin(), E = RQ.end();
+       I != E; ++I) {
+    Region *R = *I;
     for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
       RegionPass *RP = (RegionPass *)getContainedPass(Index);
       Changed |= RP->doInitialization(R, *this);
@@ -82,11 +83,9 @@ bool RGPassManager::runOnFunction(Function &F) {
     for (unsigned Index = 0; Index < getNumContainedPasses(); ++Index) {
       RegionPass *P = (RegionPass*)getContainedPass(Index);
 
-      if (isPassDebuggingExecutionsOrMore()) {
-        dumpPassInfo(P, EXECUTION_MSG, ON_REGION_MSG,
-                     CurrentRegion->getNameStr());
-        dumpRequiredSet(P);
-      }
+      dumpPassInfo(P, EXECUTION_MSG, ON_REGION_MSG,
+                   CurrentRegion->getNameStr());
+      dumpRequiredSet(P);
 
       initializeAnalysisImpl(P);
 
@@ -97,13 +96,11 @@ bool RGPassManager::runOnFunction(Function &F) {
         Changed |= P->runOnRegion(CurrentRegion, *this);
       }
 
-      if (isPassDebuggingExecutionsOrMore()) {
-        if (Changed)
-          dumpPassInfo(P, MODIFICATION_MSG, ON_REGION_MSG,
-                       skipThisRegion ? "<deleted>" :
-                                      CurrentRegion->getNameStr());
-        dumpPreservedSet(P);
-      }
+      if (Changed)
+        dumpPassInfo(P, MODIFICATION_MSG, ON_REGION_MSG,
+                     skipThisRegion ? "<deleted>" :
+                                    CurrentRegion->getNameStr());
+      dumpPreservedSet(P);
 
       if (!skipThisRegion) {
         // Manually check that this region is still healthy. This is done
@@ -123,8 +120,8 @@ bool RGPassManager::runOnFunction(Function &F) {
       removeNotPreservedAnalysis(P);
       recordAvailableAnalysis(P);
       removeDeadPasses(P,
-                       (!isPassDebuggingExecutionsOrMore() || skipThisRegion) ?
-                       "<deleted>" :  CurrentRegion->getNameStr(),
+                       skipThisRegion ? "<deleted>" :
+                                      CurrentRegion->getNameStr(),
                        ON_REGION_MSG);
 
       if (skipThisRegion)
@@ -188,21 +185,19 @@ private:
 
 public:
   static char ID;
+  PrintRegionPass() : RegionPass(ID), Out(dbgs()) {}
   PrintRegionPass(const std::string &B, raw_ostream &o)
       : RegionPass(ID), Banner(B), Out(o) {}
 
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
+  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
     AU.setPreservesAll();
   }
 
-  bool runOnRegion(Region *R, RGPassManager &RGM) override {
+  virtual bool runOnRegion(Region *R, RGPassManager &RGM) {
     Out << Banner;
-    for (const auto *BB : R->blocks()) {
-      if (BB)
-        BB->print(Out);
-      else
-        Out << "Printing <null> Block";
-    }
+    for (Region::block_iterator I = R->block_begin(), E = R->block_end();
+         I != E; ++I)
+      (*I)->print(Out);
 
     return false;
   }

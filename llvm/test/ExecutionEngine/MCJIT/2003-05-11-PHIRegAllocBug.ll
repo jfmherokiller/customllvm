@@ -1,4 +1,6 @@
-; RUN: %lli %s > /dev/null
+; RUN: %lli_mcjit %s > /dev/null
+
+target datalayout = "e-p:32:32"
 
 define i32 @main() {
 entry:

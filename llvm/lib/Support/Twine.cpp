@@ -28,6 +28,13 @@ void Twine::toVector(SmallVectorImpl<char> &Out) const {
   print(OS);
 }
 
+StringRef Twine::toStringRef(SmallVectorImpl<char> &Out) const {
+  if (isSingleStringRef())
+    return getSingleStringRef();
+  toVector(Out);
+  return StringRef(Out.data(), Out.size());
+}
+
 StringRef Twine::toNullTerminatedStringRef(SmallVectorImpl<char> &Out) const {
   if (isUnary()) {
     switch (getLHSKind()) {
@@ -64,9 +71,6 @@ void Twine::printOneChild(raw_ostream &OS, Child Ptr,
     break;
   case Twine::StringRefKind:
     OS << *Ptr.stringRef;
-    break;
-  case Twine::SmallStringKind:
-    OS << *Ptr.smallString;
     break;
   case Twine::CharKind:
     OS << Ptr.character;
@@ -118,9 +122,6 @@ void Twine::printOneChildRepr(raw_ostream &OS, Child Ptr,
     OS << "stringref:\""
        << Ptr.stringRef << "\"";
     break;
-  case Twine::SmallStringKind:
-    OS << "smallstring:\"" << *Ptr.smallString << "\"";
-    break;
   case Twine::CharKind:
     OS << "char:\"" << Ptr.character << "\"";
     break;
@@ -161,10 +162,10 @@ void Twine::printRepr(raw_ostream &OS) const {
   OS << ")";
 }
 
-LLVM_DUMP_METHOD void Twine::dump() const {
-  print(dbgs());
+void Twine::dump() const {
+  print(llvm::dbgs());
 }
 
 void Twine::dumpRepr() const {
-  printRepr(dbgs());
+  printRepr(llvm::dbgs());
 }

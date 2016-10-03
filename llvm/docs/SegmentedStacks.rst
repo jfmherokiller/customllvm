@@ -13,8 +13,9 @@ monolithic chunk (of some worst case size) at thread initialization. This is
 done by allocating stack blocks (henceforth called *stacklets*) and linking them
 into a doubly linked list. The function prologue is responsible for checking if
 the current stacklet has enough space for the function to execute; and if not,
-call into the libgcc runtime to allocate more stack space. Segmented stacks are
-enabled with the ``"split-stack"`` attribute on LLVM functions.
+call into the libgcc runtime to allocate more stack space. When using ``llc``,
+segmented stacks can be enabled by adding ``-segmented-stacks`` to the command
+line.
 
 The runtime functionality is `already there in libgcc
 <http://gcc.gnu.org/wiki/SplitStacks>`_.
@@ -33,7 +34,7 @@ current stack limit (minus the amount of space needed to allocate a new block) -
 this slot's offset is again dictated by ``libgcc``. The generated
 assembly looks like this on x86-64:
 
-.. code-block:: text
+.. code-block:: nasm
 
     leaq     -8(%rsp), %r10
     cmpq     %fs:112,  %r10

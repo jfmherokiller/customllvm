@@ -21,14 +21,13 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 
 namespace llvm {
 
+class AliasAnalysis;
 class LiveIntervals;
 class MachineBlockFrequencyInfo;
 class MachineLoopInfo;
@@ -72,10 +71,6 @@ private:
   /// ScannedRemattable - true when remattable values have been identified.
   bool ScannedRemattable;
 
-  /// DeadRemats - The saved instructions which have already been dead after
-  /// rematerialization but not deleted yet -- to be done in postOptimization.
-  SmallPtrSet<MachineInstr *, 32> *DeadRemats;
-
   /// Remattable - Values defined by remattable instructions as identified by
   /// tii.isTriviallyReMaterializable().
   SmallPtrSet<const VNInfo*,4> Remattable;
@@ -100,16 +95,11 @@ private:
                     SmallVector<LiveInterval*, 8>,
                     SmallPtrSet<LiveInterval*, 8> > ToShrinkSet;
   /// Helper for eliminateDeadDefs.
-  void eliminateDeadDef(MachineInstr *MI, ToShrinkSet &ToShrink,
-                        AliasAnalysis *AA);
+  void eliminateDeadDef(MachineInstr *MI, ToShrinkSet &ToShrink);
 
   /// MachineRegisterInfo callback to notify when new virtual
   /// registers are created.
-  void MRI_NoteNewVirtualRegister(unsigned VReg) override;
-
-  /// \brief Check if MachineOperand \p MO is a last use/kill either in the
-  /// main live range of \p LI or in one of the matching subregister ranges.
-  bool useIsKill(const LiveInterval &LI, const MachineOperand &MO) const;
+  void MRI_NoteNewVirtualRegister(unsigned VReg);
 
 public:
   /// Create a LiveRangeEdit for breaking down parent into smaller pieces.
@@ -121,20 +111,20 @@ public:
   /// @param vrm Map of virtual registers to physical registers for this
   ///            function.  If NULL, no virtual register map updates will
   ///            be done.  This could be the case if called before Regalloc.
-  /// @param deadRemats The collection of all the instructions defining an
-  ///                   original reg and are dead after remat.
-  LiveRangeEdit(LiveInterval *parent, SmallVectorImpl<unsigned> &newRegs,
-                MachineFunction &MF, LiveIntervals &lis, VirtRegMap *vrm,
-                Delegate *delegate = nullptr,
-                SmallPtrSet<MachineInstr *, 32> *deadRemats = nullptr)
-      : Parent(parent), NewRegs(newRegs), MRI(MF.getRegInfo()), LIS(lis),
-        VRM(vrm), TII(*MF.getSubtarget().getInstrInfo()), TheDelegate(delegate),
-        FirstNew(newRegs.size()), ScannedRemattable(false),
-        DeadRemats(deadRemats) {
-    MRI.setDelegate(this);
-  }
+  LiveRangeEdit(LiveInterval *parent,
+                SmallVectorImpl<unsigned> &newRegs,
+                MachineFunction &MF,
+                LiveIntervals &lis,
+                VirtRegMap *vrm,
+                Delegate *delegate = 0)
+    : Parent(parent), NewRegs(newRegs),
+      MRI(MF.getRegInfo()), LIS(lis), VRM(vrm),
+      TII(*MF.getTarget().getInstrInfo()),
+      TheDelegate(delegate),
+      FirstNew(newRegs.size()),
+      ScannedRemattable(false) { MRI.setDelegate(this); }
 
-  ~LiveRangeEdit() override { MRI.resetDelegate(this); }
+  ~LiveRangeEdit() { MRI.resetDelegate(this); }
 
   LiveInterval &getParent() const {
    assert(Parent && "No parent LiveInterval");
@@ -149,16 +139,6 @@ public:
   unsigned size() const { return NewRegs.size()-FirstNew; }
   bool empty() const { return size() == 0; }
   unsigned get(unsigned idx) const { return NewRegs[idx+FirstNew]; }
-
-  /// pop_back - It allows LiveRangeEdit users to drop new registers.
-  /// The context is when an original def instruction of a register is
-  /// dead after rematerialization, we still want to keep it for following
-  /// rematerializations. We save the def instruction in DeadRemats,
-  /// and replace the original dst register with a new dummy register so
-  /// the live range of original dst register can be shrinked normally.
-  /// We don't want to allocate phys register for the dummy register, so
-  /// we want to drop it from the NewRegs set.
-  void pop_back() { NewRegs.pop_back(); }
 
   ArrayRef<unsigned> regs() const {
     return makeArrayRef(NewRegs).slice(FirstNew);
@@ -193,15 +173,15 @@ public:
   /// Remat - Information needed to rematerialize at a specific location.
   struct Remat {
     VNInfo *ParentVNI;      // parent_'s value at the remat location.
-    MachineInstr *OrigMI;   // Instruction defining OrigVNI. It contains the
-                            // real expr for remat.
-    explicit Remat(VNInfo *ParentVNI) : ParentVNI(ParentVNI), OrigMI(nullptr) {}
+    MachineInstr *OrigMI;   // Instruction defining ParentVNI.
+    explicit Remat(VNInfo *ParentVNI) : ParentVNI(ParentVNI), OrigMI(0) {}
   };
 
   /// canRematerializeAt - Determine if ParentVNI can be rematerialized at
   /// UseIdx. It is assumed that parent_.getVNINfoAt(UseIdx) == ParentVNI.
   /// When cheapAsAMove is set, only cheap remats are allowed.
-  bool canRematerializeAt(Remat &RM, VNInfo *OrigVNI, SlotIndex UseIdx,
+  bool canRematerializeAt(Remat &RM,
+                          SlotIndex UseIdx,
                           bool cheapAsAMove);
 
   /// rematerializeAt - Rematerialize RM.ParentVNI into DestReg by inserting an
@@ -226,12 +206,6 @@ public:
     return Rematted.count(ParentVNI);
   }
 
-  void markDeadRemat(MachineInstr *inst) {
-    // DeadRemats is an optional field.
-    if (DeadRemats)
-      DeadRemats->insert(inst);
-  }
-
   /// eraseVirtReg - Notify the delegate that Reg is no longer in use, and try
   /// to erase it from LIS.
   void eraseVirtReg(unsigned Reg);
@@ -242,9 +216,8 @@ public:
   /// RegsBeingSpilled lists registers currently being spilled by the register
   /// allocator.  These registers should not be split into new intervals
   /// as currently those new intervals are not guaranteed to spill.
-  void eliminateDeadDefs(SmallVectorImpl<MachineInstr *> &Dead,
-                         ArrayRef<unsigned> RegsBeingSpilled = None,
-                         AliasAnalysis *AA = nullptr);
+  void eliminateDeadDefs(SmallVectorImpl<MachineInstr*> &Dead,
+                         ArrayRef<unsigned> RegsBeingSpilled = None);
 
   /// calculateRegClassAndHint - Recompute register class and hint for each new
   /// register.

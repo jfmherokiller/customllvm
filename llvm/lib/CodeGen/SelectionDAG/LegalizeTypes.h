@@ -13,10 +13,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_CODEGEN_SELECTIONDAG_LEGALIZETYPES_H
-#define LLVM_LIB_CODEGEN_SELECTIONDAG_LEGALIZETYPES_H
+#ifndef SELECTIONDAG_LEGALIZETYPES_H
+#define SELECTIONDAG_LEGALIZETYPES_H
 
+#define DEBUG_TYPE "legalize-types"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
@@ -25,122 +27,107 @@
 namespace llvm {
 
 //===----------------------------------------------------------------------===//
-/// This takes an arbitrary SelectionDAG as input and hacks on it until only
-/// value types the target machine can handle are left. This involves promoting
-/// small sizes to large sizes or splitting up large values into small values.
+/// DAGTypeLegalizer - This takes an arbitrary SelectionDAG as input and hacks
+/// on it until only value types the target machine can handle are left.  This
+/// involves promoting small sizes to large sizes or splitting up large values
+/// into small values.
 ///
 class LLVM_LIBRARY_VISIBILITY DAGTypeLegalizer {
   const TargetLowering &TLI;
   SelectionDAG &DAG;
 public:
-  /// This pass uses the NodeId on the SDNodes to hold information about the
-  /// state of the node. The enum has all the values.
+  // NodeIdFlags - This pass uses the NodeId on the SDNodes to hold information
+  // about the state of the node.  The enum has all the values.
   enum NodeIdFlags {
-    /// All operands have been processed, so this node is ready to be handled.
+    /// ReadyToProcess - All operands have been processed, so this node is ready
+    /// to be handled.
     ReadyToProcess = 0,
 
-    /// This is a new node, not before seen, that was created in the process of
-    /// legalizing some other node.
+    /// NewNode - This is a new node, not before seen, that was created in the
+    /// process of legalizing some other node.
     NewNode = -1,
 
-    /// This node's ID needs to be set to the number of its unprocessed
-    /// operands.
+    /// Unanalyzed - This node's ID needs to be set to the number of its
+    /// unprocessed operands.
     Unanalyzed = -2,
 
-    /// This is a node that has already been processed.
+    /// Processed - This is a node that has already been processed.
     Processed = -3
 
     // 1+ - This is a node which has this many unprocessed operands.
   };
 private:
 
-  /// This is a bitvector that contains two bits for each simple value type,
-  /// where the two bits correspond to the LegalizeAction enum from
-  /// TargetLowering. This can be queried with "getTypeAction(VT)".
+  /// ValueTypeActions - This is a bitvector that contains two bits for each
+  /// simple value type, where the two bits correspond to the LegalizeAction
+  /// enum from TargetLowering.  This can be queried with "getTypeAction(VT)".
   TargetLowering::ValueTypeActionImpl ValueTypeActions;
 
-  /// Return how we should legalize values of this type.
+  /// getTypeAction - Return how we should legalize values of this type.
   TargetLowering::LegalizeTypeAction getTypeAction(EVT VT) const {
     return TLI.getTypeAction(*DAG.getContext(), VT);
   }
 
-  /// Return true if this type is legal on this target.
+  /// isTypeLegal - Return true if this type is legal on this target.
   bool isTypeLegal(EVT VT) const {
     return TLI.getTypeAction(*DAG.getContext(), VT) == TargetLowering::TypeLegal;
   }
 
-  /// Return true if this is a simple legal type.
-  bool isSimpleLegalType(EVT VT) const {
-    return VT.isSimple() && TLI.isTypeLegal(VT);
-  }
-
-  /// Return true if this type can be passed in registers.
-  /// For example, x86_64's f128, should to be legally in registers
-  /// and only some operations converted to library calls or integer
-  /// bitwise operations.
-  bool isLegalInHWReg(EVT VT) const {
-    EVT NVT = TLI.getTypeToTransformTo(*DAG.getContext(), VT);
-    return VT == NVT && isSimpleLegalType(VT);
-  }
-
   EVT getSetCCResultType(EVT VT) const {
-    return TLI.getSetCCResultType(DAG.getDataLayout(), *DAG.getContext(), VT);
+    return TLI.getSetCCResultType(*DAG.getContext(), VT);
   }
 
-  /// Pretend all of this node's results are legal.
+  /// IgnoreNodeResults - Pretend all of this node's results are legal.
   bool IgnoreNodeResults(SDNode *N) const {
     return N->getOpcode() == ISD::TargetConstant;
   }
 
-  /// For integer nodes that are below legal width, this map indicates what
-  /// promoted value to use.
+  /// PromotedIntegers - For integer nodes that are below legal width, this map
+  /// indicates what promoted value to use.
   SmallDenseMap<SDValue, SDValue, 8> PromotedIntegers;
 
-  /// For integer nodes that need to be expanded this map indicates which
-  /// operands are the expanded version of the input.
+  /// ExpandedIntegers - For integer nodes that need to be expanded this map
+  /// indicates which operands are the expanded version of the input.
   SmallDenseMap<SDValue, std::pair<SDValue, SDValue>, 8> ExpandedIntegers;
 
-  /// For floating-point nodes converted to integers of the same size, this map
-  /// indicates the converted value to use.
+  /// SoftenedFloats - For floating point nodes converted to integers of
+  /// the same size, this map indicates the converted value to use.
   SmallDenseMap<SDValue, SDValue, 8> SoftenedFloats;
 
-  /// For floating-point nodes that have a smaller precision than the smallest
-  /// supported precision, this map indicates what promoted value to use.
-  SmallDenseMap<SDValue, SDValue, 8> PromotedFloats;
-
-  /// For float nodes that need to be expanded this map indicates which operands
-  /// are the expanded version of the input.
+  /// ExpandedFloats - For float nodes that need to be expanded this map
+  /// indicates which operands are the expanded version of the input.
   SmallDenseMap<SDValue, std::pair<SDValue, SDValue>, 8> ExpandedFloats;
 
-  /// For nodes that are <1 x ty>, this map indicates the scalar value of type
-  /// 'ty' to use.
+  /// ScalarizedVectors - For nodes that are <1 x ty>, this map indicates the
+  /// scalar value of type 'ty' to use.
   SmallDenseMap<SDValue, SDValue, 8> ScalarizedVectors;
 
-  /// For nodes that need to be split this map indicates which operands are the
-  /// expanded version of the input.
+  /// SplitVectors - For nodes that need to be split this map indicates
+  /// which operands are the expanded version of the input.
   SmallDenseMap<SDValue, std::pair<SDValue, SDValue>, 8> SplitVectors;
 
-  /// For vector nodes that need to be widened, indicates the widened value to
-  /// use.
+  /// WidenedVectors - For vector nodes that need to be widened, indicates
+  /// the widened value to use.
   SmallDenseMap<SDValue, SDValue, 8> WidenedVectors;
 
-  /// For values that have been replaced with another, indicates the replacement
-  /// value to use.
+  /// ReplacedValues - For values that have been replaced with another,
+  /// indicates the replacement value to use.
   SmallDenseMap<SDValue, SDValue, 8> ReplacedValues;
 
-  /// This defines a worklist of nodes to process. In order to be pushed onto
-  /// this worklist, all operands of a node must have already been processed.
+  /// Worklist - This defines a worklist of nodes to process.  In order to be
+  /// pushed onto this worklist, all operands of a node must have already been
+  /// processed.
   SmallVector<SDNode*, 128> Worklist;
 
 public:
   explicit DAGTypeLegalizer(SelectionDAG &dag)
     : TLI(dag.getTargetLoweringInfo()), DAG(dag),
     ValueTypeActions(TLI.getValueTypeActions()) {
-    static_assert(MVT::LAST_VALUETYPE <= MVT::MAX_ALLOWED_VALUETYPE,
-                  "Too many value types for ValueTypeActions to hold!");
+    assert(MVT::LAST_VALUETYPE <= MVT::MAX_ALLOWED_VALUETYPE &&
+           "Too many value types for ValueTypeActions to hold!");
   }
 
-  /// This is the main entry point for the type legalizer.  This does a
+  /// run - This is the main entry point for the type legalizer.  This does a
   /// top-down traversal of the dag, legalizing types as it goes.  Returns
   /// "true" if it made any changes.
   bool run();
@@ -168,25 +155,20 @@ private:
   bool CustomLowerNode(SDNode *N, EVT VT, bool LegalizeResult);
   bool CustomWidenLowerNode(SDNode *N, EVT VT);
 
-  /// Replace each result of the given MERGE_VALUES node with the corresponding
-  /// input operand, except for the result 'ResNo', for which the corresponding
-  /// input operand is returned.
+  /// DisintegrateMERGE_VALUES - Replace each result of the given MERGE_VALUES
+  /// node with the corresponding input operand, except for the result 'ResNo',
+  /// for which the corresponding input operand is returned.
   SDValue DisintegrateMERGE_VALUES(SDNode *N, unsigned ResNo);
 
   SDValue GetVectorElementPointer(SDValue VecPtr, EVT EltVT, SDValue Index);
   SDValue JoinIntegers(SDValue Lo, SDValue Hi);
   SDValue LibCallify(RTLIB::Libcall LC, SDNode *N, bool isSigned);
-
+  
   std::pair<SDValue, SDValue> ExpandChainLibCall(RTLIB::Libcall LC,
                                                  SDNode *Node, bool isSigned);
   std::pair<SDValue, SDValue> ExpandAtomic(SDNode *Node);
 
-  SDValue PromoteTargetBoolean(SDValue Bool, EVT ValVT);
-
-  /// Modify Bit Vector to match SetCC result type of ValVT.
-  /// The bit vector is widened with zeroes when WithZeroes is true.
-  SDValue WidenTargetBoolean(SDValue Bool, EVT ValVT, bool WithZeroes = false);
-
+  SDValue PromoteTargetBoolean(SDValue Bool, EVT VT);
   void ReplaceValueWith(SDValue From, SDValue To);
   void SplitInteger(SDValue Op, SDValue &Lo, SDValue &Hi);
   void SplitInteger(SDValue Op, EVT LoVT, EVT HiVT,
@@ -196,9 +178,9 @@ private:
   // Integer Promotion Support: LegalizeIntegerTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given a processed operand Op which was promoted to a larger integer type,
-  /// this returns the promoted value. The low bits of the promoted value
-  /// corresponding to the original type are exactly equal to Op.
+  /// GetPromotedInteger - Given a processed operand Op which was promoted to a
+  /// larger integer type, this returns the promoted value.  The low bits of the
+  /// promoted value corresponding to the original type are exactly equal to Op.
   /// The extra bits contain rubbish, so the promoted value may need to be zero-
   /// or sign-extended from the original type before it is usable (the helpers
   /// SExtPromotedInteger and ZExtPromotedInteger can do this for you).
@@ -213,7 +195,8 @@ private:
   }
   void SetPromotedInteger(SDValue Op, SDValue Result);
 
-  /// Get a promoted operand and sign extend it to the final size.
+  /// SExtPromotedInteger - Get a promoted operand and sign extend it to the
+  /// final size.
   SDValue SExtPromotedInteger(SDValue Op) {
     EVT OldVT = Op.getValueType();
     SDLoc dl(Op);
@@ -222,7 +205,8 @@ private:
                        DAG.getValueType(OldVT));
   }
 
-  /// Get a promoted operand and zero extend it to the final size.
+  /// ZExtPromotedInteger - Get a promoted operand and zero extend it to the
+  /// final size.
   SDValue ZExtPromotedInteger(SDValue Op) {
     EVT OldVT = Op.getValueType();
     SDLoc dl(Op);
@@ -237,7 +221,7 @@ private:
   SDValue PromoteIntRes_AssertZext(SDNode *N);
   SDValue PromoteIntRes_Atomic0(AtomicSDNode *N);
   SDValue PromoteIntRes_Atomic1(AtomicSDNode *N);
-  SDValue PromoteIntRes_AtomicCmpSwap(AtomicSDNode *N, unsigned ResNo);
+  SDValue PromoteIntRes_Atomic2(AtomicSDNode *N);
   SDValue PromoteIntRes_EXTRACT_SUBVECTOR(SDNode *N);
   SDValue PromoteIntRes_VECTOR_SHUFFLE(SDNode *N);
   SDValue PromoteIntRes_BUILD_VECTOR(SDNode *N);
@@ -246,7 +230,6 @@ private:
   SDValue PromoteIntRes_CONCAT_VECTORS(SDNode *N);
   SDValue PromoteIntRes_BITCAST(SDNode *N);
   SDValue PromoteIntRes_BSWAP(SDNode *N);
-  SDValue PromoteIntRes_BITREVERSE(SDNode *N);
   SDValue PromoteIntRes_BUILD_PAIR(SDNode *N);
   SDValue PromoteIntRes_Constant(SDNode *N);
   SDValue PromoteIntRes_CONVERT_RNDSAT(SDNode *N);
@@ -255,26 +238,24 @@ private:
   SDValue PromoteIntRes_CTTZ(SDNode *N);
   SDValue PromoteIntRes_EXTRACT_VECTOR_ELT(SDNode *N);
   SDValue PromoteIntRes_FP_TO_XINT(SDNode *N);
-  SDValue PromoteIntRes_FP_TO_FP16(SDNode *N);
+  SDValue PromoteIntRes_FP32_TO_FP16(SDNode *N);
   SDValue PromoteIntRes_INT_EXTEND(SDNode *N);
   SDValue PromoteIntRes_LOAD(LoadSDNode *N);
-  SDValue PromoteIntRes_MLOAD(MaskedLoadSDNode *N);
-  SDValue PromoteIntRes_MGATHER(MaskedGatherSDNode *N);
   SDValue PromoteIntRes_Overflow(SDNode *N);
   SDValue PromoteIntRes_SADDSUBO(SDNode *N, unsigned ResNo);
+  SDValue PromoteIntRes_SDIV(SDNode *N);
   SDValue PromoteIntRes_SELECT(SDNode *N);
   SDValue PromoteIntRes_VSELECT(SDNode *N);
   SDValue PromoteIntRes_SELECT_CC(SDNode *N);
   SDValue PromoteIntRes_SETCC(SDNode *N);
   SDValue PromoteIntRes_SHL(SDNode *N);
   SDValue PromoteIntRes_SimpleIntBinOp(SDNode *N);
-  SDValue PromoteIntRes_ZExtIntBinOp(SDNode *N);
-  SDValue PromoteIntRes_SExtIntBinOp(SDNode *N);
   SDValue PromoteIntRes_SIGN_EXTEND_INREG(SDNode *N);
   SDValue PromoteIntRes_SRA(SDNode *N);
   SDValue PromoteIntRes_SRL(SDNode *N);
   SDValue PromoteIntRes_TRUNCATE(SDNode *N);
   SDValue PromoteIntRes_UADDSUBO(SDNode *N, unsigned ResNo);
+  SDValue PromoteIntRes_UDIV(SDNode *N);
   SDValue PromoteIntRes_UNDEF(SDNode *N);
   SDValue PromoteIntRes_VAARG(SDNode *N);
   SDValue PromoteIntRes_XMULO(SDNode *N, unsigned ResNo);
@@ -290,13 +271,14 @@ private:
   SDValue PromoteIntOp_BUILD_VECTOR(SDNode *N);
   SDValue PromoteIntOp_CONVERT_RNDSAT(SDNode *N);
   SDValue PromoteIntOp_INSERT_VECTOR_ELT(SDNode *N, unsigned OpNo);
+  SDValue PromoteIntOp_EXTRACT_ELEMENT(SDNode *N);
   SDValue PromoteIntOp_EXTRACT_VECTOR_ELT(SDNode *N);
-  SDValue PromoteIntOp_EXTRACT_SUBVECTOR(SDNode *N);
   SDValue PromoteIntOp_CONCAT_VECTORS(SDNode *N);
   SDValue PromoteIntOp_SCALAR_TO_VECTOR(SDNode *N);
   SDValue PromoteIntOp_SELECT(SDNode *N, unsigned OpNo);
   SDValue PromoteIntOp_SELECT_CC(SDNode *N, unsigned OpNo);
   SDValue PromoteIntOp_SETCC(SDNode *N, unsigned OpNo);
+  SDValue PromoteIntOp_VSETCC(SDNode *N, unsigned OpNo);
   SDValue PromoteIntOp_Shift(SDNode *N);
   SDValue PromoteIntOp_SIGN_EXTEND(SDNode *N);
   SDValue PromoteIntOp_SINT_TO_FP(SDNode *N);
@@ -304,10 +286,6 @@ private:
   SDValue PromoteIntOp_TRUNCATE(SDNode *N);
   SDValue PromoteIntOp_UINT_TO_FP(SDNode *N);
   SDValue PromoteIntOp_ZERO_EXTEND(SDNode *N);
-  SDValue PromoteIntOp_MSTORE(MaskedStoreSDNode *N, unsigned OpNo);
-  SDValue PromoteIntOp_MLOAD(MaskedLoadSDNode *N, unsigned OpNo);
-  SDValue PromoteIntOp_MSCATTER(MaskedScatterSDNode *N, unsigned OpNo);
-  SDValue PromoteIntOp_MGATHER(MaskedGatherSDNode *N, unsigned OpNo);
 
   void PromoteSetCCOperands(SDValue &LHS,SDValue &RHS, ISD::CondCode Code);
 
@@ -315,9 +293,9 @@ private:
   // Integer Expansion Support: LegalizeIntegerTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given a processed operand Op which was expanded into two integers of half
-  /// the size, this returns the two halves. The low bits of Op are exactly
-  /// equal to the bits of Lo; the high bits exactly equal Hi.
+  /// GetExpandedInteger - Given a processed operand Op which was expanded into
+  /// two integers of half the size, this returns the two halves.  The low bits
+  /// of Op are exactly equal to the bits of Lo; the high bits exactly equal Hi.
   /// For example, if Op is an i64 which was expanded into two i32's, then this
   /// method returns the two i32's, with Lo being equal to the lower 32 bits of
   /// Op, and Hi being equal to the upper 32 bits.
@@ -326,6 +304,8 @@ private:
 
   // Integer Result Expansion.
   void ExpandIntegerResult(SDNode *N, unsigned ResNo);
+  void ExpandIntRes_MERGE_VALUES      (SDNode *N, unsigned ResNo,
+                                       SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_ANY_EXTEND        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_AssertSext        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_AssertZext        (SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -334,7 +314,6 @@ private:
   void ExpandIntRes_CTPOP             (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_CTTZ              (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_LOAD          (LoadSDNode *N, SDValue &Lo, SDValue &Hi);
-  void ExpandIntRes_READCYCLECOUNTER  (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_SIGN_EXTEND       (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_SIGN_EXTEND_INREG (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_TRUNCATE          (SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -346,7 +325,6 @@ private:
   void ExpandIntRes_ADDSUB            (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_ADDSUBC           (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_ADDSUBE           (SDNode *N, SDValue &Lo, SDValue &Hi);
-  void ExpandIntRes_BITREVERSE        (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_BSWAP             (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_MUL               (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_SDIV              (SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -355,25 +333,25 @@ private:
   void ExpandIntRes_UREM              (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_Shift             (SDNode *N, SDValue &Lo, SDValue &Hi);
 
-  void ExpandIntRes_MINMAX            (SDNode *N, SDValue &Lo, SDValue &Hi);
-
   void ExpandIntRes_SADDSUBO          (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_UADDSUBO          (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandIntRes_XMULO             (SDNode *N, SDValue &Lo, SDValue &Hi);
 
   void ExpandIntRes_ATOMIC_LOAD       (SDNode *N, SDValue &Lo, SDValue &Hi);
 
-  void ExpandShiftByConstant(SDNode *N, const APInt &Amt,
+  void ExpandShiftByConstant(SDNode *N, unsigned Amt,
                              SDValue &Lo, SDValue &Hi);
   bool ExpandShiftWithKnownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi);
   bool ExpandShiftWithUnknownAmountBit(SDNode *N, SDValue &Lo, SDValue &Hi);
 
   // Integer Operand Expansion.
   bool ExpandIntegerOperand(SDNode *N, unsigned OperandNo);
+  SDValue ExpandIntOp_BITCAST(SDNode *N);
   SDValue ExpandIntOp_BR_CC(SDNode *N);
+  SDValue ExpandIntOp_BUILD_VECTOR(SDNode *N);
+  SDValue ExpandIntOp_EXTRACT_ELEMENT(SDNode *N);
   SDValue ExpandIntOp_SELECT_CC(SDNode *N);
   SDValue ExpandIntOp_SETCC(SDNode *N);
-  SDValue ExpandIntOp_SETCCE(SDNode *N);
   SDValue ExpandIntOp_Shift(SDNode *N);
   SDValue ExpandIntOp_SINT_TO_FP(SDNode *N);
   SDValue ExpandIntOp_STORE(StoreSDNode *N, unsigned OpNo);
@@ -383,54 +361,36 @@ private:
   SDValue ExpandIntOp_ATOMIC_STORE(SDNode *N);
 
   void IntegerExpandSetCCOperands(SDValue &NewLHS, SDValue &NewRHS,
-                                  ISD::CondCode &CCCode, const SDLoc &dl);
+                                  ISD::CondCode &CCCode, SDLoc dl);
 
   //===--------------------------------------------------------------------===//
   // Float to Integer Conversion Support: LegalizeFloatTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given an operand Op of Float type, returns the integer if the Op is not
-  /// supported in target HW and converted to the integer.
-  /// The integer contains exactly the same bits as Op - only the type changed.
-  /// For example, if Op is an f32 which was softened to an i32, then this method
-  /// returns an i32, the bits of which coincide with those of Op.
-  /// If the Op can be efficiently supported in target HW or the operand must
-  /// stay in a register, the Op is not converted to an integer.
-  /// In that case, the given op is returned.
+  /// GetSoftenedFloat - Given a processed operand Op which was converted to an
+  /// integer of the same size, this returns the integer.  The integer contains
+  /// exactly the same bits as Op - only the type changed.  For example, if Op
+  /// is an f32 which was softened to an i32, then this method returns an i32,
+  /// the bits of which coincide with those of Op.
   SDValue GetSoftenedFloat(SDValue Op) {
     SDValue &SoftenedOp = SoftenedFloats[Op];
-    if (!SoftenedOp.getNode() &&
-        isSimpleLegalType(Op.getValueType()))
-      return Op;
     RemapValue(SoftenedOp);
     assert(SoftenedOp.getNode() && "Operand wasn't converted to integer?");
     return SoftenedOp;
   }
   void SetSoftenedFloat(SDValue Op, SDValue Result);
 
-  // Call ReplaceValueWith(SDValue(N, ResNo), Res) if necessary.
-  void ReplaceSoftenFloatResult(SDNode *N, unsigned ResNo, SDValue &NewRes) {
-    // When the result type can be kept in HW registers, the converted
-    // NewRes node could have the same type. We can save the effort in
-    // cloning every user of N in SoftenFloatOperand or other legalization functions,
-    // by calling ReplaceValueWith here to update all users.
-    if (NewRes.getNode() != N && isLegalInHWReg(N->getValueType(ResNo)))
-      ReplaceValueWith(SDValue(N, ResNo), NewRes);
-  }
-
-  // Convert Float Results to Integer for Non-HW-supported Operations.
-  bool SoftenFloatResult(SDNode *N, unsigned ResNo);
+  // Result Float to Integer Conversion.
+  void SoftenFloatResult(SDNode *N, unsigned OpNo);
   SDValue SoftenFloatRes_MERGE_VALUES(SDNode *N, unsigned ResNo);
-  SDValue SoftenFloatRes_BITCAST(SDNode *N, unsigned ResNo);
+  SDValue SoftenFloatRes_BITCAST(SDNode *N);
   SDValue SoftenFloatRes_BUILD_PAIR(SDNode *N);
-  SDValue SoftenFloatRes_ConstantFP(SDNode *N, unsigned ResNo);
+  SDValue SoftenFloatRes_ConstantFP(ConstantFPSDNode *N);
   SDValue SoftenFloatRes_EXTRACT_VECTOR_ELT(SDNode *N);
-  SDValue SoftenFloatRes_FABS(SDNode *N, unsigned ResNo);
-  SDValue SoftenFloatRes_FMINNUM(SDNode *N);
-  SDValue SoftenFloatRes_FMAXNUM(SDNode *N);
+  SDValue SoftenFloatRes_FABS(SDNode *N);
   SDValue SoftenFloatRes_FADD(SDNode *N);
   SDValue SoftenFloatRes_FCEIL(SDNode *N);
-  SDValue SoftenFloatRes_FCOPYSIGN(SDNode *N, unsigned ResNo);
+  SDValue SoftenFloatRes_FCOPYSIGN(SDNode *N);
   SDValue SoftenFloatRes_FCOS(SDNode *N);
   SDValue SoftenFloatRes_FDIV(SDNode *N);
   SDValue SoftenFloatRes_FEXP(SDNode *N);
@@ -442,9 +402,9 @@ private:
   SDValue SoftenFloatRes_FMA(SDNode *N);
   SDValue SoftenFloatRes_FMUL(SDNode *N);
   SDValue SoftenFloatRes_FNEARBYINT(SDNode *N);
-  SDValue SoftenFloatRes_FNEG(SDNode *N, unsigned ResNo);
+  SDValue SoftenFloatRes_FNEG(SDNode *N);
   SDValue SoftenFloatRes_FP_EXTEND(SDNode *N);
-  SDValue SoftenFloatRes_FP16_TO_FP(SDNode *N);
+  SDValue SoftenFloatRes_FP16_TO_FP32(SDNode *N);
   SDValue SoftenFloatRes_FP_ROUND(SDNode *N);
   SDValue SoftenFloatRes_FPOW(SDNode *N);
   SDValue SoftenFloatRes_FPOWI(SDNode *N);
@@ -455,25 +415,21 @@ private:
   SDValue SoftenFloatRes_FSQRT(SDNode *N);
   SDValue SoftenFloatRes_FSUB(SDNode *N);
   SDValue SoftenFloatRes_FTRUNC(SDNode *N);
-  SDValue SoftenFloatRes_LOAD(SDNode *N, unsigned ResNo);
-  SDValue SoftenFloatRes_SELECT(SDNode *N, unsigned ResNo);
-  SDValue SoftenFloatRes_SELECT_CC(SDNode *N, unsigned ResNo);
+  SDValue SoftenFloatRes_LOAD(SDNode *N);
+  SDValue SoftenFloatRes_SELECT(SDNode *N);
+  SDValue SoftenFloatRes_SELECT_CC(SDNode *N);
   SDValue SoftenFloatRes_UNDEF(SDNode *N);
   SDValue SoftenFloatRes_VAARG(SDNode *N);
   SDValue SoftenFloatRes_XINT_TO_FP(SDNode *N);
 
-  // Return true if we can skip softening the given operand or SDNode because
-  // it was soften before by SoftenFloatResult and references to the operand
-  // were replaced by ReplaceValueWith.
-  bool CanSkipSoftenFloatOperand(SDNode *N, unsigned OpNo);
-
-  // Convert Float Operand to Integer for Non-HW-supported Operations.
+  // Operand Float to Integer Conversion.
   bool SoftenFloatOperand(SDNode *N, unsigned OpNo);
   SDValue SoftenFloatOp_BITCAST(SDNode *N);
   SDValue SoftenFloatOp_BR_CC(SDNode *N);
-  SDValue SoftenFloatOp_FP_EXTEND(SDNode *N);
   SDValue SoftenFloatOp_FP_ROUND(SDNode *N);
-  SDValue SoftenFloatOp_FP_TO_XINT(SDNode *N);
+  SDValue SoftenFloatOp_FP_TO_SINT(SDNode *N);
+  SDValue SoftenFloatOp_FP_TO_UINT(SDNode *N);
+  SDValue SoftenFloatOp_FP32_TO_FP16(SDNode *N);
   SDValue SoftenFloatOp_SELECT_CC(SDNode *N);
   SDValue SoftenFloatOp_SETCC(SDNode *N);
   SDValue SoftenFloatOp_STORE(SDNode *N, unsigned OpNo);
@@ -482,8 +438,8 @@ private:
   // Float Expansion Support: LegalizeFloatTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given a processed operand Op which was expanded into two floating-point
-  /// values of half the size, this returns the two halves.
+  /// GetExpandedFloat - Given a processed operand Op which was expanded into
+  /// two floating point values of half the size, this returns the two halves.
   /// The low bits of Op are exactly equal to the bits of Lo; the high bits
   /// exactly equal Hi.  For example, if Op is a ppcf128 which was expanded
   /// into two f64's, then this method returns the two f64's, with Lo being
@@ -495,8 +451,6 @@ private:
   void ExpandFloatResult(SDNode *N, unsigned ResNo);
   void ExpandFloatRes_ConstantFP(SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandFloatRes_FABS      (SDNode *N, SDValue &Lo, SDValue &Hi);
-  void ExpandFloatRes_FMINNUM   (SDNode *N, SDValue &Lo, SDValue &Hi);
-  void ExpandFloatRes_FMAXNUM   (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandFloatRes_FADD      (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandFloatRes_FCEIL     (SDNode *N, SDValue &Lo, SDValue &Hi);
   void ExpandFloatRes_FCOPYSIGN (SDNode *N, SDValue &Lo, SDValue &Hi);
@@ -537,52 +491,15 @@ private:
   SDValue ExpandFloatOp_STORE(SDNode *N, unsigned OpNo);
 
   void FloatExpandSetCCOperands(SDValue &NewLHS, SDValue &NewRHS,
-                                ISD::CondCode &CCCode, const SDLoc &dl);
-
-  //===--------------------------------------------------------------------===//
-  // Float promotion support: LegalizeFloatTypes.cpp
-  //===--------------------------------------------------------------------===//
-
-  SDValue GetPromotedFloat(SDValue Op) {
-    SDValue &PromotedOp = PromotedFloats[Op];
-    RemapValue(PromotedOp);
-    assert(PromotedOp.getNode() && "Operand wasn't promoted?");
-    return PromotedOp;
-  }
-  void SetPromotedFloat(SDValue Op, SDValue Result);
-
-  void PromoteFloatResult(SDNode *N, unsigned ResNo);
-  SDValue PromoteFloatRes_BITCAST(SDNode *N);
-  SDValue PromoteFloatRes_BinOp(SDNode *N);
-  SDValue PromoteFloatRes_ConstantFP(SDNode *N);
-  SDValue PromoteFloatRes_EXTRACT_VECTOR_ELT(SDNode *N);
-  SDValue PromoteFloatRes_FCOPYSIGN(SDNode *N);
-  SDValue PromoteFloatRes_FMAD(SDNode *N);
-  SDValue PromoteFloatRes_FPOWI(SDNode *N);
-  SDValue PromoteFloatRes_FP_ROUND(SDNode *N);
-  SDValue PromoteFloatRes_LOAD(SDNode *N);
-  SDValue PromoteFloatRes_SELECT(SDNode *N);
-  SDValue PromoteFloatRes_SELECT_CC(SDNode *N);
-  SDValue PromoteFloatRes_UnaryOp(SDNode *N);
-  SDValue PromoteFloatRes_UNDEF(SDNode *N);
-  SDValue PromoteFloatRes_XINT_TO_FP(SDNode *N);
-
-  bool PromoteFloatOperand(SDNode *N, unsigned ResNo);
-  SDValue PromoteFloatOp_BITCAST(SDNode *N, unsigned OpNo);
-  SDValue PromoteFloatOp_FCOPYSIGN(SDNode *N, unsigned OpNo);
-  SDValue PromoteFloatOp_FP_EXTEND(SDNode *N, unsigned OpNo);
-  SDValue PromoteFloatOp_FP_TO_XINT(SDNode *N, unsigned OpNo);
-  SDValue PromoteFloatOp_STORE(SDNode *N, unsigned OpNo);
-  SDValue PromoteFloatOp_SELECT_CC(SDNode *N, unsigned OpNo);
-  SDValue PromoteFloatOp_SETCC(SDNode *N, unsigned OpNo);
+                                ISD::CondCode &CCCode, SDLoc dl);
 
   //===--------------------------------------------------------------------===//
   // Scalarization Support: LegalizeVectorTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given a processed one-element vector Op which was scalarized to its
-  /// element type, this returns the element. For example, if Op is a v1i32,
-  /// Op = < i32 val >, this method returns val, an i32.
+  /// GetScalarizedVector - Given a processed one-element vector Op which was
+  /// scalarized to its element type, this returns the element.  For example,
+  /// if Op is a v1i32, Op = < i32 val >, this method returns val, an i32.
   SDValue GetScalarizedVector(SDValue Op) {
     SDValue &ScalarizedOp = ScalarizedVectors[Op];
     RemapValue(ScalarizedOp);
@@ -608,6 +525,7 @@ private:
   SDValue ScalarizeVecRes_INSERT_VECTOR_ELT(SDNode *N);
   SDValue ScalarizeVecRes_LOAD(LoadSDNode *N);
   SDValue ScalarizeVecRes_SCALAR_TO_VECTOR(SDNode *N);
+  SDValue ScalarizeVecRes_SIGN_EXTEND_INREG(SDNode *N);
   SDValue ScalarizeVecRes_VSELECT(SDNode *N);
   SDValue ScalarizeVecRes_SELECT(SDNode *N);
   SDValue ScalarizeVecRes_SELECT_CC(SDNode *N);
@@ -622,20 +540,18 @@ private:
   SDValue ScalarizeVecOp_UnaryOp(SDNode *N);
   SDValue ScalarizeVecOp_CONCAT_VECTORS(SDNode *N);
   SDValue ScalarizeVecOp_EXTRACT_VECTOR_ELT(SDNode *N);
-  SDValue ScalarizeVecOp_VSELECT(SDNode *N);
   SDValue ScalarizeVecOp_STORE(StoreSDNode *N, unsigned OpNo);
-  SDValue ScalarizeVecOp_FP_ROUND(SDNode *N, unsigned OpNo);
 
   //===--------------------------------------------------------------------===//
   // Vector Splitting Support: LegalizeVectorTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given a processed vector Op which was split into vectors of half the size,
-  /// this method returns the halves. The first elements of Op coincide with the
-  /// elements of Lo; the remaining elements of Op coincide with the elements of
-  /// Hi: Op is what you would get by concatenating Lo and Hi.
-  /// For example, if Op is a v8i32 that was split into two v4i32's, then this
-  /// method returns the two v4i32's, with Lo corresponding to the first 4
+  /// GetSplitVector - Given a processed vector Op which was split into vectors
+  /// of half the size, this method returns the halves.  The first elements of
+  /// Op coincide with the elements of Lo; the remaining elements of Op coincide
+  /// with the elements of Hi: Op is what you would get by concatenating Lo and
+  /// Hi.  For example, if Op is a v8i32 that was split into two v4i32's, then
+  /// this method returns the two v4i32's, with Lo corresponding to the first 4
   /// elements of Op, and Hi to the last 4 elements.
   void GetSplitVector(SDValue Op, SDValue &Lo, SDValue &Hi);
   void SetSplitVector(SDValue Op, SDValue Lo, SDValue Hi);
@@ -647,21 +563,19 @@ private:
   void SplitVecRes_UnaryOp(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_ExtendOp(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_InregOp(SDNode *N, SDValue &Lo, SDValue &Hi);
-  void SplitVecRes_ExtVecInRegOp(SDNode *N, SDValue &Lo, SDValue &Hi);
 
   void SplitVecRes_BITCAST(SDNode *N, SDValue &Lo, SDValue &Hi);
+  void SplitVecRes_BUILD_PAIR(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_BUILD_VECTOR(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_CONCAT_VECTORS(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_EXTRACT_SUBVECTOR(SDNode *N, SDValue &Lo, SDValue &Hi);
-  void SplitVecRes_INSERT_SUBVECTOR(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_FPOWI(SDNode *N, SDValue &Lo, SDValue &Hi);
-  void SplitVecRes_FCOPYSIGN(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_INSERT_VECTOR_ELT(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_LOAD(LoadSDNode *N, SDValue &Lo, SDValue &Hi);
-  void SplitVecRes_MLOAD(MaskedLoadSDNode *N, SDValue &Lo, SDValue &Hi);
-  void SplitVecRes_MGATHER(MaskedGatherSDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_SCALAR_TO_VECTOR(SDNode *N, SDValue &Lo, SDValue &Hi);
+  void SplitVecRes_SIGN_EXTEND_INREG(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_SETCC(SDNode *N, SDValue &Lo, SDValue &Hi);
+  void SplitVecRes_UNDEF(SDNode *N, SDValue &Lo, SDValue &Hi);
   void SplitVecRes_VECTOR_SHUFFLE(ShuffleVectorSDNode *N, SDValue &Lo,
                                   SDValue &Hi);
 
@@ -669,30 +583,26 @@ private:
   bool SplitVectorOperand(SDNode *N, unsigned OpNo);
   SDValue SplitVecOp_VSELECT(SDNode *N, unsigned OpNo);
   SDValue SplitVecOp_UnaryOp(SDNode *N);
-  SDValue SplitVecOp_TruncateHelper(SDNode *N);
 
   SDValue SplitVecOp_BITCAST(SDNode *N);
   SDValue SplitVecOp_EXTRACT_SUBVECTOR(SDNode *N);
   SDValue SplitVecOp_EXTRACT_VECTOR_ELT(SDNode *N);
   SDValue SplitVecOp_STORE(StoreSDNode *N, unsigned OpNo);
-  SDValue SplitVecOp_MSTORE(MaskedStoreSDNode *N, unsigned OpNo);
-  SDValue SplitVecOp_MSCATTER(MaskedScatterSDNode *N, unsigned OpNo);
-  SDValue SplitVecOp_MGATHER(MaskedGatherSDNode *N, unsigned OpNo);
   SDValue SplitVecOp_CONCAT_VECTORS(SDNode *N);
+  SDValue SplitVecOp_TRUNCATE(SDNode *N);
   SDValue SplitVecOp_VSETCC(SDNode *N);
   SDValue SplitVecOp_FP_ROUND(SDNode *N);
-  SDValue SplitVecOp_FCOPYSIGN(SDNode *N);
 
   //===--------------------------------------------------------------------===//
   // Vector Widening Support: LegalizeVectorTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Given a processed vector Op which was widened into a larger vector, this
-  /// method returns the larger vector. The elements of the returned vector
-  /// consist of the elements of Op followed by elements containing rubbish.
-  /// For example, if Op is a v2i32 that was widened to a v4i32, then this
-  /// method returns a v4i32 for which the first two elements are the same as
-  /// those of Op, while the last two elements contain rubbish.
+  /// GetWidenedVector - Given a processed vector Op which was widened into a
+  /// larger vector, this method returns the larger vector.  The elements of
+  /// the returned vector consist of the elements of Op followed by elements
+  /// containing rubbish.  For example, if Op is a v2i32 that was widened to a
+  /// v4i32, then this method returns a v4i32 for which the first two elements
+  /// are the same as those of Op, while the last two elements contain rubbish.
   SDValue GetWidenedVector(SDValue Op) {
     SDValue &WidenedOp = WidenedVectors[Op];
     RemapValue(WidenedOp);
@@ -708,13 +618,11 @@ private:
   SDValue WidenVecRes_BUILD_VECTOR(SDNode* N);
   SDValue WidenVecRes_CONCAT_VECTORS(SDNode* N);
   SDValue WidenVecRes_CONVERT_RNDSAT(SDNode* N);
-  SDValue WidenVecRes_EXTEND_VECTOR_INREG(SDNode* N);
   SDValue WidenVecRes_EXTRACT_SUBVECTOR(SDNode* N);
   SDValue WidenVecRes_INSERT_VECTOR_ELT(SDNode* N);
   SDValue WidenVecRes_LOAD(SDNode* N);
-  SDValue WidenVecRes_MLOAD(MaskedLoadSDNode* N);
-  SDValue WidenVecRes_MGATHER(MaskedGatherSDNode* N);
   SDValue WidenVecRes_SCALAR_TO_VECTOR(SDNode* N);
+  SDValue WidenVecRes_SIGN_EXTEND_INREG(SDNode* N);
   SDValue WidenVecRes_SELECT(SDNode* N);
   SDValue WidenVecRes_SELECT_CC(SDNode* N);
   SDValue WidenVecRes_SETCC(SDNode* N);
@@ -726,7 +634,6 @@ private:
   SDValue WidenVecRes_Binary(SDNode *N);
   SDValue WidenVecRes_BinaryCanTrap(SDNode *N);
   SDValue WidenVecRes_Convert(SDNode *N);
-  SDValue WidenVecRes_FCOPYSIGN(SDNode *N);
   SDValue WidenVecRes_POWI(SDNode *N);
   SDValue WidenVecRes_Shift(SDNode *N);
   SDValue WidenVecRes_Unary(SDNode *N);
@@ -736,44 +643,40 @@ private:
   bool WidenVectorOperand(SDNode *N, unsigned OpNo);
   SDValue WidenVecOp_BITCAST(SDNode *N);
   SDValue WidenVecOp_CONCAT_VECTORS(SDNode *N);
-  SDValue WidenVecOp_EXTEND(SDNode *N);
   SDValue WidenVecOp_EXTRACT_VECTOR_ELT(SDNode *N);
   SDValue WidenVecOp_EXTRACT_SUBVECTOR(SDNode *N);
   SDValue WidenVecOp_STORE(SDNode* N);
-  SDValue WidenVecOp_MSTORE(SDNode* N, unsigned OpNo);
-  SDValue WidenVecOp_MSCATTER(SDNode* N, unsigned OpNo);
   SDValue WidenVecOp_SETCC(SDNode* N);
 
   SDValue WidenVecOp_Convert(SDNode *N);
-  SDValue WidenVecOp_FCOPYSIGN(SDNode *N);
 
   //===--------------------------------------------------------------------===//
   // Vector Widening Utilities Support: LegalizeVectorTypes.cpp
   //===--------------------------------------------------------------------===//
 
-  /// Helper function to generate a set of loads to load a vector with a
-  /// resulting wider type. It takes:
+  /// Helper GenWidenVectorLoads - Helper function to generate a set of
+  /// loads to load a vector with a resulting wider type. It takes
   ///   LdChain: list of chains for the load to be generated.
   ///   Ld:      load to widen
   SDValue GenWidenVectorLoads(SmallVectorImpl<SDValue> &LdChain,
                               LoadSDNode *LD);
 
-  /// Helper function to generate a set of extension loads to load a vector with
-  /// a resulting wider type. It takes:
+  /// GenWidenVectorExtLoads - Helper function to generate a set of extension
+  /// loads to load a ector with a resulting wider type.  It takes
   ///   LdChain: list of chains for the load to be generated.
   ///   Ld:      load to widen
   ///   ExtType: extension element type
   SDValue GenWidenVectorExtLoads(SmallVectorImpl<SDValue> &LdChain,
                                  LoadSDNode *LD, ISD::LoadExtType ExtType);
 
-  /// Helper function to generate a set of stores to store a widen vector into
-  /// non-widen memory.
+  /// Helper genWidenVectorStores - Helper function to generate a set of
+  /// stores to store a widen vector into non widen memory
   ///   StChain: list of chains for the stores we have generated
   ///   ST:      store of a widen value
   void GenWidenVectorStores(SmallVectorImpl<SDValue> &StChain, StoreSDNode *ST);
 
-  /// Helper function to generate a set of stores to store a truncate widen
-  /// vector into non-widen memory.
+  /// Helper genWidenVectorTruncStores - Helper function to generate a set of
+  /// stores to store a truncate widen vector into non widen memory
   ///   StChain: list of chains for the stores we have generated
   ///   ST:      store of a widen value
   void GenWidenVectorTruncStores(SmallVectorImpl<SDValue> &StChain,
@@ -781,9 +684,8 @@ private:
 
   /// Modifies a vector input (widen or narrows) to a vector of NVT.  The
   /// input vector must have the same element type as NVT.
-  /// When FillWithZeroes is "on" the vector will be widened with zeroes.
-  /// By default, the vector will be widened with undefined values.
-  SDValue ModifyToType(SDValue InOp, EVT NVT, bool FillWithZeroes = false);
+  SDValue ModifyToType(SDValue InOp, EVT WidenVT);
+
 
   //===--------------------------------------------------------------------===//
   // Generic Splitting: LegalizeTypesGeneric.cpp
@@ -802,8 +704,12 @@ private:
       GetExpandedFloat(Op, Lo, Hi);
   }
 
-  /// Use ISD::EXTRACT_ELEMENT nodes to extract the low and high parts of the
-  /// given value.
+  /// GetSplitDestVTs - Compute the VTs needed for the low/hi parts of a type
+  /// which is split (or expanded) into two not necessarily identical pieces.
+  void GetSplitDestVTs(EVT InVT, EVT &LoVT, EVT &HiVT);
+
+  /// GetPairElements - Use ISD::EXTRACT_ELEMENT nodes to extract the low and
+  /// high parts of the given value.
   void GetPairElements(SDValue Pair, SDValue &Lo, SDValue &Hi);
 
   // Generic Result Splitting.
@@ -828,12 +734,6 @@ private:
     else
       GetExpandedFloat(Op, Lo, Hi);
   }
-
-
-  /// This function will split the integer \p Op into \p NumElements
-  /// operations of type \p EltVT and store them in \p Ops.
-  void IntegerToVector(SDValue Op, unsigned NumElements,
-                       SmallVectorImpl<SDValue> &Ops, EVT EltVT);
 
   // Generic Result Expansion.
   void ExpandRes_MERGE_VALUES      (SDNode *N, unsigned ResNo,

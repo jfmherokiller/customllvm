@@ -270,12 +270,12 @@ class ValuesInIteratorRangeGenerator : public ParamGeneratorInterface<T> {
   template <typename ForwardIterator>
   ValuesInIteratorRangeGenerator(ForwardIterator begin, ForwardIterator end)
       : container_(begin, end) {}
-  ~ValuesInIteratorRangeGenerator() override {}
+  virtual ~ValuesInIteratorRangeGenerator() {}
 
-  ParamIteratorInterface<T> *Begin() const override {
+  virtual ParamIteratorInterface<T>* Begin() const {
     return new Iterator(this, container_.begin());
   }
-  ParamIteratorInterface<T> *End() const override {
+  virtual ParamIteratorInterface<T>* End() const {
     return new Iterator(this, container_.end());
   }
 
@@ -287,16 +287,16 @@ class ValuesInIteratorRangeGenerator : public ParamGeneratorInterface<T> {
     Iterator(const ParamGeneratorInterface<T>* base,
              typename ContainerType::const_iterator iterator)
         : base_(base), iterator_(iterator) {}
-    ~Iterator() override {}
+    virtual ~Iterator() {}
 
-    const ParamGeneratorInterface<T> *BaseGenerator() const override {
+    virtual const ParamGeneratorInterface<T>* BaseGenerator() const {
       return base_;
     }
-    void Advance() override {
+    virtual void Advance() {
       ++iterator_;
       value_.reset();
     }
-    ParamIteratorInterface<T> *Clone() const override {
+    virtual ParamIteratorInterface<T>* Clone() const {
       return new Iterator(*this);
     }
     // We need to use cached value referenced by iterator_ because *iterator_
@@ -306,12 +306,12 @@ class ValuesInIteratorRangeGenerator : public ParamGeneratorInterface<T> {
     // can advance iterator_ beyond the end of the range, and we cannot
     // detect that fact. The client code, on the other hand, is
     // responsible for not calling Current() on an out-of-range iterator.
-    const T *Current() const override {
+    virtual const T* Current() const {
       if (value_.get() == NULL)
         value_.reset(new T(*iterator_));
       return value_.get();
     }
-    bool Equals(const ParamIteratorInterface<T> &other) const override {
+    virtual bool Equals(const ParamIteratorInterface<T>& other) const {
       // Having the same base generator guarantees that the other
       // iterator is of the same type and we can downcast.
       GTEST_CHECK_(BaseGenerator() == other.BaseGenerator())
@@ -355,7 +355,7 @@ class ParameterizedTestFactory : public TestFactoryBase {
   typedef typename TestClass::ParamType ParamType;
   explicit ParameterizedTestFactory(ParamType parameter) :
       parameter_(parameter) {}
-  Test *CreateTest() override {
+  virtual Test* CreateTest() {
     TestClass::SetParam(&parameter_);
     return new TestClass();
   }
@@ -394,7 +394,7 @@ class TestMetaFactory
 
   TestMetaFactory() {}
 
-  TestFactoryBase *CreateTestFactory(ParamType parameter) override {
+  virtual TestFactoryBase* CreateTestFactory(ParamType parameter) {
     return new ParameterizedTestFactory<TestCase>(parameter);
   }
 
@@ -414,7 +414,7 @@ class TestMetaFactory
 // and calls RegisterTests() on each of them when asked.
 class ParameterizedTestCaseInfoBase {
  public:
-  virtual ~ParameterizedTestCaseInfoBase();
+  virtual ~ParameterizedTestCaseInfoBase() {}
 
   // Base part of test case name for display purposes.
   virtual const string& GetTestCaseName() const = 0;
@@ -454,9 +454,9 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
       : test_case_name_(name) {}
 
   // Test case base name for display purposes.
-  const string &GetTestCaseName() const override { return test_case_name_; }
+  virtual const string& GetTestCaseName() const { return test_case_name_; }
   // Test case id to verify identity.
-  TypeId GetTestCaseTypeId() const override { return GetTypeId<TestCase>(); }
+  virtual TypeId GetTestCaseTypeId() const { return GetTypeId<TestCase>(); }
   // TEST_P macro uses AddTestPattern() to record information
   // about a single test in a LocalTestInfo structure.
   // test_case_name is the base name of the test case (without invocation
@@ -484,7 +484,7 @@ class ParameterizedTestCaseInfo : public ParameterizedTestCaseInfoBase {
   // This method should not be called more then once on any single
   // instance of a ParameterizedTestCaseInfoBase derived class.
   // UnitTest has a guard to prevent from calling this method more then once.
-  void RegisterTests() override {
+  virtual void RegisterTests() {
     for (typename TestInfoContainer::iterator test_it = tests_.begin();
          test_it != tests_.end(); ++test_it) {
       linked_ptr<TestInfo> test_info = *test_it;

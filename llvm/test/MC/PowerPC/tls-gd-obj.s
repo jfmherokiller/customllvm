@@ -47,7 +47,7 @@ a:
 // for the call to __tls_get_addr.
 //
 // CHECK: Relocations [
-// CHECK:   Section {{.*}} .rela.text {
+// CHECK:   Section (2) .rela.text {
 // CHECK:     0x{{[0-9,A-F]+}} R_PPC64_GOT_TLSGD16_HA a
 // CHECK:     0x{{[0-9,A-F]+}} R_PPC64_GOT_TLSGD16_LO a
 // CHECK:     0x{{[0-9,A-F]+}} R_PPC64_TLSGD          a

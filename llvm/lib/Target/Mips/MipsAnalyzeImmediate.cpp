@@ -72,8 +72,7 @@ void MipsAnalyzeImmediate::GetInstSeqLs(uint64_t Imm, unsigned RemSize,
   if (Imm & 0x8000) {
     InstSeqLs SeqLsORi;
     GetInstSeqLsORi(Imm, RemSize, SeqLsORi);
-    SeqLs.append(std::make_move_iterator(SeqLsORi.begin()),
-                 std::make_move_iterator(SeqLsORi.end()));
+    SeqLs.insert(SeqLs.end(), SeqLsORi.begin(), SeqLsORi.end());
   }
 }
 

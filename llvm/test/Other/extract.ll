@@ -7,22 +7,19 @@
 ; llvm-extract uses lazy bitcode loading, so make sure it correctly reads
 ; from bitcode files in addition to assembly files.
 
-; CHECK: define hidden void @foo() comdat($x) {
+; CHECK: define hidden void @foo() {
 ; CHECK:   ret void
 ; CHECK: }
 
 ; The private linkage for foo() should be changed to external linkage and
 ; hidden visibility added.
 ; DELETE: declare hidden void @foo()
-; DELETE-NOT: comdat
 ; DELETE: define void @bar() {
 ; DELETE:   call void @foo()
 ; DELETE:   ret void
 ; DELETE: }
 
-$x = comdat any
-
-define private void @foo() comdat($x) {
+define private void @foo() {
   ret void
 }
 define void @bar() {

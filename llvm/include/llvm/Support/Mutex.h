@@ -70,16 +70,14 @@ namespace llvm
     /// @name Platform Dependent Data
     /// @{
     private:
-#if defined(LLVM_ENABLE_THREADS) && LLVM_ENABLE_THREADS != 0
       void* data_; ///< We don't know what the data will be
-#endif
 
     /// @}
     /// @name Do Not Implement
     /// @{
     private:
-      MutexImpl(const MutexImpl &) = delete;
-      void operator=(const MutexImpl &) = delete;
+      MutexImpl(const MutexImpl &) LLVM_DELETED_FUNCTION;
+      void operator=(const MutexImpl &) LLVM_DELETED_FUNCTION;
     /// @}
     };
 
@@ -88,17 +86,16 @@ namespace llvm
     /// indicates whether this mutex should become a no-op when we're not
     /// running in multithreaded mode.
     template<bool mt_only>
-    class SmartMutex {
-      MutexImpl impl;
+    class SmartMutex : public MutexImpl {
       unsigned acquired;
       bool recursive;
     public:
       explicit SmartMutex(bool rec = true) :
-        impl(rec), acquired(0), recursive(rec) { }
+        MutexImpl(rec), acquired(0), recursive(rec) { }
 
-      bool lock() {
+      bool acquire() {
         if (!mt_only || llvm_is_multithreaded()) {
-          return impl.acquire();
+          return MutexImpl::acquire();
         } else {
           // Single-threaded debugging code.  This would be racy in
           // multithreaded mode, but provides not sanity checks in single
@@ -109,9 +106,9 @@ namespace llvm
         }
       }
 
-      bool unlock() {
+      bool release() {
         if (!mt_only || llvm_is_multithreaded()) {
-          return impl.release();
+          return MutexImpl::release();
         } else {
           // Single-threaded debugging code.  This would be racy in
           // multithreaded mode, but provides not sanity checks in single
@@ -123,9 +120,9 @@ namespace llvm
         }
       }
 
-      bool try_lock() {
+      bool tryacquire() {
         if (!mt_only || llvm_is_multithreaded())
-          return impl.tryacquire();
+          return MutexImpl::tryacquire();
         else return true;
       }
 
@@ -143,11 +140,11 @@ namespace llvm
 
     public:
       SmartScopedLock(SmartMutex<mt_only>& m) : mtx(m) {
-        mtx.lock();
+        mtx.acquire();
       }
 
       ~SmartScopedLock() {
-        mtx.unlock();
+        mtx.release();
       }
     };
 

@@ -11,27 +11,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_SPARC_MCTARGETDESC_SPARCMCASMINFO_H
-#define LLVM_LIB_TARGET_SPARC_MCTARGETDESC_SPARCMCASMINFO_H
+#ifndef SPARCTARGETASMINFO_H
+#define SPARCTARGETASMINFO_H
 
 #include "llvm/MC/MCAsmInfoELF.h"
 
 namespace llvm {
-class Triple;
+  class StringRef;
 
-class SparcELFMCAsmInfo : public MCAsmInfoELF {
-  void anchor() override;
-
-public:
-  explicit SparcELFMCAsmInfo(const Triple &TheTriple);
-  const MCExpr*
-  getExprForPersonalitySymbol(const MCSymbol *Sym, unsigned Encoding,
-                              MCStreamer &Streamer) const override;
-  const MCExpr* getExprForFDESymbol(const MCSymbol *Sym,
-                                    unsigned Encoding,
-                                    MCStreamer &Streamer) const override;
-
-};
+  class SparcELFMCAsmInfo : public MCAsmInfoELF {
+    virtual void anchor();
+  public:
+    explicit SparcELFMCAsmInfo(StringRef TT);
+  };
 
 } // namespace llvm
 

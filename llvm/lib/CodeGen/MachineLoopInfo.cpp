@@ -19,7 +19,6 @@
 #include "llvm/CodeGen/MachineDominators.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
 // Explicitly instantiate methods in LoopInfoImpl.h for MI-level Loops.
@@ -37,7 +36,7 @@ char &llvm::MachineLoopInfoID = MachineLoopInfo::ID;
 
 bool MachineLoopInfo::runOnMachineFunction(MachineFunction &) {
   releaseMemory();
-  LI.analyze(getAnalysis<MachineDominatorTree>().getBase());
+  LI.Analyze(getAnalysis<MachineDominatorTree>().getBase());
   return false;
 }
 
@@ -50,13 +49,12 @@ void MachineLoopInfo::getAnalysisUsage(AnalysisUsage &AU) const {
 MachineBasicBlock *MachineLoop::getTopBlock() {
   MachineBasicBlock *TopMBB = getHeader();
   MachineFunction::iterator Begin = TopMBB->getParent()->begin();
-  if (TopMBB->getIterator() != Begin) {
-    MachineBasicBlock *PriorMBB = &*std::prev(TopMBB->getIterator());
+  if (TopMBB != Begin) {
+    MachineBasicBlock *PriorMBB = prior(MachineFunction::iterator(TopMBB));
     while (contains(PriorMBB)) {
       TopMBB = PriorMBB;
-      if (TopMBB->getIterator() == Begin)
-        break;
-      PriorMBB = &*std::prev(TopMBB->getIterator());
+      if (TopMBB == Begin) break;
+      PriorMBB = prior(MachineFunction::iterator(TopMBB));
     }
   }
   return TopMBB;
@@ -65,65 +63,19 @@ MachineBasicBlock *MachineLoop::getTopBlock() {
 MachineBasicBlock *MachineLoop::getBottomBlock() {
   MachineBasicBlock *BotMBB = getHeader();
   MachineFunction::iterator End = BotMBB->getParent()->end();
-  if (BotMBB->getIterator() != std::prev(End)) {
-    MachineBasicBlock *NextMBB = &*std::next(BotMBB->getIterator());
+  if (BotMBB != prior(End)) {
+    MachineBasicBlock *NextMBB = llvm::next(MachineFunction::iterator(BotMBB));
     while (contains(NextMBB)) {
       BotMBB = NextMBB;
-      if (BotMBB == &*std::next(BotMBB->getIterator()))
-        break;
-      NextMBB = &*std::next(BotMBB->getIterator());
+      if (BotMBB == llvm::next(MachineFunction::iterator(BotMBB))) break;
+      NextMBB = llvm::next(MachineFunction::iterator(BotMBB));
     }
   }
   return BotMBB;
 }
 
-MachineBasicBlock *MachineLoop::findLoopControlBlock() {
-  if (MachineBasicBlock *Latch = getLoopLatch()) {
-    if (isLoopExiting(Latch))
-      return Latch;
-    else
-      return getExitingBlock();
-  }
-  return nullptr;
-}
-
-MachineBasicBlock *
-MachineLoopInfo::findLoopPreheader(MachineLoop *L,
-                                   bool SpeculativePreheader) const {
-  if (MachineBasicBlock *PB = L->getLoopPreheader())
-    return PB;
-
-  if (!SpeculativePreheader)
-    return nullptr;
-
-  MachineBasicBlock *HB = L->getHeader(), *LB = L->getLoopLatch();
-  if (HB->pred_size() != 2 || HB->hasAddressTaken())
-    return nullptr;
-  // Find the predecessor of the header that is not the latch block.
-  MachineBasicBlock *Preheader = nullptr;
-  for (MachineBasicBlock *P : HB->predecessors()) {
-    if (P == LB)
-      continue;
-    // Sanity.
-    if (Preheader)
-      return nullptr;
-    Preheader = P;
-  }
-
-  // Check if the preheader candidate is a successor of any other loop
-  // headers. We want to avoid having two loop setups in the same block.
-  for (MachineBasicBlock *S : Preheader->successors()) {
-    if (S == HB)
-      continue;
-    MachineLoop *T = getLoopFor(S);
-    if (T && T->getHeader() == S)
-      return nullptr;
-  }
-  return Preheader;
-}
-
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void MachineLoop::dump() const {
+void MachineLoop::dump() const {
   print(dbgs());
 }
 #endif

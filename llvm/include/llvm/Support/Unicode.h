@@ -12,12 +12,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_SUPPORT_UNICODE_H
-#define LLVM_SUPPORT_UNICODE_H
+#include "llvm/ADT/StringRef.h"
 
 namespace llvm {
-class StringRef;
-
 namespace sys {
 namespace unicode {
 
@@ -63,5 +60,3 @@ int columnWidthUTF8(StringRef Text);
 } // namespace unicode
 } // namespace sys
 } // namespace llvm
-
-#endif

@@ -32,12 +32,12 @@ std::ostream &operator<<(std::ostream &OS,
 
 namespace {
 
-class FixedDeltaAlgorithm final : public DeltaAlgorithm {
+class FixedDeltaAlgorithm : public DeltaAlgorithm {
   changeset_ty FailingSet;
   unsigned NumTests;
 
 protected:
-  bool ExecuteOneTest(const changeset_ty &Changes) override {
+  virtual bool ExecuteOneTest(const changeset_ty &Changes) {
     ++NumTests;
     return std::includes(Changes.begin(), Changes.end(),
                          FailingSet.begin(), FailingSet.end());

@@ -1,20 +1,14 @@
 set(LLVM_LINK_COMPONENTS
-  DebugInfoCodeView
-  Object
-  Support
-  DebugInfoCodeView
-  DebugInfoMSF
-  )
+  ${LLVM_TARGETS_TO_BUILD}
+  bitreader
+  object)
 
 add_llvm_tool(llvm-readobj
-  ARMAttributeParser.cpp
-  ARMWinEHPrinter.cpp
-  COFFDumper.cpp
-  COFFImportDumper.cpp
-  ELFDumper.cpp
-  Error.cpp
   llvm-readobj.cpp
-  MachODumper.cpp
   ObjDumper.cpp
-  Win64EHDumper.cpp
+  COFFDumper.cpp
+  ELFDumper.cpp
+  MachODumper.cpp
+  Error.cpp
+  StreamWriter.cpp
   )

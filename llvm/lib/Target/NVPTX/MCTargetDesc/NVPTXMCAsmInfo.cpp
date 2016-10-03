@@ -25,35 +25,37 @@ static cl::opt<bool> CompileForDebugging("debug-compile",
 
 void NVPTXMCAsmInfo::anchor() {}
 
-NVPTXMCAsmInfo::NVPTXMCAsmInfo(const Triple &TheTriple) {
+NVPTXMCAsmInfo::NVPTXMCAsmInfo(const StringRef &TT) {
+  Triple TheTriple(TT);
   if (TheTriple.getArch() == Triple::nvptx64) {
     PointerSize = CalleeSaveStackSlotSize = 8;
   }
 
   CommentString = "//";
 
+  PrivateGlobalPrefix = "$L__";
+
+  AllowPeriodsInName = false;
+
+  HasSetDirective = false;
+
   HasSingleParameterDotFile = false;
 
-  InlineAsmStart = " begin inline asm";
-  InlineAsmEnd = " end inline asm";
+  InlineAsmStart = " inline asm";
+  InlineAsmEnd = " inline asm";
 
   SupportsDebugInformation = CompileForDebugging;
-  // PTX does not allow .align on functions.
-  HasFunctionAlignment = false;
   HasDotTypeDotSizeDirective = false;
-  // PTX does not allow .hidden or .protected
-  HiddenDeclarationVisibilityAttr = HiddenVisibilityAttr = MCSA_Invalid;
-  ProtectedVisibilityAttr = MCSA_Invalid;
 
   Data8bitsDirective = " .b8 ";
   Data16bitsDirective = " .b16 ";
   Data32bitsDirective = " .b32 ";
   Data64bitsDirective = " .b64 ";
+  PrivateGlobalPrefix = "";
   ZeroDirective = " .b8";
   AsciiDirective = " .b8";
   AscizDirective = " .b8";
 
   // @TODO: Can we just disable this?
-  WeakDirective = "\t// .weak\t";
   GlobalDirective = "\t// .globl\t";
 }

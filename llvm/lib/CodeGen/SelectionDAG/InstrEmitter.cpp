@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "instr-emitter"
 #include "InstrEmitter.h"
 #include "SDNodeDbgValue.h"
 #include "llvm/ADT/Statistic.h"
@@ -20,18 +21,14 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/StackMaps.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/DebugInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetLowering.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Target/TargetMachine.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "instr-emitter"
 
 /// MinRCSize - Smallest register class we allow when constraining virtual
 /// registers.  If satisfying all register class constraints would require
@@ -101,7 +98,7 @@ EmitCopyFromReg(SDNode *Node, unsigned ResNo, bool IsClone, bool IsCloned,
   // If the node is only used by a CopyToReg and the dest reg is a vreg, use
   // the CopyToReg'd destination register instead of creating a new vreg.
   bool MatchReg = true;
-  const TargetRegisterClass *UseRC = nullptr;
+  const TargetRegisterClass *UseRC = NULL;
   MVT VT = Node->getSimpleValueType(ResNo);
 
   // Stick to the preferred register classes for legal types.
@@ -109,7 +106,9 @@ EmitCopyFromReg(SDNode *Node, unsigned ResNo, bool IsClone, bool IsCloned,
     UseRC = TLI->getRegClassFor(VT);
 
   if (!IsClone && !IsCloned)
-    for (SDNode *User : Node->uses()) {
+    for (SDNode::use_iterator UI = Node->use_begin(), E = Node->use_end();
+         UI != E; ++UI) {
+      SDNode *User = *UI;
       bool Match = true;
       if (User->getOpcode() == ISD::CopyToReg &&
           User->getOperand(2).getNode() == Node &&
@@ -131,7 +130,7 @@ EmitCopyFromReg(SDNode *Node, unsigned ResNo, bool IsClone, bool IsCloned,
           Match = false;
           if (User->isMachineOpcode()) {
             const MCInstrDesc &II = TII->get(User->getMachineOpcode());
-            const TargetRegisterClass *RC = nullptr;
+            const TargetRegisterClass *RC = 0;
             if (i+II.getNumDefs() < II.getNumOperands()) {
               RC = TRI->getAllocatableClass(
                 TII->getRegClass(II, i+II.getNumDefs(), TRI, *MF));
@@ -140,7 +139,7 @@ EmitCopyFromReg(SDNode *Node, unsigned ResNo, bool IsClone, bool IsCloned,
               UseRC = RC;
             else if (RC) {
               const TargetRegisterClass *ComRC =
-                TRI->getCommonSubClass(UseRC, RC, VT.SimpleTy);
+                TRI->getCommonSubClass(UseRC, RC);
               // If multiple uses expect disjoint register classes, we emit
               // copies in AddRegisterOperand.
               if (ComRC)
@@ -154,7 +153,7 @@ EmitCopyFromReg(SDNode *Node, unsigned ResNo, bool IsClone, bool IsCloned,
         break;
     }
 
-  const TargetRegisterClass *SrcRC = nullptr, *DstRC = nullptr;
+  const TargetRegisterClass *SrcRC = 0, *DstRC = 0;
   SrcRC = TRI->getMinimalPhysRegClass(SrcReg, VT);
 
   // Figure out the register class to create for the destreg.
@@ -212,7 +211,6 @@ void InstrEmitter::CreateVirtualRegisters(SDNode *Node,
   assert(Node->getMachineOpcode() != TargetOpcode::IMPLICIT_DEF &&
          "IMPLICIT_DEF should have been handled as a special case elsewhere!");
 
-  unsigned NumResults = CountResults(Node);
   for (unsigned i = 0; i < II.getNumDefs(); ++i) {
     // If the specific node value is only used by a CopyToReg and the dest reg
     // is a vreg in the same register class, use the CopyToReg'd destination
@@ -220,19 +218,6 @@ void InstrEmitter::CreateVirtualRegisters(SDNode *Node,
     unsigned VRBase = 0;
     const TargetRegisterClass *RC =
       TRI->getAllocatableClass(TII->getRegClass(II, i, TRI, *MF));
-    // Always let the value type influence the used register class. The
-    // constraints on the instruction may be too lax to represent the value
-    // type correctly. For example, a 64-bit float (X86::FR64) can't live in
-    // the 32-bit float super-class (X86::FR32).
-    if (i < NumResults && TLI->isTypeLegal(Node->getSimpleValueType(i))) {
-      const TargetRegisterClass *VTRC =
-        TLI->getRegClassFor(Node->getSimpleValueType(i));
-      if (RC)
-        VTRC = TRI->getCommonSubClass(RC, VTRC);
-      if (VTRC)
-        RC = VTRC;
-    }
-
     if (II.OpInfo[i].isOptionalDef()) {
       // Optional def must be a physical register.
       unsigned NumResults = CountResults(Node);
@@ -242,7 +227,9 @@ void InstrEmitter::CreateVirtualRegisters(SDNode *Node,
     }
 
     if (!VRBase && !IsClone && !IsCloned)
-      for (SDNode *User : Node->uses()) {
+      for (SDNode::use_iterator UI = Node->use_begin(), E = Node->use_end();
+           UI != E; ++UI) {
+        SDNode *User = *UI;
         if (User->getOpcode() == ISD::CopyToReg &&
             User->getOperand(2).getNode() == Node &&
             User->getOperand(2).getResNo() == i) {
@@ -266,16 +253,12 @@ void InstrEmitter::CreateVirtualRegisters(SDNode *Node,
       MIB.addReg(VRBase, RegState::Define);
     }
 
-    // If this def corresponds to a result of the SDNode insert the VRBase into
-    // the lookup map.
-    if (i < NumResults) {
-      SDValue Op(Node, i);
-      if (IsClone)
-        VRBaseMap.erase(Op);
-      bool isNew = VRBaseMap.insert(std::make_pair(Op, VRBase)).second;
-      (void)isNew; // Silence compiler warning.
-      assert(isNew && "Node emitted out of order - early");
-    }
+    SDValue Op(Node, i);
+    if (IsClone)
+      VRBaseMap.erase(Op);
+    bool isNew = VRBaseMap.insert(std::make_pair(Op, VRBase)).second;
+    (void)isNew; // Silence compiler warning.
+    assert(isNew && "Node emitted out of order - early");
   }
 }
 
@@ -320,6 +303,7 @@ InstrEmitter::AddRegisterOperand(MachineInstrBuilder &MIB,
          "Chain and glue operands should occur at end of operand list!");
   // Get/emit the operand.
   unsigned VReg = getVR(Op, VRBaseMap);
+  assert(TargetRegisterInfo::isVirtualRegister(VReg) && "Not a vreg?");
 
   const MCInstrDesc &MCID = MIB->getDesc();
   bool isOptDef = IIOpNum < MCID.getNumOperands() &&
@@ -330,22 +314,14 @@ InstrEmitter::AddRegisterOperand(MachineInstrBuilder &MIB,
   // shrink VReg's register class within reason.  For example, if VReg == GR32
   // and II requires a GR32_NOSP, just constrain VReg to GR32_NOSP.
   if (II) {
-    const TargetRegisterClass *OpRC = nullptr;
+    const TargetRegisterClass *DstRC = 0;
     if (IIOpNum < II->getNumOperands())
-      OpRC = TII->getRegClass(*II, IIOpNum, TRI, *MF);
-
-    if (OpRC) {
-      const TargetRegisterClass *ConstrainedRC
-        = MRI->constrainRegClass(VReg, OpRC, MinRCSize);
-      if (!ConstrainedRC) {
-        unsigned NewVReg = MRI->createVirtualRegister(OpRC);
-        BuildMI(*MBB, InsertPos, Op.getNode()->getDebugLoc(),
-                TII->get(TargetOpcode::COPY), NewVReg).addReg(VReg);
-        VReg = NewVReg;
-      } else {
-        assert(ConstrainedRC->isAllocatable() &&
-           "Constraining an allocatable VReg produced an unallocatable class?");
-      }
+      DstRC = TRI->getAllocatableClass(TII->getRegClass(*II,IIOpNum,TRI,*MF));
+    if (DstRC && !MRI->constrainRegClass(VReg, DstRC, MinRCSize)) {
+      unsigned NewVReg = MRI->createVirtualRegister(DstRC);
+      BuildMI(*MBB, InsertPos, Op.getNode()->getDebugLoc(),
+              TII->get(TargetOpcode::COPY), NewVReg).addReg(VReg);
+      VReg = NewVReg;
     }
   }
 
@@ -414,10 +390,10 @@ void InstrEmitter::AddOperand(MachineInstrBuilder &MIB,
     Type *Type = CP->getType();
     // MachineConstantPool wants an explicit alignment.
     if (Align == 0) {
-      Align = MF->getDataLayout().getPrefTypeAlignment(Type);
+      Align = TM->getDataLayout()->getPrefTypeAlignment(Type);
       if (Align == 0) {
         // Alignment of vector types.  FIXME!
-        Align = MF->getDataLayout().getTypeAllocSize(Type);
+        Align = TM->getDataLayout()->getTypeAllocSize(Type);
       }
     }
 
@@ -430,8 +406,6 @@ void InstrEmitter::AddOperand(MachineInstrBuilder &MIB,
     MIB.addConstantPoolIndex(Idx, Offset, CP->getTargetFlags());
   } else if (ExternalSymbolSDNode *ES = dyn_cast<ExternalSymbolSDNode>(Op)) {
     MIB.addExternalSymbol(ES->getSymbol(), ES->getTargetFlags());
-  } else if (auto *SymNode = dyn_cast<MCSymbolSDNode>(Op)) {
-    MIB.addSym(SymNode->getMCSymbol());
   } else if (BlockAddressSDNode *BA = dyn_cast<BlockAddressSDNode>(Op)) {
     MIB.addBlockAddress(BA->getBlockAddress(),
                         BA->getOffset(),
@@ -448,7 +422,7 @@ void InstrEmitter::AddOperand(MachineInstrBuilder &MIB,
 }
 
 unsigned InstrEmitter::ConstrainForSubReg(unsigned VReg, unsigned SubIdx,
-                                          MVT VT, const DebugLoc &DL) {
+                                          MVT VT, DebugLoc DL) {
   const TargetRegisterClass *VRC = MRI->getRegClass(VReg);
   const TargetRegisterClass *RC = TRI->getSubClassWithSubReg(VRC, SubIdx);
 
@@ -481,7 +455,9 @@ void InstrEmitter::EmitSubregNode(SDNode *Node,
 
   // If the node is only used by a CopyToReg and the dest reg is a vreg, use
   // the CopyToReg'd destination register instead of creating a new vreg.
-  for (SDNode *User : Node->uses()) {
+  for (SDNode::use_iterator UI = Node->use_begin(), E = Node->use_end();
+       UI != E; ++UI) {
+    SDNode *User = *UI;
     if (User->getOpcode() == ISD::CopyToReg &&
         User->getOperand(2).getNode() == Node) {
       unsigned DestReg = cast<RegisterSDNode>(User->getOperand(1))->getReg();
@@ -570,10 +546,10 @@ void InstrEmitter::EmitSubregNode(SDNode *Node,
       const ConstantSDNode *SD = cast<ConstantSDNode>(N0);
       MIB.addImm(SD->getZExtValue());
     } else
-      AddOperand(MIB, N0, 0, nullptr, VRBaseMap, /*IsDebug=*/false,
+      AddOperand(MIB, N0, 0, 0, VRBaseMap, /*IsDebug=*/false,
                  IsClone, IsCloned);
     // Add the subregster being inserted
-    AddOperand(MIB, N1, 0, nullptr, VRBaseMap, /*IsDebug=*/false,
+    AddOperand(MIB, N1, 0, 0, VRBaseMap, /*IsDebug=*/false,
                IsClone, IsCloned);
     MIB.addImm(SubIdx);
     MBB->insert(InsertPos, MIB);
@@ -657,20 +633,14 @@ MachineInstr *
 InstrEmitter::EmitDbgValue(SDDbgValue *SD,
                            DenseMap<SDValue, unsigned> &VRBaseMap) {
   uint64_t Offset = SD->getOffset();
-  MDNode *Var = SD->getVariable();
-  MDNode *Expr = SD->getExpression();
+  MDNode* MDPtr = SD->getMDPtr();
   DebugLoc DL = SD->getDebugLoc();
-  assert(cast<DILocalVariable>(Var)->isValidLocationForIntrinsic(DL) &&
-         "Expected inlined-at fields to agree");
 
   if (SD->getKind() == SDDbgValue::FRAMEIX) {
     // Stack address; this needs to be lowered in target-dependent fashion.
     // EmitTargetCodeForFrameDebugValue is responsible for allocation.
     return BuildMI(*MF, DL, TII->get(TargetOpcode::DBG_VALUE))
-        .addFrameIndex(SD->getFrameIx())
-        .addImm(Offset)
-        .addMetadata(Var)
-        .addMetadata(Expr);
+        .addFrameIndex(SD->getFrameIx()).addImm(Offset).addMetadata(MDPtr);
   }
   // Otherwise, we're going to create an instruction here.
   const MCInstrDesc &II = TII->get(TargetOpcode::DBG_VALUE);
@@ -708,16 +678,12 @@ InstrEmitter::EmitDbgValue(SDDbgValue *SD,
     MIB.addReg(0U);
   }
 
-  // Indirect addressing is indicated by an Imm as the second parameter.
-  if (SD->isIndirect())
+  if (Offset != 0) // Indirect addressing.
     MIB.addImm(Offset);
-  else {
-    assert(Offset == 0 && "direct value cannot have an offset");
+  else
     MIB.addReg(0U, RegState::Debug);
-  }
 
-  MIB.addMetadata(Var);
-  MIB.addMetadata(Expr);
+  MIB.addMetadata(MDPtr);
 
   return &*MIB;
 }
@@ -756,26 +722,10 @@ EmitMachineNode(SDNode *Node, bool IsClone, bool IsCloned,
 
   const MCInstrDesc &II = TII->get(Opc);
   unsigned NumResults = CountResults(Node);
-  unsigned NumDefs = II.getNumDefs();
-  const MCPhysReg *ScratchRegs = nullptr;
-
-  // Handle STACKMAP and PATCHPOINT specially and then use the generic code.
-  if (Opc == TargetOpcode::STACKMAP || Opc == TargetOpcode::PATCHPOINT) {
-    // Stackmaps do not have arguments and do not preserve their calling
-    // convention. However, to simplify runtime support, they clobber the same
-    // scratch registers as AnyRegCC.
-    unsigned CC = CallingConv::AnyReg;
-    if (Opc == TargetOpcode::PATCHPOINT) {
-      CC = Node->getConstantOperandVal(PatchPointOpers::CCPos);
-      NumDefs = NumResults;
-    }
-    ScratchRegs = TLI->getScratchRegisters((CallingConv::ID) CC);
-  }
-
   unsigned NumImpUses = 0;
   unsigned NodeOperands =
-    countOperands(Node, II.getNumOperands() - NumDefs, NumImpUses);
-  bool HasPhysRegOuts = NumResults > NumDefs && II.getImplicitDefs()!=nullptr;
+    countOperands(Node, II.getNumOperands() - II.getNumDefs(), NumImpUses);
+  bool HasPhysRegOuts = NumResults > II.getNumDefs() && II.getImplicitDefs()!=0;
 #ifndef NDEBUG
   unsigned NumMIOperands = NodeOperands + NumResults;
   if (II.isVariadic())
@@ -798,19 +748,13 @@ EmitMachineNode(SDNode *Node, bool IsClone, bool IsCloned,
 
   // Emit all of the actual operands of this instruction, adding them to the
   // instruction as appropriate.
-  bool HasOptPRefs = NumDefs > NumResults;
+  bool HasOptPRefs = II.getNumDefs() > NumResults;
   assert((!HasOptPRefs || !HasPhysRegOuts) &&
          "Unable to cope with optional defs and phys regs defs!");
-  unsigned NumSkip = HasOptPRefs ? NumDefs - NumResults : 0;
+  unsigned NumSkip = HasOptPRefs ? II.getNumDefs() - NumResults : 0;
   for (unsigned i = NumSkip; i != NodeOperands; ++i)
-    AddOperand(MIB, Node->getOperand(i), i-NumSkip+NumDefs, &II,
+    AddOperand(MIB, Node->getOperand(i), i-NumSkip+II.getNumDefs(), &II,
                VRBaseMap, /*IsDebug=*/false, IsClone, IsCloned);
-
-  // Add scratch registers as implicit def and early clobber
-  if (ScratchRegs)
-    for (unsigned i = 0; ScratchRegs[i]; ++i)
-      MIB.addReg(ScratchRegs[i], RegState::ImplicitDefine |
-                                 RegState::EarlyClobber);
 
   // Transfer all of the memory reference descriptions of this instruction.
   MIB.setMemRefs(cast<MachineSDNode>(Node)->memoperands_begin(),
@@ -840,8 +784,8 @@ EmitMachineNode(SDNode *Node, bool IsClone, bool IsCloned,
 
   // Additional results must be physical register defs.
   if (HasPhysRegOuts) {
-    for (unsigned i = NumDefs; i < NumResults; ++i) {
-      unsigned Reg = II.getImplicitDefs()[i - NumDefs];
+    for (unsigned i = II.getNumDefs(); i < NumResults; ++i) {
+      unsigned Reg = II.getImplicitDefs()[i - II.getNumDefs()];
       if (!Node->hasAnyUseOfValue(i))
         continue;
       // This implicitly defined physreg has a use.
@@ -880,8 +824,10 @@ EmitMachineNode(SDNode *Node, bool IsClone, bool IsCloned,
     MIB->setPhysRegsDeadExcept(UsedRegs, *TRI);
 
   // Run post-isel target hook to adjust this instruction if needed.
+#ifdef NDEBUG
   if (II.hasPostISelHook())
-    TLI->AdjustInstrPostInstrSelection(*MIB, Node);
+#endif
+    TLI->AdjustInstrPostInstrSelection(MIB, Node);
 }
 
 /// EmitSpecialNode - Generate machine code for a target-independent node and
@@ -963,9 +909,6 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
     // Remember to operand index of the group flags.
     SmallVector<unsigned, 8> GroupIdx;
 
-    // Remember registers that are part of early-clobber defs.
-    SmallVector<unsigned, 8> ECRegs;
-
     // Add all of the operand registers to the instruction.
     for (unsigned i = InlineAsm::Op_FirstOperand; i != NumOps;) {
       unsigned Flags =
@@ -994,7 +937,6 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
           unsigned Reg = cast<RegisterSDNode>(Node->getOperand(i))->getReg();
           MIB.addReg(Reg, RegState::Define | RegState::EarlyClobber |
                   getImplRegState(TargetRegisterInfo::isPhysicalRegister(Reg)));
-          ECRegs.push_back(Reg);
         }
         break;
       case InlineAsm::Kind_RegUse:  // Use of register.
@@ -1003,7 +945,7 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
         // The addressing mode has been selected, just add all of the
         // operands to the machine instruction.
         for (unsigned j = 0; j != NumVals; ++j, ++i)
-          AddOperand(MIB, Node->getOperand(i), 0, nullptr, VRBaseMap,
+          AddOperand(MIB, Node->getOperand(i), 0, 0, VRBaseMap,
                      /*IsDebug=*/false, IsClone, IsCloned);
 
         // Manually set isTied bits.
@@ -1017,19 +959,6 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
           }
         }
         break;
-      }
-    }
-
-    // GCC inline assembly allows input operands to also be early-clobber
-    // output operands (so long as the operand is written only after it's
-    // used), but this does not match the semantics of our early-clobber flag.
-    // If an early-clobber operand register is also an input operand register,
-    // then remove the early-clobber flag.
-    for (unsigned Reg : ECRegs) {
-      if (MIB->readsRegister(Reg, TRI)) {
-        MachineOperand *MO = MIB->findRegisterDefOperand(Reg, false, TRI);
-        assert(MO && "No def operand for clobbered register?");
-        MO->setIsEarlyClobber(false);
       }
     }
 
@@ -1049,8 +978,11 @@ EmitSpecialNode(SDNode *Node, bool IsClone, bool IsCloned,
 /// at the given position in the given block.
 InstrEmitter::InstrEmitter(MachineBasicBlock *mbb,
                            MachineBasicBlock::iterator insertpos)
-    : MF(mbb->getParent()), MRI(&MF->getRegInfo()),
-      TII(MF->getSubtarget().getInstrInfo()),
-      TRI(MF->getSubtarget().getRegisterInfo()),
-      TLI(MF->getSubtarget().getTargetLowering()), MBB(mbb),
-      InsertPos(insertpos) {}
+  : MF(mbb->getParent()),
+    MRI(&MF->getRegInfo()),
+    TM(&MF->getTarget()),
+    TII(TM->getInstrInfo()),
+    TRI(TM->getRegisterInfo()),
+    TLI(TM->getTargetLowering()),
+    MBB(mbb), InsertPos(insertpos) {
+}

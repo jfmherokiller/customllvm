@@ -101,7 +101,6 @@
 
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/AlignOf.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/RecyclingAllocator.h"
 #include <iterator>
@@ -497,7 +496,7 @@ public:
   NodeRef() {}
 
   /// operator bool - Detect a null ref.
-  explicit operator bool() const { return pip.getOpaqueValue(); }
+  LLVM_EXPLICIT operator bool() const { return pip.getOpaqueValue(); }
 
   /// NodeRef - Create a reference to the node p with n elements.
   template <typename NodeT>
@@ -954,6 +953,11 @@ class IntervalMap {
     RootBranch node;
   };
 
+  enum {
+    RootDataSize = sizeof(RootBranchData) > sizeof(RootLeaf) ?
+                   sizeof(RootBranchData) : sizeof(RootLeaf)
+  };
+
 public:
   typedef typename Sizer::Allocator Allocator;
   typedef KeyT KeyType;
@@ -962,7 +966,13 @@ public:
 
 private:
   // The root data is either a RootLeaf or a RootBranchData instance.
-  AlignedCharArrayUnion<RootLeaf, RootBranchData> data;
+  // We can't put them in a union since C++03 doesn't allow non-trivial
+  // constructors in unions.
+  // Instead, we use a char array with pointer alignment. The alignment is
+  // ensured by the allocator member in the class, but still verified in the
+  // constructor. We don't support keys or values that are more aligned than a
+  // pointer.
+  char data[RootDataSize];
 
   // Tree height.
   // 0: Leaves in root.
@@ -983,7 +993,7 @@ private:
       const char *d;
       T *t;
     } u;
-    u.d = data.buffer;
+    u.d = data;
     return *u.t;
   }
 
@@ -1041,7 +1051,7 @@ private:
 
 public:
   explicit IntervalMap(Allocator &a) : height(0), rootSize(0), allocator(a) {
-    assert((uintptr_t(data.buffer) & (alignOf<RootLeaf>() - 1)) == 0 &&
+    assert((uintptr_t(data) & (alignOf<RootLeaf>() - 1)) == 0 &&
            "Insufficient alignment");
     new(&rootLeaf()) RootLeaf();
   }
@@ -1167,7 +1177,7 @@ branchRoot(unsigned Position) {
   if (Nodes == 1)
     size[0] = rootSize;
   else
-    NewOffset = distribute(Nodes, rootSize, Leaf::Capacity,  nullptr, size,
+    NewOffset = distribute(Nodes, rootSize, Leaf::Capacity,  NULL, size,
                            Position, true);
 
   // Allocate new nodes.
@@ -1208,7 +1218,7 @@ splitRoot(unsigned Position) {
   if (Nodes == 1)
     Size[0] = rootSize;
   else
-    NewOffset = distribute(Nodes, rootSize, Leaf::Capacity,  nullptr, Size,
+    NewOffset = distribute(Nodes, rootSize, Leaf::Capacity,  NULL, Size,
                            Position, true);
 
   // Allocate new nodes.
@@ -1336,7 +1346,7 @@ protected:
 
 public:
   /// const_iterator - Create an iterator that isn't pointing anywhere.
-  const_iterator() : map(nullptr) {}
+  const_iterator() : map(0) {}
 
   /// setMap - Change the map iterated over. This call must be followed by a
   /// call to goToBegin(), goToEnd(), or find()

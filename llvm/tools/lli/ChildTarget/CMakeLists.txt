@@ -1,10 +1,3 @@
-set(LLVM_LINK_COMPONENTS
-  OrcJIT
-  RuntimeDyld
-  Support
-  )
-
-add_llvm_utility(lli-child-target
+add_llvm_tool(lli-child-target
   ChildTarget.cpp
-)
-
+  )

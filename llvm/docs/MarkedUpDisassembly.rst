@@ -70,7 +70,7 @@ clients.
 For example, a possible annotation of an ARM load of a stack-relative location
 might be annotated as:
 
-.. code-block:: text
+.. code-block:: nasm
 
    ldr <reg gpr:r0>, <mem regoffset:[<reg gpr:sp>, <imm:#4>]>
 

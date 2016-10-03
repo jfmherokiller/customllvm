@@ -16,10 +16,8 @@
 
 #include "llvm/ADT/StringMap.h"
 
-#if defined(__linux__) || defined(__GNU__) || defined(__HAIKU__)
+#if defined(__linux__) || defined(__GNU__)
 #include <endian.h>
-#elif defined(_AIX)
-#include <sys/machine.h>
 #else
 #if !defined(BYTE_ORDER) && !defined(LLVM_ON_WIN32)
 #include <machine/endian.h>
@@ -57,7 +55,7 @@ namespace sys {
   /// target which matches the host.
   ///
   /// \return - The host CPU name, or empty if the CPU could not be determined.
-  StringRef getHostCPUName();
+  std::string getHostCPUName();
 
   /// getHostCPUFeatures - Get the LLVM names for the host CPU features.
   /// The particular format of the names are target dependent, and suitable for

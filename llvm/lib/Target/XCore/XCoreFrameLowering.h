@@ -12,8 +12,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_XCORE_XCOREFRAMELOWERING_H
-#define LLVM_LIB_TARGET_XCORE_XCOREFRAMELOWERING_H
+#ifndef XCOREFRAMEINFO_H
+#define XCOREFRAMEINFO_H
 
 #include "llvm/Target/TargetFrameLowering.h"
 #include "llvm/Target/TargetMachine.h"
@@ -27,31 +27,26 @@ namespace llvm {
 
     /// emitProlog/emitEpilog - These methods insert prolog and epilog code into
     /// the function.
-    void emitPrologue(MachineFunction &MF,
-                      MachineBasicBlock &MBB) const override;
-    void emitEpilogue(MachineFunction &MF,
-                      MachineBasicBlock &MBB) const override;
+    void emitPrologue(MachineFunction &MF) const;
+    void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const;
 
     bool spillCalleeSavedRegisters(MachineBasicBlock &MBB,
-                                  MachineBasicBlock::iterator MI,
-                                  const std::vector<CalleeSavedInfo> &CSI,
-                                  const TargetRegisterInfo *TRI) const override;
+                                   MachineBasicBlock::iterator MI,
+                                   const std::vector<CalleeSavedInfo> &CSI,
+                                   const TargetRegisterInfo *TRI) const;
     bool restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
-                                  MachineBasicBlock::iterator MI,
-                                  const std::vector<CalleeSavedInfo> &CSI,
-                                  const TargetRegisterInfo *TRI) const override;
+                                     MachineBasicBlock::iterator MI,
+                                     const std::vector<CalleeSavedInfo> &CSI,
+                                     const TargetRegisterInfo *TRI) const;
 
-    MachineBasicBlock::iterator
-    eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
-                                  MachineBasicBlock::iterator I) const override;
+    void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                       MachineBasicBlock &MBB,
+                                       MachineBasicBlock::iterator I) const;
 
-    bool hasFP(const MachineFunction &MF) const override;
+    bool hasFP(const MachineFunction &MF) const;
 
-    void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
-                              RegScavenger *RS = nullptr) const override;
-
-    void processFunctionBeforeFrameFinalized(MachineFunction &MF,
-                                     RegScavenger *RS = nullptr) const override;
+    void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
+                                              RegScavenger *RS = NULL) const;
 
     //! Stack slot size (4 bytes)
     static int stackSlotSize() {
@@ -60,4 +55,4 @@ namespace llvm {
   };
 }
 
-#endif
+#endif // XCOREFRAMEINFO_H

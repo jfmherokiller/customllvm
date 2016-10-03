@@ -96,11 +96,12 @@ using namespace llvm::X86Disassembler;
 namespace llvm {
 
 extern void EmitFixedLenDecoder(RecordKeeper &RK, raw_ostream &OS,
-                                const std::string &PredicateNamespace,
-                                const std::string &GPrefix,
-                                const std::string &GPostfix,
-                                const std::string &ROK,
-                                const std::string &RFail, const std::string &L);
+                                std::string PredicateNamespace,
+                                std::string GPrefix,
+                                std::string GPostfix,
+                                std::string ROK,
+                                std::string RFail,
+                                std::string L);
 
 void EmitDisassembler(RecordKeeper &Records, raw_ostream &OS) {
   CodeGenTarget Target(Records);
@@ -110,30 +111,26 @@ void EmitDisassembler(RecordKeeper &Records, raw_ostream &OS) {
   if (Target.getName() == "X86") {
     DisassemblerTables Tables;
 
-    ArrayRef<const CodeGenInstruction*> numberedInstructions =
+    const std::vector<const CodeGenInstruction*> &numberedInstructions =
       Target.getInstructionsByEnumValue();
 
     for (unsigned i = 0, e = numberedInstructions.size(); i != e; ++i)
       RecognizableInstr::processInstr(Tables, *numberedInstructions[i], i);
 
-    if (Tables.hasConflicts()) {
-      PrintError(Target.getTargetRecord()->getLoc(), "Primary decode conflict");
-      return;
-    }
+    if (Tables.hasConflicts())
+      PrintFatalError(Target.getTargetRecord()->getLoc(),
+                      "Primary decode conflict");
 
     Tables.emit(OS);
     return;
   }
 
   // ARM and Thumb have a CHECK() macro to deal with DecodeStatuses.
-  if (Target.getName() == "ARM" || Target.getName() == "Thumb" ||
-      Target.getName() == "AArch64" || Target.getName() == "ARM64") {
-    std::string PredicateNamespace = Target.getName();
-    if (PredicateNamespace == "Thumb")
-      PredicateNamespace = "ARM";
-
-    EmitFixedLenDecoder(Records, OS, PredicateNamespace,
-                        "if (!Check(S, ", "))",
+  if (Target.getName() == "ARM" ||
+      Target.getName() == "Thumb" || 
+      Target.getName() == "AArch64") {
+    EmitFixedLenDecoder(Records, OS, Target.getName() == "AArch64" ? "AArch64" : "ARM",
+                        "if (!Check(S, ", ")) return MCDisassembler::Fail;",
                         "S", "MCDisassembler::Fail",
                         "  MCDisassembler::DecodeStatus S = "
                           "MCDisassembler::Success;\n(void)S;");
@@ -141,7 +138,8 @@ void EmitDisassembler(RecordKeeper &Records, raw_ostream &OS) {
   }
 
   EmitFixedLenDecoder(Records, OS, Target.getName(),
-                      "if (", " == MCDisassembler::Fail)",
+                      "if (", " == MCDisassembler::Fail)"
+                       " return MCDisassembler::Fail;",
                       "MCDisassembler::Success", "MCDisassembler::Fail", "");
 }
 

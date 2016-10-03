@@ -15,18 +15,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#define DEBUG_TYPE "ipconstprop"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ValueTracking.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CallSite.h"
 using namespace llvm;
-
-#define DEBUG_TYPE "ipconstprop"
 
 STATISTIC(NumArgumentsProped, "Number of args turned into constants");
 STATISTIC(NumReturnValProped, "Number of return values turned into constants");
@@ -40,15 +39,45 @@ namespace {
       initializeIPCPPass(*PassRegistry::getPassRegistry());
     }
 
-    bool runOnModule(Module &M) override;
+    bool runOnModule(Module &M);
+  private:
+    bool PropagateConstantsIntoArguments(Function &F);
+    bool PropagateConstantReturn(Function &F);
   };
+}
+
+char IPCP::ID = 0;
+INITIALIZE_PASS(IPCP, "ipconstprop",
+                "Interprocedural constant propagation", false, false)
+
+ModulePass *llvm::createIPConstantPropagationPass() { return new IPCP(); }
+
+bool IPCP::runOnModule(Module &M) {
+  bool Changed = false;
+  bool LocalChange = true;
+
+  // FIXME: instead of using smart algorithms, we just iterate until we stop
+  // making changes.
+  while (LocalChange) {
+    LocalChange = false;
+    for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I)
+      if (!I->isDeclaration()) {
+        // Delete any klingons.
+        I->removeDeadConstantUsers();
+        if (I->hasLocalLinkage())
+          LocalChange |= PropagateConstantsIntoArguments(*I);
+        Changed |= PropagateConstantReturn(*I);
+      }
+    Changed |= LocalChange;
+  }
+  return Changed;
 }
 
 /// PropagateConstantsIntoArguments - Look at all uses of the specified
 /// function.  If all uses are direct call sites, and all pass a particular
 /// constant in for an argument, propagate that constant in as the argument.
 ///
-static bool PropagateConstantsIntoArguments(Function &F) {
+bool IPCP::PropagateConstantsIntoArguments(Function &F) {
   if (F.arg_empty() || F.use_empty()) return false; // No arguments? Early exit.
 
   // For each argument, keep track of its constant value and whether it is a
@@ -57,18 +86,18 @@ static bool PropagateConstantsIntoArguments(Function &F) {
   ArgumentConstants.resize(F.arg_size());
 
   unsigned NumNonconstant = 0;
-  for (Use &U : F.uses()) {
-    User *UR = U.getUser();
+  for (Value::use_iterator UI = F.use_begin(), E = F.use_end(); UI != E; ++UI) {
+    User *U = *UI;
     // Ignore blockaddress uses.
-    if (isa<BlockAddress>(UR)) continue;
+    if (isa<BlockAddress>(U)) continue;
     
     // Used by a non-instruction, or not the callee of a function, do not
     // transform.
-    if (!isa<CallInst>(UR) && !isa<InvokeInst>(UR))
+    if (!isa<CallInst>(U) && !isa<InvokeInst>(U))
       return false;
     
-    CallSite CS(cast<Instruction>(UR));
-    if (!CS.isCallee(&U))
+    CallSite CS(cast<Instruction>(U));
+    if (!CS.isCallee(UI))
       return false;
 
     // Check out all of the potentially constant arguments.  Note that we don't
@@ -83,7 +112,7 @@ static bool PropagateConstantsIntoArguments(Function &F) {
         continue;
       
       Constant *C = dyn_cast<Constant>(*AI);
-      if (C && ArgumentConstants[i].first == nullptr) {
+      if (C && ArgumentConstants[i].first == 0) {
         ArgumentConstants[i].first = C;   // First constant seen.
       } else if (C && ArgumentConstants[i].first == C) {
         // Still the constant value we think it is.
@@ -106,11 +135,11 @@ static bool PropagateConstantsIntoArguments(Function &F) {
   for (unsigned i = 0, e = ArgumentConstants.size(); i != e; ++i, ++AI) {
     // Do we have a constant argument?
     if (ArgumentConstants[i].second || AI->use_empty() ||
-        AI->hasInAllocaAttr() || (AI->hasByValAttr() && !F.onlyReadsMemory()))
+        (AI->hasByValAttr() && !F.onlyReadsMemory()))
       continue;
   
     Value *V = ArgumentConstants[i].first;
-    if (!V) V = UndefValue::get(AI->getType());
+    if (V == 0) V = UndefValue::get(AI->getType());
     AI->replaceAllUsesWith(V);
     ++NumArgumentsProped;
     MadeChange = true;
@@ -127,14 +156,13 @@ static bool PropagateConstantsIntoArguments(Function &F) {
 // Additionally if a function always returns one of its arguments directly,
 // callers will be updated to use the value they pass in directly instead of
 // using the return value.
-static bool PropagateConstantReturn(Function &F) {
+bool IPCP::PropagateConstantReturn(Function &F) {
   if (F.getReturnType()->isVoidTy())
     return false; // No return value.
 
-  // We can infer and propagate the return value only when we know that the
-  // definition we'll get at link time is *exactly* the definition we see now.
-  // For more details, see GlobalValue::mayBeDerefined.
-  if (!F.isDefinitionExact())
+  // If this function could be overridden later in the link stage, we can't
+  // propagate information about its results into callers.
+  if (F.mayBeOverridden())
     return false;
     
   // Check to see if this function returns a constant.
@@ -147,8 +175,8 @@ static bool PropagateConstantReturn(Function &F) {
     RetVals.push_back(UndefValue::get(F.getReturnType()));
 
   unsigned NumNonConstant = 0;
-  for (BasicBlock &BB : F)
-    if (ReturnInst *RI = dyn_cast<ReturnInst>(BB.getTerminator())) {
+  for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB)
+    if (ReturnInst *RI = dyn_cast<ReturnInst>(BB->getTerminator())) {
       for (unsigned i = 0, e = RetVals.size(); i != e; ++i) {
         // Already found conflicting return values?
         Value *RV = RetVals[i];
@@ -181,8 +209,8 @@ static bool PropagateConstantReturn(Function &F) {
         }
         // Different or no known return value? Don't propagate this return
         // value.
-        RetVals[i] = nullptr;
-        // All values non-constant? Stop looking.
+        RetVals[i] = 0;
+        // All values non constant? Stop looking.
         if (++NumNonConstant == RetVals.size())
           return false;
       }
@@ -192,13 +220,13 @@ static bool PropagateConstantReturn(Function &F) {
   // over all users, replacing any uses of the return value with the returned
   // constant.
   bool MadeChange = false;
-  for (Use &U : F.uses()) {
-    CallSite CS(U.getUser());
+  for (Value::use_iterator UI = F.use_begin(), E = F.use_end(); UI != E; ++UI) {
+    CallSite CS(*UI);
     Instruction* Call = CS.getInstruction();
 
     // Not a call instruction or a call instruction that's not calling F
     // directly?
-    if (!Call || !CS.isCallee(&U))
+    if (!Call || !CS.isCallee(UI))
       continue;
     
     // Call result not used?
@@ -207,7 +235,7 @@ static bool PropagateConstantReturn(Function &F) {
 
     MadeChange = true;
 
-    if (!STy) {
+    if (STy == 0) {
       Value* New = RetVals[0];
       if (Argument *A = dyn_cast<Argument>(New))
         // Was an argument returned? Then find the corresponding argument in
@@ -216,8 +244,9 @@ static bool PropagateConstantReturn(Function &F) {
       Call->replaceAllUsesWith(New);
       continue;
     }
-
-    for (auto I = Call->user_begin(), E = Call->user_end(); I != E;) {
+   
+    for (Value::use_iterator I = Call->use_begin(), E = Call->use_end();
+         I != E;) {
       Instruction *Ins = cast<Instruction>(*I);
 
       // Increment now, so we can remove the use
@@ -247,34 +276,4 @@ static bool PropagateConstantReturn(Function &F) {
 
   if (MadeChange) ++NumReturnValProped;
   return MadeChange;
-}
-
-char IPCP::ID = 0;
-INITIALIZE_PASS(IPCP, "ipconstprop",
-                "Interprocedural constant propagation", false, false)
-
-ModulePass *llvm::createIPConstantPropagationPass() { return new IPCP(); }
-
-bool IPCP::runOnModule(Module &M) {
-  if (skipModule(M))
-    return false;
-
-  bool Changed = false;
-  bool LocalChange = true;
-
-  // FIXME: instead of using smart algorithms, we just iterate until we stop
-  // making changes.
-  while (LocalChange) {
-    LocalChange = false;
-    for (Function &F : M)
-      if (!F.isDeclaration()) {
-        // Delete any klingons.
-        F.removeDeadConstantUsers();
-        if (F.hasLocalLinkage())
-          LocalChange |= PropagateConstantsIntoArguments(F);
-        Changed |= PropagateConstantReturn(F);
-      }
-    Changed |= LocalChange;
-  }
-  return Changed;
 }

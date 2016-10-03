@@ -12,6 +12,3 @@
 
 // CHECK-ERRORS: error: literal value out of range for directive
 .long 4e71cf69 // double floating point constant due to missing "0x"
-
-// CHECK-ERRORS: error: literal value out of range for directive
-.word 0xfffffffff

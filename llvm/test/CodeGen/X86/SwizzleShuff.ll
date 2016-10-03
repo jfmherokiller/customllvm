@@ -1,4 +1,4 @@
-; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7-avx -mattr=+avx -x86-experimental-vector-widening-legalization | FileCheck %s
+; RUN: llc < %s -mtriple=x86_64-apple-darwin -mcpu=corei7-avx -mattr=+avx | FileCheck %s
 
 ; Check that we perform a scalar XOR on i32.
 
@@ -6,24 +6,23 @@
 ; CHECK: xorl
 ; CHECK: ret
 define void @pull_bitcast (<4 x i8>* %pA, <4 x i8>* %pB) {
-  %A = load <4 x i8>, <4 x i8>* %pA
-  %B = load <4 x i8>, <4 x i8>* %pB
+  %A = load <4 x i8>* %pA
+  %B = load <4 x i8>* %pB
   %C = xor <4 x i8> %A, %B
   store <4 x i8> %C, <4 x i8>* %pA
   ret void
 }
 
 ; CHECK: multi_use_swizzle
-; CHECK: pshufd
-; CHECK-NEXT: pshufd
-; CHECK-NEXT: pblendw
-; CHECK-NEXT: pshufd
-; CHECK-NEXT: pshufd
-; CHECK-NEXT: pxor
+; CHECK: mov
+; CHECK-NEXT: shuf
+; CHECK-NEXT: shuf
+; CHECK-NEXT: shuf
+; CHECK-NEXT: xor
 ; CHECK-NEXT: ret
 define <4 x i32> @multi_use_swizzle (<4 x i32>* %pA, <4 x i32>* %pB) {
-  %A = load <4 x i32>, <4 x i32>* %pA
-  %B = load <4 x i32>, <4 x i32>* %pB
+  %A = load <4 x i32>* %pA
+  %B = load <4 x i32>* %pB
   %S = shufflevector <4 x i32> %A, <4 x i32> %B, <4 x i32> <i32 1, i32 1, i32 5, i32 6>
   %S1 = shufflevector <4 x i32> %S, <4 x i32> undef, <4 x i32> <i32 1, i32 3, i32 2, i32 2>
   %S2 = shufflevector <4 x i32> %S, <4 x i32> undef, <4 x i32> <i32 2, i32 1, i32 0, i32 2>
@@ -35,9 +34,9 @@ define <4 x i32> @multi_use_swizzle (<4 x i32>* %pA, <4 x i32>* %pB) {
 ; CHECK: xorl
 ; CHECK: ret
 define <4 x i8> @pull_bitcast2 (<4 x i8>* %pA, <4 x i8>* %pB, <4 x i8>* %pC) {
-  %A = load <4 x i8>, <4 x i8>* %pA
+  %A = load <4 x i8>* %pA
   store <4 x i8> %A, <4 x i8>* %pC
-  %B = load <4 x i8>, <4 x i8>* %pB
+  %B = load <4 x i8>* %pB
   %C = xor <4 x i8> %A, %B
   store <4 x i8> %C, <4 x i8>* %pA
   ret <4 x i8> %C
@@ -46,11 +45,11 @@ define <4 x i8> @pull_bitcast2 (<4 x i8>* %pA, <4 x i8>* %pB, <4 x i8>* %pC) {
 
 
 ; CHECK: reverse_1
-; CHECK-NOT: pshufd
+; CHECK-NOT: shuf
 ; CHECK: ret
 define <4 x i32> @reverse_1 (<4 x i32>* %pA, <4 x i32>* %pB) {
-  %A = load <4 x i32>, <4 x i32>* %pA
-  %B = load <4 x i32>, <4 x i32>* %pB
+  %A = load <4 x i32>* %pA
+  %B = load <4 x i32>* %pB
   %S = shufflevector <4 x i32> %A, <4 x i32> %B, <4 x i32> <i32 1, i32 0, i32 3, i32 2>
   %S1 = shufflevector <4 x i32> %S, <4 x i32> undef, <4 x i32> <i32 1, i32 0, i32 3, i32 2>
   ret <4 x i32> %S1
@@ -58,11 +57,11 @@ define <4 x i32> @reverse_1 (<4 x i32>* %pA, <4 x i32>* %pB) {
 
 
 ; CHECK: no_reverse_shuff
-; CHECK: pshufd
+; CHECK: shuf
 ; CHECK: ret
 define <4 x i32> @no_reverse_shuff (<4 x i32>* %pA, <4 x i32>* %pB) {
-  %A = load <4 x i32>, <4 x i32>* %pA
-  %B = load <4 x i32>, <4 x i32>* %pB
+  %A = load <4 x i32>* %pA
+  %B = load <4 x i32>* %pB
   %S = shufflevector <4 x i32> %A, <4 x i32> %B, <4 x i32> <i32 1, i32 0, i32 3, i32 2>
   %S1 = shufflevector <4 x i32> %S, <4 x i32> undef, <4 x i32> <i32 3, i32 2, i32 3, i32 2>
   ret <4 x i32> %S1

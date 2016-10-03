@@ -1,4 +1,4 @@
-//===-- llvm-mc.cpp - Machine Code Hacking Driver ---------------*- C++ -*-===//
+//===-- llvm-mc.cpp - Machine Code Hacking Driver -------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Disassembler.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -20,14 +21,12 @@
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
-#include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
-#include "llvm/MC/MCTargetOptionsCommandFlags.h"
+#include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compression.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/Host.h"
@@ -39,7 +38,6 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
-
 using namespace llvm;
 
 static cl::opt<std::string>
@@ -51,23 +49,6 @@ OutputFilename("o", cl::desc("Output filename"),
 
 static cl::opt<bool>
 ShowEncoding("show-encoding", cl::desc("Show instruction encodings"));
-
-static cl::opt<bool> RelaxELFRel(
-    "relax-relocations", cl::init(true),
-    cl::desc("Emit R_X86_64_GOTPCRELX instead of R_X86_64_GOTPCREL"));
-
-static cl::opt<DebugCompressionType>
-CompressDebugSections("compress-debug-sections", cl::ValueOptional,
-  cl::init(DebugCompressionType::DCT_None),
-  cl::desc("Choose DWARF debug sections compression:"),
-  cl::values(
-    clEnumValN(DebugCompressionType::DCT_None, "none",
-      "No compression"),
-    clEnumValN(DebugCompressionType::DCT_Zlib, "zlib",
-      "Use zlib compression"),
-    clEnumValN(DebugCompressionType::DCT_ZlibGnu, "zlib-gnu",
-      "Use zlib-gnu compression (deprecated)"),
-    clEnumValEnd));
 
 static cl::opt<bool>
 ShowInst("show-inst", cl::desc("Show internal instruction representation"));
@@ -81,15 +62,13 @@ OutputAsmVariant("output-asm-variant",
                  cl::desc("Syntax variant to use for output printing"));
 
 static cl::opt<bool>
-PrintImmHex("print-imm-hex", cl::init(false),
-            cl::desc("Prefer hex format for immediate values"));
-
-static cl::list<std::string>
-DefineSymbol("defsym", cl::desc("Defines a symbol to be an integer constant"));
+RelaxAll("mc-relax-all", cl::desc("Relax all fixups"));
 
 static cl::opt<bool>
-    PreserveComments("preserve-comments",
-                     cl::desc("Preserve Comments in outputted assembly"));
+DisableCFI("disable-cfi", cl::desc("Do not use .cfi_* directives"));
+
+static cl::opt<bool>
+NoExecStack("mc-no-exec-stack", cl::desc("File doesn't need an exec stack"));
 
 enum OutputFileType {
   OFT_Null,
@@ -132,8 +111,20 @@ MAttrs("mattr",
   cl::desc("Target specific attributes (-mattr=help for details)"),
   cl::value_desc("a1,+a2,-a3,..."));
 
-static cl::opt<bool> PIC("position-independent",
-                         cl::desc("Position independent"), cl::init(false));
+static cl::opt<Reloc::Model>
+RelocModel("relocation-model",
+             cl::desc("Choose relocation model"),
+             cl::init(Reloc::Default),
+             cl::values(
+            clEnumValN(Reloc::Default, "default",
+                       "Target default relocation model"),
+            clEnumValN(Reloc::Static, "static",
+                       "Non-relocatable code"),
+            clEnumValN(Reloc::PIC_, "pic",
+                       "Fully relocatable, position independent code"),
+            clEnumValN(Reloc::DynamicNoPIC, "dynamic-no-pic",
+                       "Relocatable external references, non-relocatable code"),
+            clEnumValEnd));
 
 static cl::opt<llvm::CodeModel::Model>
 CMModel("code-model",
@@ -156,6 +147,9 @@ NoInitialTextSection("n", cl::desc("Don't assume assembly file starts "
                                    "in the text section"));
 
 static cl::opt<bool>
+SaveTempLabels("L", cl::desc("Don't discard temporary labels"));
+
+static cl::opt<bool>
 GenDwarfForAssembly("g", cl::desc("Generate dwarf debugging info for assembly "
                                   "source files"));
 
@@ -167,17 +161,12 @@ static cl::opt<std::string>
 MainFileName("main-file-name",
              cl::desc("Specifies the name we should consider the input file"));
 
-static cl::opt<bool> SaveTempLabels("save-temp-labels",
-                                    cl::desc("Don't discard temporary labels"));
-
-static cl::opt<bool> NoExecStack("no-exec-stack",
-                                 cl::desc("File doesn't need an exec stack"));
-
 enum ActionType {
   AC_AsLex,
   AC_Assemble,
   AC_Disassemble,
   AC_MDisassemble,
+  AC_HDisassemble
 };
 
 static cl::opt<ActionType>
@@ -191,6 +180,9 @@ Action(cl::desc("Action to perform:"),
                              "Disassemble strings of hex bytes"),
                   clEnumValN(AC_MDisassemble, "mdis",
                              "Marked up disassembly of strings of hex bytes"),
+                  clEnumValN(AC_HDisassemble, "hdis",
+                             "Disassemble strings of hex bytes printing "
+                             "immediates as hex"),
                   clEnumValEnd));
 
 static const Target *GetTarget(const char *ProgName) {
@@ -205,7 +197,7 @@ static const Target *GetTarget(const char *ProgName) {
                                                          Error);
   if (!TheTarget) {
     errs() << ProgName << ": " << Error;
-    return nullptr;
+    return 0;
   }
 
   // Update the triple name and return the found target.
@@ -213,16 +205,17 @@ static const Target *GetTarget(const char *ProgName) {
   return TheTarget;
 }
 
-static std::unique_ptr<tool_output_file> GetOutputStream() {
+static tool_output_file *GetOutputStream() {
   if (OutputFilename == "")
     OutputFilename = "-";
 
-  std::error_code EC;
-  auto Out = llvm::make_unique<tool_output_file>(OutputFilename, EC,
-                                                 sys::fs::F_None);
-  if (EC) {
-    errs() << EC.message() << '\n';
-    return nullptr;
+  std::string Err;
+  tool_output_file *Out =
+      new tool_output_file(OutputFilename.c_str(), Err, sys::fs::F_Binary);
+  if (!Err.empty()) {
+    errs() << Err << '\n';
+    delete Out;
+    return 0;
   }
 
   return Out;
@@ -240,21 +233,20 @@ static void setDwarfDebugFlags(int argc, char **argv) {
 }
 
 static std::string DwarfDebugProducer;
-static void setDwarfDebugProducer() {
+static void setDwarfDebugProducer(void) {
   if(!getenv("DEBUG_PRODUCER"))
     return;
   DwarfDebugProducer += getenv("DEBUG_PRODUCER");
 }
 
-static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI,
-                      raw_ostream &OS) {
+static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI, tool_output_file *Out) {
 
   AsmLexer Lexer(MAI);
-  Lexer.setBuffer(SrcMgr.getMemoryBuffer(SrcMgr.getMainFileID())->getBuffer());
+  Lexer.setBuffer(SrcMgr.getMemoryBuffer(0));
 
   bool Error = false;
   while (Lexer.Lex().isNot(AsmToken::Eof)) {
-    const AsmToken &Tok = Lexer.getTok();
+    AsmToken Tok = Lexer.getTok();
 
     switch (Tok.getKind()) {
     default:
@@ -266,177 +258,79 @@ static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI,
       Error = true; // error already printed.
       break;
     case AsmToken::Identifier:
-      OS << "identifier: " << Lexer.getTok().getString();
+      Out->os() << "identifier: " << Lexer.getTok().getString();
       break;
     case AsmToken::Integer:
-      OS << "int: " << Lexer.getTok().getString();
+      Out->os() << "int: " << Lexer.getTok().getString();
       break;
     case AsmToken::Real:
-      OS << "real: " << Lexer.getTok().getString();
+      Out->os() << "real: " << Lexer.getTok().getString();
       break;
     case AsmToken::String:
-      OS << "string: " << Lexer.getTok().getString();
+      Out->os() << "string: " << Lexer.getTok().getString();
       break;
 
-    case AsmToken::Amp:            OS << "Amp"; break;
-    case AsmToken::AmpAmp:         OS << "AmpAmp"; break;
-    case AsmToken::At:             OS << "At"; break;
-    case AsmToken::Caret:          OS << "Caret"; break;
-    case AsmToken::Colon:          OS << "Colon"; break;
-    case AsmToken::Comma:          OS << "Comma"; break;
-    case AsmToken::Dollar:         OS << "Dollar"; break;
-    case AsmToken::Dot:            OS << "Dot"; break;
-    case AsmToken::EndOfStatement: OS << "EndOfStatement"; break;
-    case AsmToken::Eof:            OS << "Eof"; break;
-    case AsmToken::Equal:          OS << "Equal"; break;
-    case AsmToken::EqualEqual:     OS << "EqualEqual"; break;
-    case AsmToken::Exclaim:        OS << "Exclaim"; break;
-    case AsmToken::ExclaimEqual:   OS << "ExclaimEqual"; break;
-    case AsmToken::Greater:        OS << "Greater"; break;
-    case AsmToken::GreaterEqual:   OS << "GreaterEqual"; break;
-    case AsmToken::GreaterGreater: OS << "GreaterGreater"; break;
-    case AsmToken::Hash:           OS << "Hash"; break;
-    case AsmToken::LBrac:          OS << "LBrac"; break;
-    case AsmToken::LCurly:         OS << "LCurly"; break;
-    case AsmToken::LParen:         OS << "LParen"; break;
-    case AsmToken::Less:           OS << "Less"; break;
-    case AsmToken::LessEqual:      OS << "LessEqual"; break;
-    case AsmToken::LessGreater:    OS << "LessGreater"; break;
-    case AsmToken::LessLess:       OS << "LessLess"; break;
-    case AsmToken::Minus:          OS << "Minus"; break;
-    case AsmToken::Percent:        OS << "Percent"; break;
-    case AsmToken::Pipe:           OS << "Pipe"; break;
-    case AsmToken::PipePipe:       OS << "PipePipe"; break;
-    case AsmToken::Plus:           OS << "Plus"; break;
-    case AsmToken::RBrac:          OS << "RBrac"; break;
-    case AsmToken::RCurly:         OS << "RCurly"; break;
-    case AsmToken::RParen:         OS << "RParen"; break;
-    case AsmToken::Slash:          OS << "Slash"; break;
-    case AsmToken::Star:           OS << "Star"; break;
-    case AsmToken::Tilde:          OS << "Tilde"; break;
-    case AsmToken::PercentCall16:
-      OS << "PercentCall16";
-      break;
-    case AsmToken::PercentCall_Hi:
-      OS << "PercentCall_Hi";
-      break;
-    case AsmToken::PercentCall_Lo:
-      OS << "PercentCall_Lo";
-      break;
-    case AsmToken::PercentDtprel_Hi:
-      OS << "PercentDtprel_Hi";
-      break;
-    case AsmToken::PercentDtprel_Lo:
-      OS << "PercentDtprel_Lo";
-      break;
-    case AsmToken::PercentGot:
-      OS << "PercentGot";
-      break;
-    case AsmToken::PercentGot_Disp:
-      OS << "PercentGot_Disp";
-      break;
-    case AsmToken::PercentGot_Hi:
-      OS << "PercentGot_Hi";
-      break;
-    case AsmToken::PercentGot_Lo:
-      OS << "PercentGot_Lo";
-      break;
-    case AsmToken::PercentGot_Ofst:
-      OS << "PercentGot_Ofst";
-      break;
-    case AsmToken::PercentGot_Page:
-      OS << "PercentGot_Page";
-      break;
-    case AsmToken::PercentGottprel:
-      OS << "PercentGottprel";
-      break;
-    case AsmToken::PercentGp_Rel:
-      OS << "PercentGp_Rel";
-      break;
-    case AsmToken::PercentHi:
-      OS << "PercentHi";
-      break;
-    case AsmToken::PercentHigher:
-      OS << "PercentHigher";
-      break;
-    case AsmToken::PercentHighest:
-      OS << "PercentHighest";
-      break;
-    case AsmToken::PercentLo:
-      OS << "PercentLo";
-      break;
-    case AsmToken::PercentNeg:
-      OS << "PercentNeg";
-      break;
-    case AsmToken::PercentPcrel_Hi:
-      OS << "PercentPcrel_Hi";
-      break;
-    case AsmToken::PercentPcrel_Lo:
-      OS << "PercentPcrel_Lo";
-      break;
-    case AsmToken::PercentTlsgd:
-      OS << "PercentTlsgd";
-      break;
-    case AsmToken::PercentTlsldm:
-      OS << "PercentTlsldm";
-      break;
-    case AsmToken::PercentTprel_Hi:
-      OS << "PercentTprel_Hi";
-      break;
-    case AsmToken::PercentTprel_Lo:
-      OS << "PercentTprel_Lo";
-      break;
+    case AsmToken::Amp:            Out->os() << "Amp"; break;
+    case AsmToken::AmpAmp:         Out->os() << "AmpAmp"; break;
+    case AsmToken::At:             Out->os() << "At"; break;
+    case AsmToken::Caret:          Out->os() << "Caret"; break;
+    case AsmToken::Colon:          Out->os() << "Colon"; break;
+    case AsmToken::Comma:          Out->os() << "Comma"; break;
+    case AsmToken::Dollar:         Out->os() << "Dollar"; break;
+    case AsmToken::Dot:            Out->os() << "Dot"; break;
+    case AsmToken::EndOfStatement: Out->os() << "EndOfStatement"; break;
+    case AsmToken::Eof:            Out->os() << "Eof"; break;
+    case AsmToken::Equal:          Out->os() << "Equal"; break;
+    case AsmToken::EqualEqual:     Out->os() << "EqualEqual"; break;
+    case AsmToken::Exclaim:        Out->os() << "Exclaim"; break;
+    case AsmToken::ExclaimEqual:   Out->os() << "ExclaimEqual"; break;
+    case AsmToken::Greater:        Out->os() << "Greater"; break;
+    case AsmToken::GreaterEqual:   Out->os() << "GreaterEqual"; break;
+    case AsmToken::GreaterGreater: Out->os() << "GreaterGreater"; break;
+    case AsmToken::Hash:           Out->os() << "Hash"; break;
+    case AsmToken::LBrac:          Out->os() << "LBrac"; break;
+    case AsmToken::LCurly:         Out->os() << "LCurly"; break;
+    case AsmToken::LParen:         Out->os() << "LParen"; break;
+    case AsmToken::Less:           Out->os() << "Less"; break;
+    case AsmToken::LessEqual:      Out->os() << "LessEqual"; break;
+    case AsmToken::LessGreater:    Out->os() << "LessGreater"; break;
+    case AsmToken::LessLess:       Out->os() << "LessLess"; break;
+    case AsmToken::Minus:          Out->os() << "Minus"; break;
+    case AsmToken::Percent:        Out->os() << "Percent"; break;
+    case AsmToken::Pipe:           Out->os() << "Pipe"; break;
+    case AsmToken::PipePipe:       Out->os() << "PipePipe"; break;
+    case AsmToken::Plus:           Out->os() << "Plus"; break;
+    case AsmToken::RBrac:          Out->os() << "RBrac"; break;
+    case AsmToken::RCurly:         Out->os() << "RCurly"; break;
+    case AsmToken::RParen:         Out->os() << "RParen"; break;
+    case AsmToken::Slash:          Out->os() << "Slash"; break;
+    case AsmToken::Star:           Out->os() << "Star"; break;
+    case AsmToken::Tilde:          Out->os() << "Tilde"; break;
     }
 
     // Print the token string.
-    OS << " (\"";
-    OS.write_escaped(Tok.getString());
-    OS << "\")\n";
+    Out->os() << " (\"";
+    Out->os().write_escaped(Tok.getString());
+    Out->os() << "\")\n";
   }
 
   return Error;
 }
 
-static int fillCommandLineSymbols(MCAsmParser &Parser){
-  for(auto &I: DefineSymbol){
-    auto Pair = StringRef(I).split('=');
-    if(Pair.second.empty()){
-      errs() << "error: defsym must be of the form: sym=value: " << I;
-      return 1;
-    }
-    int64_t Value;
-    if(Pair.second.getAsInteger(0, Value)){
-      errs() << "error: Value is not an integer: " << Pair.second;
-      return 1;
-    }
-    auto &Context = Parser.getContext();
-    auto Symbol = Context.getOrCreateSymbol(Pair.first);
-    Parser.getStreamer().EmitAssignment(Symbol,
-                                        MCConstantExpr::create(Value, Context));
-  }
-  return 0;
-}
-
-static int AssembleInput(const char *ProgName, const Target *TheTarget,
+static int AssembleInput(const char *ProgName, const Target *TheTarget, 
                          SourceMgr &SrcMgr, MCContext &Ctx, MCStreamer &Str,
-                         MCAsmInfo &MAI, MCSubtargetInfo &STI,
-                         MCInstrInfo &MCII, MCTargetOptions &MCOptions) {
-  std::unique_ptr<MCAsmParser> Parser(
-      createMCAsmParser(SrcMgr, Ctx, Str, MAI));
-  std::unique_ptr<MCTargetAsmParser> TAP(
-      TheTarget->createMCAsmParser(STI, *Parser, MCII, MCOptions));
-
+                         MCAsmInfo &MAI, MCSubtargetInfo &STI, MCInstrInfo &MCII) {
+  OwningPtr<MCAsmParser> Parser(createMCAsmParser(SrcMgr, Ctx,
+                                                  Str, MAI));
+  OwningPtr<MCTargetAsmParser> TAP(TheTarget->createMCAsmParser(STI, *Parser, MCII));
   if (!TAP) {
     errs() << ProgName
            << ": error: this target does not support assembly parsing.\n";
     return 1;
   }
 
-  int SymbolResult = fillCommandLineSymbols(*Parser);
-  if(SymbolResult)
-    return SymbolResult;
   Parser->setShowParsedOperands(ShowInstOperands);
-  Parser->setTargetParser(*TAP);
+  Parser->setTargetParser(*TAP.get());
 
   int Res = Parser->Run(NoInitialTextSection);
 
@@ -445,7 +339,7 @@ static int AssembleInput(const char *ProgName, const Target *TheTarget,
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
+  sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 
@@ -459,7 +353,6 @@ int main(int argc, char **argv) {
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
 
   cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
-  MCTargetOptions MCOptions = InitMCTargetOptionsFromFlags();
   TripleName = Triple::normalize(TripleName);
   setDwarfDebugFlags(argc, argv);
 
@@ -469,75 +362,45 @@ int main(int argc, char **argv) {
   const Target *TheTarget = GetTarget(ProgName);
   if (!TheTarget)
     return 1;
-  // Now that GetTarget() has (potentially) replaced TripleName, it's safe to
-  // construct the Triple object.
-  Triple TheTriple(TripleName);
 
-  ErrorOr<std::unique_ptr<MemoryBuffer>> BufferPtr =
-      MemoryBuffer::getFileOrSTDIN(InputFilename);
-  if (std::error_code EC = BufferPtr.getError()) {
-    errs() << InputFilename << ": " << EC.message() << '\n';
+  OwningPtr<MemoryBuffer> BufferPtr;
+  if (error_code ec = MemoryBuffer::getFileOrSTDIN(InputFilename, BufferPtr)) {
+    errs() << ProgName << ": " << ec.message() << '\n';
     return 1;
   }
-  MemoryBuffer *Buffer = BufferPtr->get();
+  MemoryBuffer *Buffer = BufferPtr.take();
 
   SourceMgr SrcMgr;
 
   // Tell SrcMgr about this buffer, which is what the parser will pick up.
-  SrcMgr.AddNewSourceBuffer(std::move(*BufferPtr), SMLoc());
+  SrcMgr.AddNewSourceBuffer(Buffer, SMLoc());
 
   // Record the location of the include directories so that the lexer can find
   // it later.
   SrcMgr.setIncludeDirs(IncludeDirs);
 
-  std::unique_ptr<MCRegisterInfo> MRI(TheTarget->createMCRegInfo(TripleName));
+  llvm::OwningPtr<MCRegisterInfo> MRI(TheTarget->createMCRegInfo(TripleName));
   assert(MRI && "Unable to create target register info!");
 
-  std::unique_ptr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, TripleName));
+  llvm::OwningPtr<MCAsmInfo> MAI(TheTarget->createMCAsmInfo(*MRI, TripleName));
   assert(MAI && "Unable to create target asm info!");
-
-  MAI->setRelaxELFRelocations(RelaxELFRel);
-
-  if (CompressDebugSections != DebugCompressionType::DCT_None) {
-    if (!zlib::isAvailable()) {
-      errs() << ProgName
-             << ": build tools with zlib to enable -compress-debug-sections";
-      return 1;
-    }
-    MAI->setCompressDebugSections(CompressDebugSections);
-  }
-  MAI->setPreserveAsmComments(PreserveComments);
 
   // FIXME: This is not pretty. MCContext has a ptr to MCObjectFileInfo and
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
-  MCObjectFileInfo MOFI;
-  MCContext Ctx(MAI.get(), MRI.get(), &MOFI, &SrcMgr);
-  MOFI.InitMCObjectFileInfo(TheTriple, PIC, CMModel, Ctx);
+  OwningPtr<MCObjectFileInfo> MOFI(new MCObjectFileInfo());
+  MCContext Ctx(MAI.get(), MRI.get(), MOFI.get(), &SrcMgr);
+  MOFI->InitMCObjectFileInfo(TripleName, RelocModel, CMModel, Ctx);
 
   if (SaveTempLabels)
     Ctx.setAllowTemporaryLabels(false);
 
   Ctx.setGenDwarfForAssembly(GenDwarfForAssembly);
-  // Default to 4 for dwarf version.
-  unsigned DwarfVersion = MCOptions.DwarfVersion ? MCOptions.DwarfVersion : 4;
-  if (DwarfVersion < 2 || DwarfVersion > 4) {
-    errs() << ProgName << ": Dwarf version " << DwarfVersion
-           << " is not supported." << '\n';
-    return 1;
-  }
-  Ctx.setDwarfVersion(DwarfVersion);
   if (!DwarfDebugFlags.empty())
     Ctx.setDwarfDebugFlags(StringRef(DwarfDebugFlags));
   if (!DwarfDebugProducer.empty())
     Ctx.setDwarfDebugProducer(StringRef(DwarfDebugProducer));
   if (!DebugCompilationDir.empty())
     Ctx.setCompilationDir(DebugCompilationDir);
-  else {
-    // If no compilation dir is set, try to use the current directory.
-    SmallString<128> CWD;
-    if (!sys::fs::current_path(CWD))
-      Ctx.setCompilationDir(CWD);
-  }
   if (!MainFileName.empty())
     Ctx.setMainFileName(MainFileName);
 
@@ -550,75 +413,62 @@ int main(int argc, char **argv) {
     FeaturesStr = Features.getString();
   }
 
-  std::unique_ptr<tool_output_file> Out = GetOutputStream();
+  OwningPtr<tool_output_file> Out(GetOutputStream());
   if (!Out)
     return 1;
 
-  std::unique_ptr<buffer_ostream> BOS;
-  raw_pwrite_stream *OS = &Out->os();
-  std::unique_ptr<MCStreamer> Str;
+  formatted_raw_ostream FOS(Out->os());
+  OwningPtr<MCStreamer> Str;
 
-  std::unique_ptr<MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
-  std::unique_ptr<MCSubtargetInfo> STI(
-      TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
+  OwningPtr<MCInstrInfo> MCII(TheTarget->createMCInstrInfo());
+  OwningPtr<MCSubtargetInfo>
+    STI(TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
-  MCInstPrinter *IP = nullptr;
+  MCInstPrinter *IP = NULL;
   if (FileType == OFT_AssemblyFile) {
-    IP = TheTarget->createMCInstPrinter(Triple(TripleName), OutputAsmVariant,
-                                        *MAI, *MCII, *MRI);
-
-    // Set the display preference for hex vs. decimal immediates.
-    IP->setPrintImmHex(PrintImmHex);
-
-    // Set up the AsmStreamer.
-    MCCodeEmitter *CE = nullptr;
-    MCAsmBackend *MAB = nullptr;
+    IP =
+      TheTarget->createMCInstPrinter(OutputAsmVariant, *MAI, *MCII, *MRI, *STI);
+    MCCodeEmitter *CE = 0;
+    MCAsmBackend *MAB = 0;
     if (ShowEncoding) {
-      CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx);
-      MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU, MCOptions);
+      CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
+      MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
-    auto FOut = llvm::make_unique<formatted_raw_ostream>(*OS);
-    Str.reset(TheTarget->createAsmStreamer(
-        Ctx, std::move(FOut), /*asmverbose*/ true,
-        /*useDwarfDirectory*/ true, IP, CE, MAB, ShowInst));
+    bool UseCFI = !DisableCFI;
+    Str.reset(TheTarget->createAsmStreamer(Ctx, FOS, /*asmverbose*/true,
+                                           /*useLoc*/ true,
+                                           UseCFI,
+                                           /*useDwarfDirectory*/ true,
+                                           IP, CE, MAB, ShowInst));
 
   } else if (FileType == OFT_Null) {
-    Str.reset(TheTarget->createNullStreamer(Ctx));
+    Str.reset(createNullStreamer(Ctx));
   } else {
     assert(FileType == OFT_ObjectFile && "Invalid file type!");
-
-    // Don't waste memory on names of temp labels.
-    Ctx.setUseNamesOnTempLabels(false);
-
-    if (!Out->os().supportsSeeking()) {
-      BOS = make_unique<buffer_ostream>(Out->os());
-      OS = BOS.get();
-    }
-
-    MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx);
-    MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU,
-                                                      MCOptions);
-    Str.reset(TheTarget->createMCObjectStreamer(
-        TheTriple, Ctx, *MAB, *OS, CE, *STI, MCOptions.MCRelaxAll,
-        MCOptions.MCIncrementalLinkerCompatible,
-        /*DWARFMustBeAtTheEnd*/ false));
-    if (NoExecStack)
-      Str->InitSections(true);
+    MCCodeEmitter *CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, *STI, Ctx);
+    MCAsmBackend *MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
+    Str.reset(TheTarget->createMCObjectStreamer(TripleName, Ctx, *MAB,
+                                                FOS, CE, RelaxAll,
+                                                NoExecStack));
   }
 
   int Res = 1;
   bool disassemble = false;
   switch (Action) {
   case AC_AsLex:
-    Res = AsLexInput(SrcMgr, *MAI, Out->os());
+    Res = AsLexInput(SrcMgr, *MAI, Out.get());
     break;
   case AC_Assemble:
-    Res = AssembleInput(ProgName, TheTarget, SrcMgr, Ctx, *Str, *MAI, *STI,
-                        *MCII, MCOptions);
+    Res = AssembleInput(ProgName, TheTarget, SrcMgr, Ctx, *Str, *MAI, *STI, *MCII);
     break;
   case AC_MDisassemble:
     assert(IP && "Expected assembly output");
     IP->setUseMarkup(1);
+    disassemble = true;
+    break;
+  case AC_HDisassemble:
+    assert(IP && "Expected assembly output");
+    IP->setPrintImmHex(1);
     disassemble = true;
     break;
   case AC_Disassemble:

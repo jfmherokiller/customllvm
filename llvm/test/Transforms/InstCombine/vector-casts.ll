@@ -63,8 +63,9 @@ entry:
 	ret <2 x i64> %conv
         
 ; CHECK-LABEL: @test5(
-; CHECK:   %fold.and = and <4 x i1> %cmp4, %cmp
-; CHECK:   sext <4 x i1> %fold.and to <4 x i32>
+; CHECK:   sext <4 x i1> %cmp to <4 x i32>	
+; The sext-and pair is canonicalized to a select.
+; CHECK:   select <4 x i1> %cmp4, <4 x i32>	%sext, <4 x i32> zeroinitializer
 }
 
 
@@ -132,7 +133,7 @@ entry:
   %dim31 = insertelement <4 x i32> %dim30, i32 %a, i32 2
   %dim32 = insertelement <4 x i32> %dim31, i32 %a, i32 3
 
-  %offset_ptr = getelementptr <4 x float>, <4 x float>* null, i32 1
+  %offset_ptr = getelementptr <4 x float>* null, i32 1
   %offset_int = ptrtoint <4 x float>* %offset_ptr to i64
   %sizeof32 = trunc i64 %offset_int to i32
 
@@ -147,16 +148,5 @@ entry:
   %offset_varying_delta = add <4 x i32> %offset_delta, undef
 
   ret <4 x float> undef
-}
-
-define <8 x i32> @pr24458(<8 x float> %n) {
-; CHECK-LABEL: @pr24458
-  %notequal_b_load_.i = fcmp une <8 x float> %n, zeroinitializer
-  %equal_a_load72_.i = fcmp ueq <8 x float> %n, zeroinitializer
-  %notequal_b_load__to_boolvec.i = sext <8 x i1> %notequal_b_load_.i to <8 x i32>
-  %equal_a_load72__to_boolvec.i = sext <8 x i1> %equal_a_load72_.i to <8 x i32>
-  %wrong = or <8 x i32> %notequal_b_load__to_boolvec.i, %equal_a_load72__to_boolvec.i
-  ret <8 x i32> %wrong
-; CHECK-NEXT: ret <8 x i32> <i32 -1, i32 -1, i32 -1, i32 -1, i32 -1, i32 -1, i32 -1, i32 -1>
 }
 

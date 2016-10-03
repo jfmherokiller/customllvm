@@ -44,17 +44,20 @@ ARMHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
     if (LastMI && (MCID.TSFlags & ARMII::DomainMask) != ARMII::DomainGeneral) {
       MachineInstr *DefMI = LastMI;
       const MCInstrDesc &LastMCID = LastMI->getDesc();
-      const MachineFunction *MF = MI->getParent()->getParent();
-      const ARMBaseInstrInfo &TII = *static_cast<const ARMBaseInstrInfo *>(
-                                        MF->getSubtarget().getInstrInfo());
+      const TargetMachine &TM =
+        MI->getParent()->getParent()->getTarget();
+      const ARMBaseInstrInfo &TII =
+        *static_cast<const ARMBaseInstrInfo*>(TM.getInstrInfo());
 
       // Skip over one non-VFP / NEON instruction.
       if (!LastMI->isBarrier() &&
-          !(TII.getSubtarget().hasMuxedUnits() && LastMI->mayLoadOrStore()) &&
+          // On A9, AGU and NEON/FPU are muxed.
+          !(TII.getSubtarget().isLikeA9() &&
+            (LastMI->mayLoad() || LastMI->mayStore())) &&
           (LastMCID.TSFlags & ARMII::DomainMask) == ARMII::DomainGeneral) {
         MachineBasicBlock::iterator I = LastMI;
         if (I != LastMI->getParent()->begin()) {
-          I = std::prev(I);
+          I = llvm::prior(I);
           DefMI = &*I;
         }
       }
@@ -74,7 +77,7 @@ ARMHazardRecognizer::getHazardType(SUnit *SU, int Stalls) {
 }
 
 void ARMHazardRecognizer::Reset() {
-  LastMI = nullptr;
+  LastMI = 0;
   FpMLxStalls = 0;
   ScoreboardHazardRecognizer::Reset();
 }
@@ -92,7 +95,7 @@ void ARMHazardRecognizer::EmitInstruction(SUnit *SU) {
 void ARMHazardRecognizer::AdvanceCycle() {
   if (FpMLxStalls && --FpMLxStalls == 0)
     // Stalled for 4 cycles but still can't schedule any other instructions.
-    LastMI = nullptr;
+    LastMI = 0;
   ScoreboardHazardRecognizer::AdvanceCycle();
 }
 

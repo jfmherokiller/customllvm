@@ -11,20 +11,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSMCASMINFO_H
-#define LLVM_LIB_TARGET_MIPS_MCTARGETDESC_MIPSMCASMINFO_H
+#ifndef MIPSTARGETASMINFO_H
+#define MIPSTARGETASMINFO_H
 
 #include "llvm/MC/MCAsmInfoELF.h"
 
 namespace llvm {
-class Triple;
+  class StringRef;
 
-class MipsMCAsmInfo : public MCAsmInfoELF {
-  void anchor() override;
-
-public:
-  explicit MipsMCAsmInfo(const Triple &TheTriple);
-};
+  class MipsMCAsmInfo : public MCAsmInfoELF {
+    virtual void anchor();
+  public:
+    explicit MipsMCAsmInfo(StringRef TT);
+  };
 
 } // namespace llvm
 

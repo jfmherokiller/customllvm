@@ -1,5 +1,4 @@
-; RUN: opt < %s -gvn -S | FileCheck %s
-; RUN: opt < %s -passes=gvn -S | FileCheck %s
+; RUN: opt < %s -gvn -S | not grep "%z2 ="
 
 define i32 @main() {
 block1:
@@ -9,8 +8,3 @@ block2:
   %z2 = bitcast i32 0 to i32
   ret i32 %z2
 }
-
-; CHECK: define i32 @main() {
-; CHECK-NEXT: block1:
-; CHECK-NEXT:   ret i32 0
-; CHECK-NEXT: }

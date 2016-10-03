@@ -51,7 +51,6 @@ public:
     JoinedClass,
     SeparateClass,
     RemainingArgsClass,
-    RemainingArgsJoinedClass,
     CommaJoinedClass,
     MultiArgClass,
     JoinedOrSeparateClass,
@@ -71,9 +70,10 @@ protected:
 
 public:
   Option(const OptTable::Info *Info, const OptTable *Owner);
+  ~Option();
 
   bool isValid() const {
-    return Info != nullptr;
+    return Info != 0;
   }
 
   unsigned getID() const {
@@ -151,7 +151,6 @@ public:
     case MultiArgClass:
     case JoinedOrSeparateClass:
     case RemainingArgsClass:
-    case RemainingArgsJoinedClass:
       return RenderSeparateStyle;
     }
     llvm_unreachable("Unexpected kind!");
@@ -197,7 +196,6 @@ public:
   ///                start.
   Arg *accept(const ArgList &Args, unsigned &Index, unsigned ArgSize) const;
 
-  void print(raw_ostream &O) const;
   void dump() const;
 };
 

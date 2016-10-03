@@ -11,20 +11,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_CODEGEN_ASMPRINTER_DWARFACCELTABLE_H
-#define LLVM_LIB_CODEGEN_ASMPRINTER_DWARFACCELTABLE_H
+#ifndef CODEGEN_ASMPRINTER_DWARFACCELTABLE_H__
+#define CODEGEN_ASMPRINTER_DWARFACCELTABLE_H__
 
+#include "DIE.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/CodeGen/DIE.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormattedStream.h"
+#include <map>
 #include <vector>
 
 // The dwarf accelerator tables are an indirect hash table optimized
@@ -62,7 +62,8 @@
 namespace llvm {
 
 class AsmPrinter;
-class DwarfDebug;
+class DIE;
+class DwarfUnits;
 
 class DwarfAccelTable {
 
@@ -126,8 +127,7 @@ public:
     uint16_t type; // enum AtomType
     uint16_t form; // DWARF DW_FORM_ defines
 
-    LLVM_CONSTEXPR Atom(uint16_t type, uint16_t form)
-        : type(type), form(form) {}
+    Atom(uint16_t type, uint16_t form) : type(type), form(form) {}
 #ifndef NDEBUG
     void print(raw_ostream &O) {
       O << "Type: " << dwarf::AtomTypeString(type) << "\n"
@@ -140,7 +140,7 @@ public:
 private:
   struct TableHeaderData {
     uint32_t die_offset_base;
-    SmallVector<Atom, 3> Atoms;
+    SmallVector<Atom, 1> Atoms;
 
     TableHeaderData(ArrayRef<Atom> AtomList, uint32_t offset = 0)
         : die_offset_base(offset), Atoms(AtomList.begin(), AtomList.end()) {}
@@ -165,10 +165,10 @@ private:
   // HashData[hash_data_count]
 public:
   struct HashDataContents {
-    const DIE *Die;   // Offsets
+    DIE *Die;   // Offsets
     char Flags; // Specific flags to output
 
-    HashDataContents(const DIE *D, char Flags) : Die(D), Flags(Flags) {}
+    HashDataContents(DIE *D, char Flags) : Die(D), Flags(Flags) {}
 #ifndef NDEBUG
     void print(raw_ostream &O) const {
       O << "  Offset: " << Die->getOffset() << "\n";
@@ -179,18 +179,12 @@ public:
   };
 
 private:
-  // String Data
-  struct DataArray {
-    DwarfStringPoolEntryRef Name;
-    std::vector<HashDataContents *> Values;
-  };
-  friend struct HashData;
   struct HashData {
     StringRef Str;
     uint32_t HashValue;
     MCSymbol *Sym;
-    DwarfAccelTable::DataArray &Data; // offsets
-    HashData(StringRef S, DwarfAccelTable::DataArray &Data)
+    ArrayRef<HashDataContents *> Data; // offsets
+    HashData(StringRef S, ArrayRef<HashDataContents *> Data)
         : Str(S), Data(Data) {
       HashValue = DwarfAccelTable::HashDJB(S);
     }
@@ -200,29 +194,29 @@ private:
       O << "  Hash Value: " << format("0x%x", HashValue) << "\n";
       O << "  Symbol: ";
       if (Sym)
-        O << *Sym;
+        Sym->print(O);
       else
         O << "<none>";
       O << "\n";
-      for (HashDataContents *C : Data.Values) {
-        O << "  Offset: " << C->Die->getOffset() << "\n";
-        O << "  Tag: " << dwarf::TagString(C->Die->getTag()) << "\n";
-        O << "  Flags: " << C->Flags << "\n";
+      for (size_t i = 0; i < Data.size(); i++) {
+        O << "  Offset: " << Data[i]->Die->getOffset() << "\n";
+        O << "  Tag: " << dwarf::TagString(Data[i]->Die->getTag()) << "\n";
+        O << "  Flags: " << Data[i]->Flags << "\n";
       }
     }
     void dump() { print(dbgs()); }
 #endif
   };
 
-  DwarfAccelTable(const DwarfAccelTable &) = delete;
-  void operator=(const DwarfAccelTable &) = delete;
+  DwarfAccelTable(const DwarfAccelTable &) LLVM_DELETED_FUNCTION;
+  void operator=(const DwarfAccelTable &) LLVM_DELETED_FUNCTION;
 
   // Internal Functions
   void EmitHeader(AsmPrinter *);
   void EmitBuckets(AsmPrinter *);
   void EmitHashes(AsmPrinter *);
-  void emitOffsets(AsmPrinter *, const MCSymbol *);
-  void EmitData(AsmPrinter *, DwarfDebug *D);
+  void EmitOffsets(AsmPrinter *, MCSymbol *);
+  void EmitData(AsmPrinter *, DwarfUnits *D);
 
   // Allocator for HashData and HashDataContents.
   BumpPtrAllocator Allocator;
@@ -232,6 +226,8 @@ private:
   TableHeaderData HeaderData;
   std::vector<HashData *> Data;
 
+  // String Data
+  typedef std::vector<HashDataContents *> DataArray;
   typedef StringMap<DataArray, BumpPtrAllocator &> StringEntries;
   StringEntries Entries;
 
@@ -244,9 +240,10 @@ private:
   // Public Implementation
 public:
   DwarfAccelTable(ArrayRef<DwarfAccelTable::Atom>);
-  void AddName(DwarfStringPoolEntryRef Name, const DIE *Die, char Flags = 0);
+  ~DwarfAccelTable();
+  void AddName(StringRef, DIE *, char = 0);
   void FinalizeTable(AsmPrinter *, StringRef);
-  void emit(AsmPrinter *, const MCSymbol *, DwarfDebug *);
+  void Emit(AsmPrinter *, MCSymbol *, DwarfUnits *);
 #ifndef NDEBUG
   void print(raw_ostream &O);
   void dump() { print(dbgs()); }

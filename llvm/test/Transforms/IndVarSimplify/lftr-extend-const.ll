@@ -1,10 +1,6 @@
 ;RUN: opt -S %s -indvars | FileCheck %s
 
-; Provide legal integer types.
-target datalayout = "n8:16:32:64"
-
-
-; CHECK-LABEL: @foo(
+; CHECK-LABEL-LABEL: @foo(
 ; CHECK-NOT: %lftr.wideiv = trunc i32 %indvars.iv.next to i16
 ; CHECK: %exitcond = icmp ne i32 %indvars.iv.next, 512
 define void @foo() #0 {
@@ -24,8 +20,8 @@ for.end:                                          ; preds = %for.body
 }
 
 ; Check that post-incrementing the backedge taken count does not overflow.
-; CHECK-LABEL: @postinc(
-; CHECK: icmp eq i32 %indvars.iv, 255
+; CHECK-LABEL-LABEL: @postinc(
+; CHECK: icmp eq i32 %indvars.iv.next, 256
 define i32 @postinc() #0 {
 entry:
   br label %do.body

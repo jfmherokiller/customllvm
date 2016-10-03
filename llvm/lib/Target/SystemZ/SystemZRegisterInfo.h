@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_SYSTEMZ_SYSTEMZREGISTERINFO_H
-#define LLVM_LIB_TARGET_SYSTEMZ_SYSTEMZREGISTERINFO_H
+#ifndef SystemZREGISTERINFO_H
+#define SystemZREGISTERINFO_H
 
 #include "SystemZ.h"
 #include "llvm/Target/TargetRegisterInfo.h"
@@ -19,47 +19,48 @@
 namespace llvm {
 
 namespace SystemZ {
-// Return the subreg to use for referring to the even and odd registers
-// in a GR128 pair.  Is32Bit says whether we want a GR32 or GR64.
-inline unsigned even128(bool Is32bit) {
-  return Is32bit ? subreg_hl32 : subreg_h64;
+  // Return the subreg to use for referring to the even and odd registers
+  // in a GR128 pair.  Is32Bit says whether we want a GR32 or GR64.
+  inline unsigned even128(bool Is32bit) {
+    return Is32bit ? subreg_hl32 : subreg_h64;
+  }
+  inline unsigned odd128(bool Is32bit) {
+    return Is32bit ? subreg_l32 : subreg_l64;
+  }
 }
-inline unsigned odd128(bool Is32bit) {
-  return Is32bit ? subreg_l32 : subreg_l64;
-}
-} // end namespace SystemZ
+
+class SystemZSubtarget;
+class SystemZInstrInfo;
 
 struct SystemZRegisterInfo : public SystemZGenRegisterInfo {
-public:
-  SystemZRegisterInfo();
+private:
+  SystemZTargetMachine &TM;
 
-  /// getPointerRegClass - Return the register class to use to hold pointers.
-  /// This is currently only used by LOAD_STACK_GUARD, which requires a non-%r0
-  /// register, hence ADDR64.
-  const TargetRegisterClass *
-  getPointerRegClass(const MachineFunction &MF,
-                     unsigned Kind=0) const override {
-    return &SystemZ::ADDR64BitRegClass;
-  }
+public:
+  SystemZRegisterInfo(SystemZTargetMachine &tm);
 
   // Override TargetRegisterInfo.h.
-  bool requiresRegisterScavenging(const MachineFunction &MF) const override {
+  virtual bool requiresRegisterScavenging(const MachineFunction &MF) const
+    LLVM_OVERRIDE {
     return true;
   }
-  bool requiresFrameIndexScavenging(const MachineFunction &MF) const override {
+  virtual bool requiresFrameIndexScavenging(const MachineFunction &MF) const
+    LLVM_OVERRIDE {
     return true;
   }
-  bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const override {
+  virtual bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const
+    LLVM_OVERRIDE {
     return true;
   }
-  const MCPhysReg *getCalleeSavedRegs(const MachineFunction *MF) const override;
-  const uint32_t *getCallPreservedMask(const MachineFunction &MF,
-                                       CallingConv::ID CC) const override;
-  BitVector getReservedRegs(const MachineFunction &MF) const override;
-  void eliminateFrameIndex(MachineBasicBlock::iterator MI,
-                           int SPAdj, unsigned FIOperandNum,
-                           RegScavenger *RS) const override;
-  unsigned getFrameRegister(const MachineFunction &MF) const override;
+  virtual const uint16_t *getCalleeSavedRegs(const MachineFunction *MF = 0)
+    const LLVM_OVERRIDE;
+  virtual BitVector getReservedRegs(const MachineFunction &MF)
+    const LLVM_OVERRIDE;
+  virtual void eliminateFrameIndex(MachineBasicBlock::iterator MI,
+                                   int SPAdj, unsigned FIOperandNum,
+                                   RegScavenger *RS) const LLVM_OVERRIDE;
+  virtual unsigned getFrameRegister(const MachineFunction &MF) const
+    LLVM_OVERRIDE;
 };
 
 } // end namespace llvm

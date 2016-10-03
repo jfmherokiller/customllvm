@@ -13,48 +13,41 @@
 
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Config/config.h"
-#include "llvm/Support/Mutex.h"
-#include "llvm/Support/MutexGuard.h"
-#include "llvm/Support/Threading.h"
+#include "llvm/Support/Atomic.h"
 #include <cassert>
 using namespace llvm;
 
-static const ManagedStaticBase *StaticList = nullptr;
-static sys::Mutex *ManagedStaticMutex = nullptr;
-LLVM_DEFINE_ONCE_FLAG(mutex_init_flag);
-
-static void initializeMutex() {
-  ManagedStaticMutex = new sys::Mutex();
-}
-
-static sys::Mutex* getManagedStaticMutex() {
-  // We need to use a function local static here, since this can get called
-  // during a static constructor and we need to guarantee that it's initialized
-  // correctly.
-  llvm::call_once(mutex_init_flag, initializeMutex);
-  return ManagedStaticMutex;
-}
+static const ManagedStaticBase *StaticList = 0;
 
 void ManagedStaticBase::RegisterManagedStatic(void *(*Creator)(),
                                               void (*Deleter)(void*)) const {
-  assert(Creator);
   if (llvm_is_multithreaded()) {
-    MutexGuard Lock(*getManagedStaticMutex());
+    llvm_acquire_global_lock();
 
-    if (!Ptr.load(std::memory_order_relaxed)) {
-      void *Tmp = Creator();
+    if (Ptr == 0) {
+      void* tmp = Creator ? Creator() : 0;
 
-      Ptr.store(Tmp, std::memory_order_release);
+      TsanHappensBefore(this);
+      sys::MemoryFence();
+
+      // This write is racy against the first read in the ManagedStatic
+      // accessors. The race is benign because it does a second read after a
+      // memory fence, at which point it isn't possible to get a partial value.
+      TsanIgnoreWritesBegin();
+      Ptr = tmp;
+      TsanIgnoreWritesEnd();
       DeleterFn = Deleter;
       
       // Add to list of managed statics.
       Next = StaticList;
       StaticList = this;
     }
+
+    llvm_release_global_lock();
   } else {
-    assert(!Ptr && !DeleterFn && !Next &&
+    assert(Ptr == 0 && DeleterFn == 0 && Next == 0 &&
            "Partially initialized ManagedStatic!?");
-    Ptr = Creator();
+    Ptr = Creator ? Creator() : 0;
     DeleterFn = Deleter;
   
     // Add to list of managed statics.
@@ -69,20 +62,20 @@ void ManagedStaticBase::destroy() const {
          "Not destroyed in reverse order of construction?");
   // Unlink from list.
   StaticList = Next;
-  Next = nullptr;
+  Next = 0;
 
   // Destroy memory.
   DeleterFn(Ptr);
   
   // Cleanup.
-  Ptr = nullptr;
-  DeleterFn = nullptr;
+  Ptr = 0;
+  DeleterFn = 0;
 }
 
 /// llvm_shutdown - Deallocate and destroy all ManagedStatic variables.
 void llvm::llvm_shutdown() {
-  MutexGuard Lock(*getManagedStaticMutex());
-
   while (StaticList)
     StaticList->destroy();
+
+  if (llvm_is_multithreaded()) llvm_stop_multithreaded();
 }

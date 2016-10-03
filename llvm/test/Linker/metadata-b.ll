@@ -3,7 +3,7 @@
 
 define void @goo(i32 %b) nounwind {
 entry:
-  ret void, !attach !0
+  ret void, !attach !0, !and !{ i32 %b }
 }
 
-!0 = !{i32 524334, void (i32)* @goo}
+!0 = metadata !{i32 524334, void (i32)* @goo}

@@ -18,52 +18,49 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Value.h"
 #include "llvm/InitializePasses.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/PassManager.h"
+#include "llvm/Target/TargetLibraryInfo.h"
 #include <cstring>
 
 using namespace llvm;
 
-// Avoid including "llvm-c/Core.h" for compile time, fwd-declare this instead.
-extern "C" LLVMContextRef LLVMGetGlobalContext(void);
-
-inline TargetLibraryInfoImpl *unwrap(LLVMTargetLibraryInfoRef P) {
-  return reinterpret_cast<TargetLibraryInfoImpl*>(P);
+inline DataLayout *unwrap(LLVMTargetDataRef P) {
+  return reinterpret_cast<DataLayout*>(P);
 }
 
-inline LLVMTargetLibraryInfoRef wrap(const TargetLibraryInfoImpl *P) {
-  TargetLibraryInfoImpl *X = const_cast<TargetLibraryInfoImpl*>(P);
+inline LLVMTargetDataRef wrap(const DataLayout *P) {
+  return reinterpret_cast<LLVMTargetDataRef>(const_cast<DataLayout*>(P));
+}
+
+inline TargetLibraryInfo *unwrap(LLVMTargetLibraryInfoRef P) {
+  return reinterpret_cast<TargetLibraryInfo*>(P);
+}
+
+inline LLVMTargetLibraryInfoRef wrap(const TargetLibraryInfo *P) {
+  TargetLibraryInfo *X = const_cast<TargetLibraryInfo*>(P);
   return reinterpret_cast<LLVMTargetLibraryInfoRef>(X);
 }
 
 void llvm::initializeTarget(PassRegistry &Registry) {
-  initializeTargetLibraryInfoWrapperPassPass(Registry);
-  initializeTargetTransformInfoWrapperPassPass(Registry);
+  initializeDataLayoutPass(Registry);
+  initializeTargetLibraryInfoPass(Registry);
 }
 
 void LLVMInitializeTarget(LLVMPassRegistryRef R) {
   initializeTarget(*unwrap(R));
 }
 
-LLVMTargetDataRef LLVMGetModuleDataLayout(LLVMModuleRef M) {
-  return wrap(&unwrap(M)->getDataLayout());
-}
-
-void LLVMSetModuleDataLayout(LLVMModuleRef M, LLVMTargetDataRef DL) {
-  unwrap(M)->setDataLayout(*unwrap(DL));
-}
-
 LLVMTargetDataRef LLVMCreateTargetData(const char *StringRep) {
   return wrap(new DataLayout(StringRep));
 }
 
-void LLVMDisposeTargetData(LLVMTargetDataRef TD) {
-  delete unwrap(TD);
+void LLVMAddTargetData(LLVMTargetDataRef TD, LLVMPassManagerRef PM) {
+  unwrap(PM)->add(new DataLayout(*unwrap(TD)));
 }
 
 void LLVMAddTargetLibraryInfo(LLVMTargetLibraryInfoRef TLI,
                               LLVMPassManagerRef PM) {
-  unwrap(PM)->add(new TargetLibraryInfoWrapperPass(*unwrap(TLI)));
+  unwrap(PM)->add(new TargetLibraryInfo(*unwrap(TLI)));
 }
 
 char *LLVMCopyStringRepOfTargetData(LLVMTargetDataRef TD) {
@@ -84,11 +81,11 @@ unsigned LLVMPointerSizeForAS(LLVMTargetDataRef TD, unsigned AS) {
 }
 
 LLVMTypeRef LLVMIntPtrType(LLVMTargetDataRef TD) {
-  return wrap(unwrap(TD)->getIntPtrType(*unwrap(LLVMGetGlobalContext())));
+  return wrap(unwrap(TD)->getIntPtrType(getGlobalContext()));
 }
 
 LLVMTypeRef LLVMIntPtrTypeForAS(LLVMTargetDataRef TD, unsigned AS) {
-  return wrap(unwrap(TD)->getIntPtrType(*unwrap(LLVMGetGlobalContext()), AS));
+  return wrap(unwrap(TD)->getIntPtrType(getGlobalContext(), AS));
 }
 
 LLVMTypeRef LLVMIntPtrTypeInContext(LLVMContextRef C, LLVMTargetDataRef TD) {
@@ -116,7 +113,7 @@ unsigned LLVMABIAlignmentOfType(LLVMTargetDataRef TD, LLVMTypeRef Ty) {
 }
 
 unsigned LLVMCallFrameAlignmentOfType(LLVMTargetDataRef TD, LLVMTypeRef Ty) {
-  return unwrap(TD)->getABITypeAlignment(unwrap(Ty));
+  return unwrap(TD)->getCallFrameTypeAlignment(unwrap(Ty));
 }
 
 unsigned LLVMPreferredAlignmentOfType(LLVMTargetDataRef TD, LLVMTypeRef Ty) {
@@ -138,4 +135,8 @@ unsigned long long LLVMOffsetOfElement(LLVMTargetDataRef TD, LLVMTypeRef StructT
                                        unsigned Element) {
   StructType *STy = unwrap<StructType>(StructTy);
   return unwrap(TD)->getStructLayout(STy)->getElementOffset(Element);
+}
+
+void LLVMDisposeTargetData(LLVMTargetDataRef TD) {
+  delete unwrap(TD);
 }

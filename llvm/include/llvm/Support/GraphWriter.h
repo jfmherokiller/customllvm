@@ -24,9 +24,10 @@
 #define LLVM_SUPPORT_GRAPHWRITER_H
 
 #include "llvm/ADT/GraphTraits.h"
-#include "llvm/ADT/Twine.h"
 #include "llvm/Support/DOTGraphTraits.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cassert>
 #include <vector>
 
 namespace llvm {
@@ -49,7 +50,7 @@ namespace GraphProgram {
    };
 }
 
-bool DisplayGraph(StringRef Filename, bool wait = true,
+void DisplayGraph(StringRef Filename, bool wait = true,
                   GraphProgram::Name program = GraphProgram::DOT);
 
 template<typename GraphType>
@@ -59,19 +60,14 @@ class GraphWriter {
 
   typedef DOTGraphTraits<GraphType>           DOTTraits;
   typedef GraphTraits<GraphType>              GTraits;
-  typedef typename GTraits::NodeRef           NodeRef;
+  typedef typename GTraits::NodeType          NodeType;
   typedef typename GTraits::nodes_iterator    node_iterator;
   typedef typename GTraits::ChildIteratorType child_iterator;
   DOTTraits DTraits;
 
-  static_assert(std::is_pointer<NodeRef>::value,
-                "FIXME: Currently GraphWriter requires the NodeRef type to be "
-                "a pointer.\nThe pointer usage should be moved to "
-                "DOTGraphTraits, and removed from GraphWriter itself.");
-
   // Writes the edge labels of the node to O and returns true if there are any
   // edge labels not equal to the empty string "".
-  bool getEdgeSourceLabels(raw_ostream &O, NodeRef Node) {
+  bool getEdgeSourceLabels(raw_ostream &O, NodeType *Node) {
     child_iterator EI = GTraits::child_begin(Node);
     child_iterator EE = GTraits::child_end(Node);
     bool hasEdgeSourceLabels = false;
@@ -149,11 +145,27 @@ public:
         writeNode(*I);
   }
 
-  bool isNodeHidden(NodeRef Node) {
+  bool isNodeHidden(NodeType &Node) {
+    return isNodeHidden(&Node);
+  }
+
+  bool isNodeHidden(NodeType *const *Node) {
+    return isNodeHidden(*Node);
+  }
+
+  bool isNodeHidden(NodeType *Node) {
     return DTraits.isNodeHidden(Node);
   }
 
-  void writeNode(NodeRef Node) {
+  void writeNode(NodeType& Node) {
+    writeNode(&Node);
+  }
+
+  void writeNode(NodeType *const *Node) {
+    writeNode(*Node);
+  }
+
+  void writeNode(NodeType *Node) {
     std::string NodeAttributes = DTraits.getNodeAttributes(Node, G);
 
     O << "\tNode" << static_cast<const void*>(Node) << " [shape=record,";
@@ -164,9 +176,8 @@ public:
       O << DOT::EscapeString(DTraits.getNodeLabel(Node, G));
 
       // If we should include the address of the node in the label, do so now.
-      std::string Id = DTraits.getNodeIdentifierLabel(Node, G);
-      if (!Id.empty())
-        O << "|" << DOT::EscapeString(Id);
+      if (DTraits.hasNodeAddressLabel(Node, G))
+        O << "|" << static_cast<const void*>(Node);
 
       std::string NodeDesc = DTraits.getNodeDescription(Node, G);
       if (!NodeDesc.empty())
@@ -189,9 +200,8 @@ public:
       O << DOT::EscapeString(DTraits.getNodeLabel(Node, G));
 
       // If we should include the address of the node in the label, do so now.
-      std::string Id = DTraits.getNodeIdentifierLabel(Node, G);
-      if (!Id.empty())
-        O << "|" << DOT::EscapeString(Id);
+      if (DTraits.hasNodeAddressLabel(Node, G))
+        O << "|" << static_cast<const void*>(Node);
 
       std::string NodeDesc = DTraits.getNodeDescription(Node, G);
       if (!NodeDesc.empty())
@@ -226,8 +236,8 @@ public:
         writeEdge(Node, 64, EI);
   }
 
-  void writeEdge(NodeRef Node, unsigned edgeidx, child_iterator EI) {
-    if (NodeRef TargetNode = *EI) {
+  void writeEdge(NodeType *Node, unsigned edgeidx, child_iterator EI) {
+    if (NodeType *TargetNode = *EI) {
       int DestPort = -1;
       if (DTraits.edgeTargetsEdgeSource(Node, EI)) {
         child_iterator TargetIt = DTraits.getEdgeTarget(Node, EI);
@@ -249,8 +259,8 @@ public:
 
   /// emitSimpleNode - Outputs a simple (non-record) node
   void emitSimpleNode(const void *ID, const std::string &Attr,
-                   const std::string &Label, unsigned NumEdgeSources = 0,
-                   const std::vector<std::string> *EdgeSourceLabels = nullptr) {
+                      const std::string &Label, unsigned NumEdgeSources = 0,
+                      const std::vector<std::string> *EdgeSourceLabels = 0) {
     O << "\tNode" << ID << "[ ";
     if (!Attr.empty())
       O << Attr << ",";
@@ -315,10 +325,7 @@ template <typename GraphType>
 std::string WriteGraph(const GraphType &G, const Twine &Name,
                        bool ShortNames = false, const Twine &Title = "") {
   int FD;
-  // Windows can't always handle long paths, so limit the length of the name.
-  std::string N = Name.str();
-  N = N.substr(0, std::min<std::size_t>(N.size(), 140));
-  std::string Filename = createGraphFilename(N, FD);
+  std::string Filename = createGraphFilename(Name, FD);
   raw_fd_ostream O(FD, /*shouldClose=*/ true);
 
   if (FD == -1) {
@@ -344,7 +351,7 @@ void ViewGraph(const GraphType &G, const Twine &Name,
   if (Filename.empty())
     return;
 
-  DisplayGraph(Filename, false, Program);
+  DisplayGraph(Filename, true, Program);
 }
 
 } // End llvm namespace

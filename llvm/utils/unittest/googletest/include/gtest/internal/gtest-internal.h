@@ -105,7 +105,6 @@
 #if !GTEST_NO_LLVM_RAW_OSTREAM
 namespace llvm {
 class convertible_fwd_ostream : public std::ostream {
-  virtual void anchor();
   raw_os_ostream ros_;
 
 public:
@@ -537,7 +536,7 @@ GTEST_API_ TypeId GetTestTypeId();
 // of a Test object.
 class TestFactoryBase {
  public:
-  virtual ~TestFactoryBase();
+  virtual ~TestFactoryBase() {}
 
   // Creates a test instance to run. The instance is both created and destroyed
   // within TestInfoImpl::Run()
@@ -555,7 +554,7 @@ class TestFactoryBase {
 template <class TestClass>
 class TestFactoryImpl : public TestFactoryBase {
  public:
-   Test *CreateTest() override { return new TestClass; }
+  virtual Test* CreateTest() { return new TestClass; }
 };
 
 #if GTEST_OS_WINDOWS

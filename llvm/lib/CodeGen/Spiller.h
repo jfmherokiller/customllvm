@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_CODEGEN_SPILLER_H
-#define LLVM_LIB_CODEGEN_SPILLER_H
+#ifndef LLVM_CODEGEN_SPILLER_H
+#define LLVM_CODEGEN_SPILLER_H
 
 namespace llvm {
 
@@ -16,7 +16,6 @@ namespace llvm {
   class MachineFunction;
   class MachineFunctionPass;
   class VirtRegMap;
-  class LiveIntervals;
 
   /// Spiller interface.
   ///
@@ -29,14 +28,20 @@ namespace llvm {
 
     /// spill - Spill the LRE.getParent() live interval.
     virtual void spill(LiveRangeEdit &LRE) = 0;
-    virtual void postOptimization(){};
+
   };
+
+  /// Create and return a spiller object, as specified on the command line.
+  Spiller* createSpiller(MachineFunctionPass &pass,
+                         MachineFunction &mf,
+                         VirtRegMap &vrm);
 
   /// Create and return a spiller that will insert spill code directly instead
   /// of deferring though VirtRegMap.
   Spiller *createInlineSpiller(MachineFunctionPass &pass,
                                MachineFunction &mf,
                                VirtRegMap &vrm);
+
 }
 
 #endif

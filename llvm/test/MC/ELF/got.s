@@ -1,7 +1,7 @@
 // RUN: llvm-mc -filetype=obj -triple x86_64-pc-linux-gnu %s -o - | llvm-readobj -r -t | FileCheck %s
 
-// Test that this produces the correct relocations R_X86_64_GOT32 and that we,
-// unlike gas, don't create a _GLOBAL_OFFSET_TABLE_ symbol as a side effect.
+// Test that this produces a R_X86_64_GOT32 and that we have an undefined
+// reference to _GLOBAL_OFFSET_TABLE_.
 
         movl	foo@GOT, %eax
         movl	foo@GOTPCREL(%rip), %eax
@@ -13,5 +13,8 @@
 // CHECK-NEXT:   }
 // CHECK-NEXT: ]
 
-// CHECK:        Symbols [
-// CHECK-NOT:          _GLOBAL_OFFSET_TABLE_
+// CHECK:        Symbol {
+// CHECK:          Name: _GLOBAL_OFFSET_TABLE_
+// CHECK-NEXT:     Value:
+// CHECK-NEXT:     Size:
+// CHECK-NEXT:     Binding: Global

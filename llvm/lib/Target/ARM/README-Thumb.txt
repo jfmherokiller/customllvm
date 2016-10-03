@@ -215,6 +215,10 @@ etc. Almost all Thumb instructions clobber condition code.
 
 //===---------------------------------------------------------------------===//
 
+Add ldmia, stmia support.
+
+//===---------------------------------------------------------------------===//
+
 Thumb load / store address mode offsets are scaled. The values kept in the
 instruction operands are pre-scale values. This probably ought to be changed
 to avoid extra work when we convert Thumb2 instructions to Thumb1 instructions.
@@ -232,13 +236,13 @@ Make use of hi register variants of cmp: tCMPhir / tCMPZhir.
 //===---------------------------------------------------------------------===//
 
 Thumb1 immediate field sometimes keep pre-scaled values. See
-ThumbRegisterInfo::eliminateFrameIndex. This is inconsistent from ARM and
+Thumb1RegisterInfo::eliminateFrameIndex. This is inconsistent from ARM and
 Thumb2.
 
 //===---------------------------------------------------------------------===//
 
 Rather than having tBR_JTr print a ".align 2" and constant island pass pad it,
-add a target specific ALIGN instruction instead. That way, getInstSizeInBytes
+add a target specific ALIGN instruction instead. That way, GetInstSizeInBytes
 won't have to over-estimate. It can also be used for loop alignment pass.
 
 //===---------------------------------------------------------------------===//

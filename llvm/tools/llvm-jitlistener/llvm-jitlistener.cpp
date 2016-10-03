@@ -13,16 +13,17 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/IR/LLVMContext.h"
 #include "../../lib/ExecutionEngine/IntelJITEvents/IntelJITEventsWrapper.h"
+#include "llvm/ADT/OwningPtr.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/JITMemoryManager.h"
 #include "llvm/ExecutionEngine/MCJIT.h"
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/IR/LLVMContext.h"
+#include "llvm/ExecutionEngine/ObjectImage.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Debug.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -30,7 +31,6 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/Support/raw_ostream.h"
 #include <string>
 
 using namespace llvm;
@@ -105,6 +105,8 @@ unsigned int GetNewMethodID(void) {
 class JitEventListenerTest {
 protected:
   void InitEE(const std::string &IRFile) {
+    LLVMContext &Context = getGlobalContext();
+
     // If we have a native target, initialize it to ensure it is linked in and
     // usable by the JIT.
     InitializeNativeTarget();
@@ -112,34 +114,43 @@ protected:
 
     // Parse the bitcode...
     SMDiagnostic Err;
-    std::unique_ptr<Module> TheModule(parseIRFile(IRFile, Err, Context));
+    TheModule = ParseIRFile(IRFile, Err, Context);
     if (!TheModule) {
       errs() << Err.getMessage();
       return;
     }
 
-    RTDyldMemoryManager *MemMgr = new SectionMemoryManager();
+    // FIXME: This is using the default legacy JITMemoryManager because it
+    // supports poison memory.  At some point, we'll need to update this to
+    // use an MCJIT-specific memory manager.  It might be nice to have the
+    // poison memory option there too.
+    JITMemoryManager *MemMgr = JITMemoryManager::CreateDefaultMemManager();
     if (!MemMgr) {
       errs() << "Unable to create memory manager.";
       return;
     }
+
+    // Tell the memory manager to poison freed memory so that accessing freed
+    // memory is more easily tested.
+    MemMgr->setPoisonMemory(true);
 
     // Override the triple to generate ELF on Windows since that's supported
     Triple Tuple(TheModule->getTargetTriple());
     if (Tuple.getTriple().empty())
       Tuple.setTriple(sys::getProcessTriple());
 
-    if (Tuple.isOSWindows() && !Tuple.isOSBinFormatELF()) {
-      Tuple.setObjectFormat(Triple::ELF);
+    if (Tuple.isOSWindows() && Triple::ELF != Tuple.getEnvironment()) {
+      Tuple.setEnvironment(Triple::ELF);
       TheModule->setTargetTriple(Tuple.getTriple());
     }
 
     // Compile the IR
     std::string Error;
-    TheJIT.reset(EngineBuilder(std::move(TheModule))
+    TheJIT.reset(EngineBuilder(TheModule)
       .setEngineKind(EngineKind::JIT)
       .setErrorStr(&Error)
-      .setMCJITMemoryManager(std::unique_ptr<RTDyldMemoryManager>(MemMgr))
+      .setJITMemoryManager(MemMgr)
+      .setUseMCJIT(true)
       .create());
     if (Error.empty() == false)
       errs() << Error;
@@ -150,15 +161,18 @@ protected:
   }
 
   LLVMContext Context; // Global ownership
-  std::unique_ptr<ExecutionEngine> TheJIT;
+  Module *TheModule; // Owned by ExecutionEngine.
+  JITMemoryManager *JMM; // Owned by ExecutionEngine.
+  OwningPtr<ExecutionEngine> TheJIT;
 
 public:
   void ProcessInput(const std::string &Filename) {
     InitEE(Filename);
 
-    std::unique_ptr<llvm::JITEventListener> Listener(
-        JITEventListener::createIntelJITEventListener(new IntelJITEventsWrapper(
-            NotifyEvent, 0, IsProfilingActive, 0, 0, GetNewMethodID)));
+    llvm::OwningPtr<llvm::JITEventListener> Listener(JITEventListener::createIntelJITEventListener(
+        new IntelJITEventsWrapper(NotifyEvent, 0,
+          IsProfilingActive, 0, 0,
+          GetNewMethodID)));
 
     TheJIT->RegisterJITEventListener(Listener.get());
 
@@ -179,7 +193,7 @@ InputFilename(cl::Positional, cl::desc("<input IR file>"),
 
 int main(int argc, char **argv) {
   // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
+  sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;  // Call llvm_shutdown() on exit.
 

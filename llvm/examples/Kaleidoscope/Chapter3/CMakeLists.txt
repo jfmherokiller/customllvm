@@ -1,8 +1,5 @@
-set(LLVM_LINK_COMPONENTS
-  Core
-  Support
-  )
+set(LLVM_LINK_COMPONENTS core)
 
-add_kaleidoscope_chapter(Kaleidoscope-Ch3
+add_llvm_example(Kaleidoscope-Ch3
   toy.cpp
   )

@@ -12,18 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Scalar/LowerAtomic.h"
+#define DEBUG_TYPE "loweratomic"
+#include "llvm/Transforms/Scalar.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Pass.h"
-#include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "loweratomic"
-
 static bool LowerAtomicCmpXchgInst(AtomicCmpXchgInst *CXI) {
-  IRBuilder<> Builder(CXI);
+  IRBuilder<> Builder(CXI->getParent(), CXI);
   Value *Ptr = CXI->getPointerOperand();
   Value *Cmp = CXI->getCompareOperand();
   Value *Val = CXI->getNewValOperand();
@@ -33,21 +31,18 @@ static bool LowerAtomicCmpXchgInst(AtomicCmpXchgInst *CXI) {
   Value *Res = Builder.CreateSelect(Equal, Val, Orig);
   Builder.CreateStore(Res, Ptr);
 
-  Res = Builder.CreateInsertValue(UndefValue::get(CXI->getType()), Orig, 0);
-  Res = Builder.CreateInsertValue(Res, Equal, 1);
-
-  CXI->replaceAllUsesWith(Res);
+  CXI->replaceAllUsesWith(Orig);
   CXI->eraseFromParent();
   return true;
 }
 
 static bool LowerAtomicRMWInst(AtomicRMWInst *RMWI) {
-  IRBuilder<> Builder(RMWI);
+  IRBuilder<> Builder(RMWI->getParent(), RMWI);
   Value *Ptr = RMWI->getPointerOperand();
   Value *Val = RMWI->getValOperand();
 
   LoadInst *Orig = Builder.CreateLoad(Ptr);
-  Value *Res = nullptr;
+  Value *Res = NULL;
 
   switch (RMWI->getOperation()) {
   default: llvm_unreachable("Unexpected RMW operation");
@@ -101,74 +96,47 @@ static bool LowerFenceInst(FenceInst *FI) {
 }
 
 static bool LowerLoadInst(LoadInst *LI) {
-  LI->setAtomic(AtomicOrdering::NotAtomic);
+  LI->setAtomic(NotAtomic);
   return true;
 }
 
 static bool LowerStoreInst(StoreInst *SI) {
-  SI->setAtomic(AtomicOrdering::NotAtomic);
+  SI->setAtomic(NotAtomic);
   return true;
 }
 
-static bool runOnBasicBlock(BasicBlock &BB) {
-  bool Changed = false;
-  for (BasicBlock::iterator DI = BB.begin(), DE = BB.end(); DI != DE;) {
-    Instruction *Inst = &*DI++;
-    if (FenceInst *FI = dyn_cast<FenceInst>(Inst))
-      Changed |= LowerFenceInst(FI);
-    else if (AtomicCmpXchgInst *CXI = dyn_cast<AtomicCmpXchgInst>(Inst))
-      Changed |= LowerAtomicCmpXchgInst(CXI);
-    else if (AtomicRMWInst *RMWI = dyn_cast<AtomicRMWInst>(Inst))
-      Changed |= LowerAtomicRMWInst(RMWI);
-    else if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
-      if (LI->isAtomic())
-        LowerLoadInst(LI);
-    } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
-      if (SI->isAtomic())
-        LowerStoreInst(SI);
-    }
-  }
-  return Changed;
-}
-
-static bool lowerAtomics(Function &F) {
-  bool Changed = false;
-  for (BasicBlock &BB : F) {
-    Changed |= runOnBasicBlock(BB);
-  }
-  return Changed;
-}
-
-PreservedAnalyses LowerAtomicPass::run(Function &F, FunctionAnalysisManager &) {
-  if (lowerAtomics(F))
-    return PreservedAnalyses::none();
-  return PreservedAnalyses::all();
-}
-
 namespace {
-class LowerAtomicLegacyPass : public FunctionPass {
-public:
-  static char ID;
-
-  LowerAtomicLegacyPass() : FunctionPass(ID) {
-    initializeLowerAtomicLegacyPassPass(*PassRegistry::getPassRegistry());
-  }
-
-  bool runOnFunction(Function &F) override {
-    if (skipFunction(F))
-      return false;
-    FunctionAnalysisManager DummyFAM;
-    auto PA = Impl.run(F, DummyFAM);
-    return !PA.areAllPreserved();
-  }
-
-private:
-  LowerAtomicPass Impl;
+  struct LowerAtomic : public BasicBlockPass {
+    static char ID;
+    LowerAtomic() : BasicBlockPass(ID) {
+      initializeLowerAtomicPass(*PassRegistry::getPassRegistry());
+    }
+    bool runOnBasicBlock(BasicBlock &BB) {
+      bool Changed = false;
+      for (BasicBlock::iterator DI = BB.begin(), DE = BB.end(); DI != DE; ) {
+        Instruction *Inst = DI++;
+        if (FenceInst *FI = dyn_cast<FenceInst>(Inst))
+          Changed |= LowerFenceInst(FI);
+        else if (AtomicCmpXchgInst *CXI = dyn_cast<AtomicCmpXchgInst>(Inst))
+          Changed |= LowerAtomicCmpXchgInst(CXI);
+        else if (AtomicRMWInst *RMWI = dyn_cast<AtomicRMWInst>(Inst))
+          Changed |= LowerAtomicRMWInst(RMWI);
+        else if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+          if (LI->isAtomic())
+            LowerLoadInst(LI);
+        } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
+          if (SI->isAtomic())
+            LowerStoreInst(SI);
+        }
+      }
+      return Changed;
+    }
   };
 }
 
-char LowerAtomicLegacyPass::ID = 0;
-INITIALIZE_PASS(LowerAtomicLegacyPass, "loweratomic",
-                "Lower atomic intrinsics to non-atomic form", false, false)
+char LowerAtomic::ID = 0;
+INITIALIZE_PASS(LowerAtomic, "loweratomic",
+                "Lower atomic intrinsics to non-atomic form",
+                false, false)
 
-Pass *llvm::createLowerAtomicPass() { return new LowerAtomicLegacyPass(); }
+Pass *llvm::createLowerAtomicPass() { return new LowerAtomic(); }

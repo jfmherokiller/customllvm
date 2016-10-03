@@ -1,6 +1,5 @@
 from __future__ import absolute_import
 import os
-import subprocess
 import sys
 
 import lit.Test
@@ -32,24 +31,17 @@ class GoogleTest(TestFormat):
         try:
             lines = lit.util.capture([path, '--gtest_list_tests'],
                                      env=localConfig.environment)
+            lines = lines.decode('ascii')
             if kIsWindows:
               lines = lines.replace('\r', '')
             lines = lines.split('\n')
-        except Exception as exc:
-            out = exc.output if isinstance(exc, subprocess.CalledProcessError) else ''
-            litConfig.warning("unable to discover google-tests in %r: %s. Process output: %s"
-                              % (path, sys.exc_info()[1], out))
+        except:
+            litConfig.error("unable to discover google-tests in %r" % path)
             raise StopIteration
 
         nested_tests = []
         for ln in lines:
             if not ln.strip():
-                continue
-
-            if 'Running main() from gtest_main.cc' in ln:
-                # Upstream googletest prints this to stdout prior to running
-                # tests. LLVM removed that print statement in r61540, but we
-                # handle it here in case upstream googletest is being used.
                 continue
 
             prefix = ''
@@ -62,11 +54,6 @@ class GoogleTest(TestFormat):
             ln = ln[index*2:]
             if ln.endswith('.'):
                 nested_tests.append(ln)
-            elif any([name.startswith('DISABLED_')
-                      for name in nested_tests + [ln]]):
-                # Gtest will internally skip these tests. No need to launch a
-                # child process for it.
-                continue
             else:
                 yield ''.join(nested_tests) + ln
 
@@ -79,7 +66,7 @@ class GoogleTest(TestFormat):
         # Discover the tests in this executable.
         for testname in self.getGTestTests(execpath, litConfig, localConfig):
             testPath = path_in_suite + (basename, testname)
-            yield lit.Test.Test(testSuite, testPath, localConfig, file_path=execpath)
+            yield lit.Test.Test(testSuite, testPath, localConfig)
 
     def getTestsInDirectory(self, testSuite, path_in_suite,
                             litConfig, localConfig):
@@ -109,7 +96,7 @@ class GoogleTest(TestFormat):
             # Handle GTest parametrized and typed tests, whose name includes
             # some '/'s.
             testPath, namePrefix = os.path.split(testPath)
-            testName = namePrefix + '/' + testName
+            testName = os.path.join(namePrefix, testName)
 
         cmd = [testPath, '--gtest_filter=' + testName]
         if litConfig.useValgrind:
@@ -118,23 +105,10 @@ class GoogleTest(TestFormat):
         if litConfig.noExecute:
             return lit.Test.PASS, ''
 
-        try:
-            out, err, exitCode = lit.util.executeCommand(
-                cmd, env=test.config.environment,
-                timeout=litConfig.maxIndividualTestTime)
-        except lit.util.ExecuteCommandTimeoutException:
-            return (lit.Test.TIMEOUT,
-                    'Reached timeout of {} seconds'.format(
-                        litConfig.maxIndividualTestTime)
-                   )
+        out, err, exitCode = lit.util.executeCommand(
+            cmd, env=test.config.environment)
 
-        if exitCode:
-            return lit.Test.FAIL, out + err
+        if not exitCode:
+            return lit.Test.PASS,''
 
-        passing_test_line = '[  PASSED  ] 1 test.'
-        if passing_test_line not in out:
-            msg = ('Unable to find %r in gtest output:\n\n%s%s' %
-                   (passing_test_line, out, err))
-            return lit.Test.UNRESOLVED, msg
-
-        return lit.Test.PASS,''
+        return lit.Test.FAIL, out + err

@@ -14,10 +14,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ADT/Triple.h"
 #include "llvm/IR/Module.h"
 #include "llvm/MC/SubtargetFeature.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
@@ -29,7 +30,7 @@ TargetMachine *EngineBuilder::selectTarget() {
 
   // MCJIT can generate code for remote targets, but the old JIT and Interpreter
   // must use the host architecture.
-  if (WhichEngine != EngineKind::Interpreter && M)
+  if (UseMCJIT && WhichEngine != EngineKind::Interpreter && M)
     TT.setTriple(M->getTargetTriple());
 
   return selectTarget(TT, MArch, MCPU, MAttrs);
@@ -46,19 +47,22 @@ TargetMachine *EngineBuilder::selectTarget(const Triple &TargetTriple,
     TheTriple.setTriple(sys::getProcessTriple());
 
   // Adjust the triple to match what the user requested.
-  const Target *TheTarget = nullptr;
+  const Target *TheTarget = 0;
   if (!MArch.empty()) {
-    auto I = find_if(TargetRegistry::targets(),
-                     [&](const Target &T) { return MArch == T.getName(); });
+    for (TargetRegistry::iterator it = TargetRegistry::begin(),
+           ie = TargetRegistry::end(); it != ie; ++it) {
+      if (MArch == it->getName()) {
+        TheTarget = &*it;
+        break;
+      }
+    }
 
-    if (I == TargetRegistry::targets().end()) {
+    if (!TheTarget) {
       if (ErrorStr)
         *ErrorStr = "No available targets are compatible with this -march, "
                     "see -version for the available targets.\n";
-      return nullptr;
+      return 0;
     }
-
-    TheTarget = &*I;
 
     // Adjust the triple to match (if known), otherwise stick with the
     // requested/host triple.
@@ -68,10 +72,10 @@ TargetMachine *EngineBuilder::selectTarget(const Triple &TargetTriple,
   } else {
     std::string Error;
     TheTarget = TargetRegistry::lookupTarget(TheTriple.getTriple(), Error);
-    if (!TheTarget) {
+    if (TheTarget == 0) {
       if (ErrorStr)
         *ErrorStr = Error;
-      return nullptr;
+      return 0;
     }
   }
 
@@ -85,7 +89,8 @@ TargetMachine *EngineBuilder::selectTarget(const Triple &TargetTriple,
   }
 
   // FIXME: non-iOS ARM FastISel is broken with MCJIT.
-  if (TheTriple.getArch() == Triple::arm &&
+  if (UseMCJIT &&
+      TheTriple.getArch() == Triple::arm &&
       !TheTriple.isiOS() &&
       OptLevel == CodeGenOpt::None) {
     OptLevel = CodeGenOpt::Less;

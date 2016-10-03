@@ -86,13 +86,11 @@
 // the given platform; otherwise undefined):
 //   GTEST_OS_AIX      - IBM AIX
 //   GTEST_OS_CYGWIN   - Cygwin
-//   GTEST_OS_FREEBSD  - FreeBSD
 //   GTEST_OS_HAIKU    - Haiku
 //   GTEST_OS_HPUX     - HP-UX
 //   GTEST_OS_LINUX    - Linux
 //     GTEST_OS_LINUX_ANDROID - Google Android
 //   GTEST_OS_MAC      - Mac OS X
-//   GTEST_OS_MINIX    - Minix
 //   GTEST_OS_NACL     - Google Native Client (NaCl)
 //   GTEST_OS_SOLARIS  - Sun Solaris
 //   GTEST_OS_SYMBIAN  - Symbian
@@ -230,8 +228,6 @@
 # endif  // _WIN32_WCE
 #elif defined __APPLE__
 # define GTEST_OS_MAC 1
-#elif defined __FreeBSD__
-# define GTEST_OS_FREEBSD 1
 #elif defined __linux__
 # define GTEST_OS_LINUX 1
 # if defined(ANDROID) || defined(__ANDROID__)
@@ -249,8 +245,6 @@
 # define GTEST_OS_NACL 1
 #elif defined(__HAIKU__)
 # define GTEST_OS_HAIKU 1
-#elif defined(_MINIX)
-# define GTEST_OS_MINIX 1
 #endif  // __CYGWIN__
 
 // Brings in definitions for functions used in the testing::internal::posix
@@ -362,7 +356,7 @@
 // no support for it at least as recent as Froyo (2.2).
 // Minix currently doesn't support it either.
 # define GTEST_HAS_STD_WSTRING \
-    (!(GTEST_OS_LINUX_ANDROID || GTEST_OS_CYGWIN || GTEST_OS_SOLARIS || GTEST_OS_HAIKU || GTEST_OS_MINIX))
+    (!(GTEST_OS_LINUX_ANDROID || GTEST_OS_CYGWIN || GTEST_OS_SOLARIS || GTEST_OS_HAIKU || defined(_MINIX)))
 
 #endif  // GTEST_HAS_STD_WSTRING
 
@@ -427,8 +421,7 @@
 //
 // To disable threading support in Google Test, add -DGTEST_HAS_PTHREAD=0
 // to your compiler flags.
-# define GTEST_HAS_PTHREAD (GTEST_OS_LINUX || GTEST_OS_MAC || \
-          GTEST_OS_HPUX || GTEST_OS_FREEBSD)
+# define GTEST_HAS_PTHREAD (GTEST_OS_LINUX || GTEST_OS_MAC || GTEST_OS_HPUX)
 #endif  // GTEST_HAS_PTHREAD
 
 #if GTEST_HAS_PTHREAD
@@ -506,7 +499,7 @@
 #   define _TR1_FUNCTIONAL 1
 #   include <tr1/tuple>
 #   undef _TR1_FUNCTIONAL  // Allows the user to #include
-                        // <tr1/functional> if they choose to.
+                        // <tr1/functional> if he chooses to.
 #  else
 #   include <tr1/tuple>  // NOLINT
 #  endif  // !GTEST_HAS_RTTI && GTEST_GCC_VER_ < 40302
@@ -552,8 +545,7 @@
 // pops up a dialog window that cannot be suppressed programmatically.
 #if (GTEST_OS_LINUX || GTEST_OS_MAC || GTEST_OS_CYGWIN || GTEST_OS_SOLARIS || \
      (GTEST_OS_WINDOWS_DESKTOP && _MSC_VER >= 1400) || \
-     GTEST_OS_WINDOWS_MINGW || GTEST_OS_AIX || \
-     GTEST_OS_HPUX || GTEST_OS_FREEBSD)
+     GTEST_OS_WINDOWS_MINGW || GTEST_OS_AIX || GTEST_OS_HPUX)
 # define GTEST_HAS_DEATH_TEST 1
 # include <vector>  // NOLINT
 #endif
@@ -1124,7 +1116,7 @@ class Notification {
 // problem.
 class ThreadWithParamBase {
  public:
-  virtual ~ThreadWithParamBase();
+  virtual ~ThreadWithParamBase() {}
   virtual void Run() = 0;
 };
 
@@ -1168,7 +1160,7 @@ class ThreadWithParam : public ThreadWithParamBase {
     GTEST_CHECK_POSIX_SUCCESS_(
         pthread_create(&thread_, 0, &ThreadFuncWithCLinkage, base));
   }
-  ~ThreadWithParam() override { Join(); }
+  ~ThreadWithParam() { Join(); }
 
   void Join() {
     if (!finished_) {
@@ -1177,7 +1169,7 @@ class ThreadWithParam : public ThreadWithParamBase {
     }
   }
 
-  void Run() override {
+  virtual void Run() {
     if (thread_can_start_ != NULL)
       thread_can_start_->WaitForNotification();
     func_(param_);
@@ -1298,7 +1290,7 @@ typedef GTestMutexLock MutexLock;
 // ThreadLocalValueHolderBase.
 class ThreadLocalValueHolderBase {
  public:
-  virtual ~ThreadLocalValueHolderBase();
+  virtual ~ThreadLocalValueHolderBase() {}
 };
 
 // Called by pthread to delete thread-local data stored by

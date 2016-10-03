@@ -7,20 +7,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_ARM_ARMASMPRINTER_H
-#define LLVM_LIB_TARGET_ARM_ARMASMPRINTER_H
+#ifndef ARMASMPRINTER_H
+#define ARMASMPRINTER_H
 
-#include "ARMSubtarget.h"
+#include "ARM.h"
+#include "ARMTargetMachine.h"
 #include "llvm/CodeGen/AsmPrinter.h"
-#include "llvm/Target/TargetMachine.h"
+#include "llvm/Support/Compiler.h"
 
 namespace llvm {
 
-class ARMFunctionInfo;
 class MCOperand;
-class MachineConstantPool;
-class MachineOperand;
-class MCSymbol;
 
 namespace ARM {
   enum DW_ISA {
@@ -46,81 +43,49 @@ class LLVM_LIBRARY_VISIBILITY ARMAsmPrinter : public AsmPrinter {
   /// InConstantPool - Maintain state when emitting a sequence of constant
   /// pool entries so we can properly mark them as data regions.
   bool InConstantPool;
-
-  /// ThumbIndirectPads - These maintain a per-function list of jump pad
-  /// labels used for ARMv4t thumb code to make register indirect calls.
-  SmallVector<std::pair<unsigned, MCSymbol*>, 4> ThumbIndirectPads;
-
-  /// OptimizationGoals - Maintain a combined optimization goal for all
-  /// functions in a module: one of Tag_ABI_optimization_goals values,
-  /// -1 if uninitialized, 0 if conflicting goals
-  int OptimizationGoals;
-
-  /// List of globals that have had their storage promoted to a constant
-  /// pool. This lives between calls to runOnMachineFunction and collects
-  /// data from every MachineFunction. It is used during doFinalization
-  /// when all non-function globals are emitted.
-  SmallPtrSet<const GlobalVariable*,2> PromotedGlobals;
-  /// Set of globals in PromotedGlobals that we've emitted labels for.
-  /// We need to emit labels even for promoted globals so that DWARF
-  /// debug info can link properly.
-  SmallPtrSet<const GlobalVariable*,2> EmittedPromotedGlobalLabels;
-
 public:
-  explicit ARMAsmPrinter(TargetMachine &TM,
-                         std::unique_ptr<MCStreamer> Streamer);
+  explicit ARMAsmPrinter(TargetMachine &TM, MCStreamer &Streamer)
+    : AsmPrinter(TM, Streamer), AFI(NULL), MCP(NULL), InConstantPool(false) {
+      Subtarget = &TM.getSubtarget<ARMSubtarget>();
+    }
 
-  const char *getPassName() const override {
+  virtual const char *getPassName() const LLVM_OVERRIDE {
     return "ARM Assembly / Object Emitter";
   }
 
-  void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O);
+  void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
+                    const char *Modifier = 0);
 
-  bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
-                       unsigned AsmVariant, const char *ExtraCode,
-                       raw_ostream &O) override;
-  bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNum,
-                             unsigned AsmVariant, const char *ExtraCode,
-                             raw_ostream &O) override;
+  virtual bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
+                               unsigned AsmVariant, const char *ExtraCode,
+                               raw_ostream &O) LLVM_OVERRIDE;
+  virtual bool PrintAsmMemoryOperand(const MachineInstr *MI, unsigned OpNum,
+                                     unsigned AsmVariant, const char *ExtraCode,
+                                     raw_ostream &O) LLVM_OVERRIDE;
 
-  void emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
-                        const MCSubtargetInfo *EndInfo) const override;
+  void EmitJumpTable(const MachineInstr *MI);
+  void EmitJump2Table(const MachineInstr *MI);
+  virtual void EmitInstruction(const MachineInstr *MI) LLVM_OVERRIDE;
+  virtual bool runOnMachineFunction(MachineFunction &F) LLVM_OVERRIDE;
 
-  void EmitJumpTableAddrs(const MachineInstr *MI);
-  void EmitJumpTableInsts(const MachineInstr *MI);
-  void EmitJumpTableTBInst(const MachineInstr *MI, unsigned OffsetWidth);
-  void EmitInstruction(const MachineInstr *MI) override;
-  bool runOnMachineFunction(MachineFunction &F) override;
-
-  void EmitConstantPool() override {
+  virtual void EmitConstantPool() LLVM_OVERRIDE {
     // we emit constant pools customly!
   }
-  void EmitFunctionBodyEnd() override;
-  void EmitFunctionEntryLabel() override;
-  void EmitStartOfAsmFile(Module &M) override;
-  void EmitEndOfAsmFile(Module &M) override;
-  void EmitXXStructor(const DataLayout &DL, const Constant *CV) override;
-  void EmitGlobalVariable(const GlobalVariable *GV) override;
-  
+  virtual void EmitFunctionBodyEnd() LLVM_OVERRIDE;
+  virtual void EmitFunctionEntryLabel() LLVM_OVERRIDE;
+  virtual void EmitStartOfAsmFile(Module &M) LLVM_OVERRIDE;
+  virtual void EmitEndOfAsmFile(Module &M) LLVM_OVERRIDE;
+  virtual void EmitXXStructor(const Constant *CV) LLVM_OVERRIDE;
+
   // lowerOperand - Convert a MachineOperand into the equivalent MCOperand.
   bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
 
-  //===------------------------------------------------------------------===//
-  // XRay implementation
-  //===------------------------------------------------------------------===//
-public:
-  // XRay-specific lowering for ARM.
-  void LowerPATCHABLE_FUNCTION_ENTER(const MachineInstr &MI);
-  void LowerPATCHABLE_FUNCTION_EXIT(const MachineInstr &MI);
-  // Helper function that emits the XRay sleds we've collected for a particular
-  // function.
-  void EmitXRayTable();
-
 private:
-  void EmitSled(const MachineInstr &MI, SledKind Kind);
-
   // Helpers for EmitStartOfAsmFile() and EmitEndOfAsmFile()
   void emitAttributes();
+
+  // Helper for ELF .o only
+  void emitARMAttributeSection();
 
   // Generic helper used to emit e.g. ARMv5 mul pseudos
   void EmitPatchedInstruction(const MachineInstr *MI, unsigned TargetOpc);
@@ -132,28 +97,31 @@ private:
                                    const MachineInstr *MI);
 
 public:
-  unsigned getISAEncoding() override {
+  /// EmitDwarfRegOp - Emit dwarf register operation.
+  virtual void EmitDwarfRegOp(const MachineLocation &MLoc, bool Indirect) const
+      LLVM_OVERRIDE;
+
+  virtual unsigned getISAEncoding() LLVM_OVERRIDE {
     // ARM/Darwin adds ISA to the DWARF info for each function.
-    const Triple &TT = TM.getTargetTriple();
-    if (!TT.isOSBinFormatMachO())
+    if (!Subtarget->isTargetDarwin())
       return 0;
-    bool isThumb = TT.getArch() == Triple::thumb ||
-                   TT.getArch() == Triple::thumbeb ||
-                   TT.getSubArch() == Triple::ARMSubArch_v7m ||
-                   TT.getSubArch() == Triple::ARMSubArch_v6m;
-    return isThumb ? ARM::DW_ISA_ARM_thumb : ARM::DW_ISA_ARM_arm;
+    return Subtarget->isThumb() ?
+      ARM::DW_ISA_ARM_thumb : ARM::DW_ISA_ARM_arm;
   }
 
 private:
   MCOperand GetSymbolRef(const MachineOperand &MO, const MCSymbol *Symbol);
-  MCSymbol *GetARMJTIPICJumpTableLabel(unsigned uid) const;
+  MCSymbol *GetARMJTIPICJumpTableLabel2(unsigned uid, unsigned uid2) const;
 
-  MCSymbol *GetARMGVSymbol(const GlobalValue *GV, unsigned char TargetFlags);
+  MCSymbol *GetARMSJLJEHLabel() const;
+
+  MCSymbol *GetARMGVSymbol(const GlobalValue *GV);
 
 public:
   /// EmitMachineConstantPoolValue - Print a machine constantpool value to
   /// the .s file.
-  void EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) override;
+  virtual void
+    EmitMachineConstantPoolValue(MachineConstantPoolValue *MCPV) LLVM_OVERRIDE;
 };
 } // end namespace llvm
 

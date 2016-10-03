@@ -1,5 +1,4 @@
 ; RUN: llvm-as < %s | llvm-dis | FileCheck %s
-; RUN: verify-uselistorder %s
 
 %struct.foobar = type { i32 }
 

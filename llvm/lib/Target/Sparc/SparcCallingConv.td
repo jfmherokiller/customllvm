@@ -21,11 +21,7 @@ def CC_Sparc32 : CallingConv<[
   // i32 f32 arguments get passed in integer registers if there is space.
   CCIfType<[i32, f32], CCAssignToReg<[I0, I1, I2, I3, I4, I5]>>,
   // f64 arguments are split and passed through registers or through stack.
-  CCIfType<[f64], CCCustom<"CC_Sparc_Assign_Split_64">>,
-  // As are v2i32 arguments (this would be the default behavior for
-  // v2i32 if it wasn't allocated to the IntPair register-class)
-  CCIfType<[v2i32], CCCustom<"CC_Sparc_Assign_Split_64">>,
-
+  CCIfType<[f64], CCCustom<"CC_Sparc_Assign_f64">>,
 
   // Alternatively, they are assigned to the stack in 4-byte aligned units.
   CCAssignToStack<4, 4>
@@ -34,8 +30,7 @@ def CC_Sparc32 : CallingConv<[
 def RetCC_Sparc32 : CallingConv<[
   CCIfType<[i32], CCAssignToReg<[I0, I1, I2, I3, I4, I5]>>,
   CCIfType<[f32], CCAssignToReg<[F0, F1, F2, F3]>>,
-  CCIfType<[f64], CCAssignToReg<[D0, D1]>>,
-  CCIfType<[v2i32], CCCustom<"CC_Sparc_Assign_Ret_Split_64">>
+  CCIfType<[f64], CCAssignToReg<[D0, D1]>>
 ]>;
 
 
@@ -108,7 +103,7 @@ def RetCC_Sparc32 : CallingConv<[
 // Function return values are passed exactly like function arguments, except a
 // struct up to 32 bytes in size can be returned in registers.
 
-// Function arguments AND most return values.
+// Function arguments AND return values.
 def CC_Sparc64 : CallingConv<[
   // The frontend uses the inreg flag to indicate i32 and float arguments from
   // structs. These arguments are not promoted to 64 bits, but they can still
@@ -121,15 +116,6 @@ def CC_Sparc64 : CallingConv<[
   // Custom assignment is required because stack space is reserved for all
   // arguments whether they are passed in registers or not.
   CCCustom<"CC_Sparc64_Full">
-]>;
-
-def RetCC_Sparc64 : CallingConv<[
-  // A single f32 return value always goes in %f0. The ABI doesn't specify what
-  // happens to multiple f32 return values outside a struct.
-  CCIfType<[f32], CCCustom<"CC_Sparc64_Half">>,
-
-  // Otherwise, return values are passed exactly like arguments.
-  CCDelegateTo<CC_Sparc64>
 ]>;
 
 // Callee-saved registers are handled by the register window mechanism.

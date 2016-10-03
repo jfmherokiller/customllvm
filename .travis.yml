@@ -40,11 +40,11 @@ deploy:
   provider: releases
   api_key:
     secure: NjiFuSIHoeCcS47WK0a6pdwNArf7u0yNcg0YeiggqwqTuaOKYNChx6dXuTY69Eps47pTkMt7a+RE+ZhPEIXlRMEGCBDObs9gWgU5RD3eRL6L1LjP/CU3weVQpvGrTGHhQ/Zi828dDtDiCMXQvdTpRa4rfUNpWGcACf+2jX/6bT4AtB9F2IotITKpLFc1zBUVOM9f9UdzPsQKUjZmXGT92H/zoWzTaydGYbXGjB8tXMd/x9I+O5tXkFXeZB4H6j+NGwUuOi1f90j3ALgQrSCDWXvkU+H+V1yGWRuYLYgi+GZlI9NIrS12MAKLcQSylpYqj8Sp3gWLz8o0fBwiJfQGyyEf9iER7cyaBfMYu4ZHjaagzWG6Y5v3kzcR65jnOVTSdTN6jAghUZ2y4IPI+4mBzPuU7Zjin2E43cl9K1HOuRhYfyL2cnq7NCLQbJ44k497Qw80UdH4c09832J3U1bUCLclhlyaFq+RVLlKgWb+8wUbrwWCdz58aG3yAjalzC4ot6xdKWjj8ip2Py6Lmo4Pesu1/Gufmu+72Yy4KwKD7ICCEQdnYMcRefkEnm726f7o7RI3Y854U4VOIqTagQbut/hSbuB481AdQYYnRwACTHHlSGoKe4vCYNPzhkhoODfauMwouRC2dEm7EqK3SmvgQRSwD6b7Y5snOwNhau0dj6U=
-  file_glob: true
-  file: "llvm-build/${RELEASE_PKG_FILE}"
+  file: "llvm-build/${RELEASE_TAR_FILE}"
   skip_cleanup: true
 
   on:
     all_branches: true
     tags: true
     repo: jfmherokiller/customllvm
+    overwrite: true

@@ -33,7 +33,6 @@ notifications:
   email: false
 before_cache: ccache -s
 before_deploy:
-  - cd "llvm-build"
   - export RELEASE_TAR_FILE=$(ls *.tar.gz)
   - echo "deploying $RELEASE_TAR_FILE to GitHub releases"
 deploy:
@@ -45,7 +44,5 @@ deploy:
   skip_cleanup: true
 
   on:
-    all_branches: true
     tags: true
     repo: jfmherokiller/customllvm
-    overwrite: true

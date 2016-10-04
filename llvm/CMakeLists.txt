@@ -110,7 +110,6 @@ set(LLVM_ALL_TARGETS
   SystemZ
   X86
   XCore
-  Z80
   ZCPU
   )
 

@@ -356,6 +356,8 @@ let Constraints = "$src = $dst" in {
     "inc\t{$src}", [(set GR16:$dst, (add GR16:$src, 1))]>;
   def DEC16r : IRp<0x0B, (outs GR16:$dst), (ins GR16:$src),
     "dec\t{$src}", [(set GR16:$dst, (add GR16:$src, -1))]>;
+  def RAND16r : IRp<0x0B, (outs GR16:$dst), (ins GR16:$src),
+    "rand\t{$src}", [(set GR16:$dst, (add GR16:$src, -1))]>;
 }
 
 //===----------------------------------------------------------------------===//

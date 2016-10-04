@@ -236,6 +236,7 @@ def ALU_XOR : ALUOpType<5, xor,   "xor\t">;
 def ALU_OR  : ALUOpType<6, or,    "or\t">;
 def ALU_CP  : ALUOpType<7, Z80cp, "cp\t">;
 
+
 class ALUIr<ALUOpType alu, list<dag> pattern>
   : IRz<0x80, (outs), (ins GR8:$Rz), alu.Asm#"$Rz", pattern> {
   ALUOpType aluType = alu;
@@ -356,8 +357,6 @@ let Constraints = "$src = $dst" in {
     "inc\t{$src}", [(set GR16:$dst, (add GR16:$src, 1))]>;
   def DEC16r : IRp<0x0B, (outs GR16:$dst), (ins GR16:$src),
     "dec\t{$src}", [(set GR16:$dst, (add GR16:$src, -1))]>;
-  def RAND16r : IRp<0xAA, (outs GR16:$dst), (ins GR16:$src),
-    "rand\t{$src}", [(set GR16:$dst, (add GR16:$src, -1))]>;
 }
 
 //===----------------------------------------------------------------------===//

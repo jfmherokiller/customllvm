@@ -72,7 +72,7 @@ public:
     amdil,   // amdil: amd IL
     spir,    // SPIR: standard portable IR for OpenCL 32-bit version
     spir64,  // SPIR: standard portable IR for OpenCL 64-bit version
-    z80      // Z80: Zilog Z80
+    zcpu      // Z80: Zilog Z80
   };
   enum VendorType {
     UnknownVendor,

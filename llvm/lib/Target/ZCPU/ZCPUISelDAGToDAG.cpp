@@ -90,12 +90,12 @@ bool ZCPUDAGToDAGISel::SelectXAddr(SDValue N, SDValue &Base, SDValue &Disp)
     if (RegisterSDNode *RN = dyn_cast<RegisterSDNode>(N.getOperand(1)))
     {
       unsigned Reg = RN->getReg();
-      if (Reg == ZCPU::IX || Reg == ZCPU::IY)
-      {
-        Base = N;
-        Disp = CurDAG->getTargetConstant(0, MVT::i8);
-        return true;
-      }
+//      if (Reg == ZCPU::IX || Reg == ZCPU::IY)
+//      {
+//        Base = N;
+//        Disp = CurDAG->getTargetConstant(0, MVT::i8);
+//        return true;
+//      }
     }
     break;
   case ISD::ADD:
@@ -106,12 +106,12 @@ bool ZCPUDAGToDAGISel::SelectXAddr(SDValue N, SDValue &Base, SDValue &Disp)
       {
         RegisterSDNode *RN = dyn_cast<RegisterSDNode>(Op0.getOperand(1));
         unsigned Reg = RN->getReg();
-        if (Reg == ZCPU::IX || Reg == ZCPU::IY)
-        {
-          Base = N.getOperand(0);
-          Disp = CurDAG->getTargetConstant(CN->getZExtValue(), MVT::i8);
-          return true;
-        }
+//        if (Reg == ZCPU::IX || Reg == ZCPU::IY)
+//        {
+//          Base = N.getOperand(0);
+//          Disp = CurDAG->getTargetConstant(CN->getZExtValue(), MVT::i8);
+//          return true;
+//        }
       }
       else if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Op0))
       {

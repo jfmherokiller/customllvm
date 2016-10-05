@@ -177,12 +177,12 @@ let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
 }
 
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
-  let Defs = [A] in
+  let Defs = [EAX] in
   def LD8Am : II16<0x3A, (outs), (ins i16imm:$src),
-    "ld\t{a, ($src)}", [(set A, (load iaddr:$src))]>;
-  let Uses = [HL] in
+    "ld\t{a, ($src)}", [(set eax, (load iaddr:$src))]>;
+  let Uses = [EAX] in
   def LD8rHL : IRy<0x46, (outs NormRegs:$dst), (ins),
-    "ld\t{$dst, (hl)}", [(set NormRegs:$dst, (load HL))]>;
+    "ld\t{$dst, (eax)}", [(set NormRegs:$dst, (load EAX))]>;
   def LD16rm : IRpI16<0x4B, (outs NormRegs:$Rp), (ins i16imm:$Imm),
     "ld\t{$Rp, ($Imm)}", [(set NormRegs:$Rp, (load iaddr:$Imm))]>, ED;
   def LD16rxm : PseudoI<(outs BR16:$dst), (ins xmem:$src),
@@ -195,9 +195,9 @@ def LD8mA : II16<0x32, (outs), (ins i16imm:$dst),
   "ld\t{($dst), a}", [(store A, iaddr:$dst)]>;
 let Uses = [EAX] in {
   def LD8HLr : IRz<0x70, (outs), (ins NormRegs:$src),
-    "ld\t{(hl), $src}", [(store NormRegs:$src, HL)]>;
+    "ld\t{(hl), $src}", [(store NormRegs:$src, EAX)]>;
   def LD8HLi : II8<0x36, (outs), (ins i8imm:$src),
-    "ld\t{(hl), $src}", [(store (i8 imm:$src), HL)]>;
+    "ld\t{(hl), $src}", [(store (i8 imm:$src), EAX)]>;
 }
 def LD16mr : IRpI16<0x43, (outs), (ins i16imm:$Imm, NormRegs:$Rp),
   "ld\t{($Imm), $Rp}", [(store NormRegs:$Rp, iaddr:$Imm)]>, ED;

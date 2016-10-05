@@ -39,7 +39,7 @@ static MCInstrInfo *createZCPUMCInstrInfo() {
 
 static MCRegisterInfo *createZCPUMCRegisterInfo(StringRef TT) {
   MCRegisterInfo *X = new MCRegisterInfo();
-  InitZCPUMCRegisterInfo(X, ZCPU::PC);
+  InitZCPUMCRegisterInfo(X, ZCPU::IP);
   return X;
 }
 

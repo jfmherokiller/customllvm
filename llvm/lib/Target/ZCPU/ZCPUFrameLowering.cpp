@@ -48,19 +48,17 @@ void ZCPUFrameLowering::emitPrologue(MachineFunction &MF) const
   uint64_t NumBytes = StackSize + CallFrameSize - FrameSize;
 
   // Skip the callee-saved push instructions.
-  while (MBBI != MBB.end() && (MBBI->getOpcode() == ZCPU::PUSH16r))
-    MBBI++;
-
-  if (NumBytes || ZCPUFI->isNeedFP())
-  {
-    unsigned FP = TII.getRegisterInfo().getFrameRegister(MF);
-
-    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16ri), FP)
-      .addImm(-NumBytes);
-    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::ADD16rSP), FP);
-    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16SPr))
-      .addReg(FP);
-  }
+//  while (MBBI != MBB.end() && (MBBI->getOpcode() == ZCPU::PUSH16r))
+//    MBBI++;
+//
+//  if (NumBytes || ZCPUFI->isNeedFP())
+//  {
+//    unsigned FP = TII.getRegisterInfo().getFrameRegister(MF);
+//
+//    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16ri), FP).addImm(-NumBytes);
+//    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::ADD16rSP), FP);
+//    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16SPr)).addReg(FP);
+//  }
 }
 
 void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
@@ -75,8 +73,8 @@ void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
   unsigned RetOpcode = MBBI->getOpcode();
   DebugLoc dl = MBBI->getDebugLoc();
 
-  if (RetOpcode != ZCPU::RET)
-    llvm_unreachable("Can only insert epilog into returning blocks");
+  //if (RetOpcode != ZCPU::RET)
+    //llvm_unreachable("Can only insert epilog into returning blocks");
 
   // Get the number of bytes to allocate from the FrameInfo
   uint64_t StackSize     = MFI->getStackSize();
@@ -90,20 +88,24 @@ void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
   {
     MachineBasicBlock::iterator I = prior(MBBI);
     unsigned Opc = I->getOpcode();
-    if (Opc != ZCPU::POP16r && !I->isTerminator())
-      break;
-    MBBI--;
+      if (!I->isTerminator())
+      {
+          break;
+      }
+      MBBI--;
+          
+    //    if (Opc != ZCPU::POP16r && !I->isTerminator())
+//      break;
+//    MBBI--;
   }
 
   if (NumBytes)
   {
     unsigned FP = TII.getRegisterInfo().getFrameRegister(MF);
 
-    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16ri), FP)
-      .addImm(NumBytes);
-    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::ADD16rSP), FP);
-    BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16SPr))
-      .addReg(FP, RegState::Kill);
+    //BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16ri), FP).addImm(NumBytes);
+    //BuildMI(MBB, MBBI, dl, TII.get(ZCPU::ADD16rSP), FP);
+    //BuildMI(MBB, MBBI, dl, TII.get(ZCPU::LD16SPr)).addReg(FP, RegState::Kill);
   }
 }
 
@@ -129,8 +131,7 @@ bool ZCPUFrameLowering::spillCalleeSavedRegisters(MachineBasicBlock &MBB,
 
     // Add the callee-saved register as live-in. It's killed at the spill.
     MBB.addLiveIn(Reg);
-    BuildMI(MBB, MI, dl, TII.get(ZCPU::PUSH16r))
-      .addReg(Reg, RegState::Kill);
+    //BuildMI(MBB, MI, dl, TII.get(ZCPU::PUSH16r)).addReg(Reg, RegState::Kill);
   }
   return true;
 }
@@ -150,7 +151,7 @@ bool ZCPUFrameLowering::restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
   const TargetInstrInfo &TII = *MF.getTarget().getInstrInfo();
 
   for (unsigned i = 0, e = CSI.size(); i != e; i++)
-    BuildMI(MBB, MI, dl, TII.get(ZCPU::POP16r), CSI[i].getReg());
+    //BuildMI(MBB, MI, dl, TII.get(ZCPU::POP16r), CSI[i].getReg());
 
   return true;
 }

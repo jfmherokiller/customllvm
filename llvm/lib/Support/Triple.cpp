@@ -45,7 +45,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case amdil:   return "amdil";
   case spir:    return "spir";
   case spir64:  return "spir64";
-  case z80:     return "z80";
+  case zcpu:     return "zcpu";
   }
 
   llvm_unreachable("Invalid ArchType!");

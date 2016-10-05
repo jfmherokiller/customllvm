@@ -15,5 +15,5 @@ using namespace llvm;
 Target llvm::TheZCPUTarget;
 
 extern "C" void LLVMInitializeZCPUTargetInfo() {
-  RegisterTarget<Triple::z80> X(TheZCPUTarget, "z80", "ZCPU [development]");
+  RegisterTarget<Triple::zcpu> X(TheZCPUTarget, "zcpu", "ZCPU [development]");
 }

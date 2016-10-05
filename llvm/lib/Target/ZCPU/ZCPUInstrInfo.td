@@ -192,7 +192,7 @@ let canFoldAsLoad = 1, isReMaterializable = 1 in {
 }
 let Uses = [EAX] in
 def LD8mA : II16<0x32, (outs), (ins i16imm:$dst),
-  "ld\t{($dst), a}", [(store A, iaddr:$dst)]>;
+  "ld\t{($dst), a}", [(store EAX, iaddr:$dst)]>;
 let Uses = [EAX] in {
   def LD8HLr : IRz<0x70, (outs), (ins NormRegs:$src),
     "ld\t{(EAX), $src}", [(store NormRegs:$src, EAX)]>;

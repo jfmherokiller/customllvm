@@ -125,17 +125,10 @@ let Defs = [ESP], Uses = [ESP] in {
 //===----------------------------------------------------------------------===//
 
 // add, sub
-def : Pat<(addc EAX, NormRegs:$src), (ADD8r NormRegs:$src)>;
-def : Pat<(addc EAX, imm:$src), (ADD8r imm:$src)>;
 
-def : Pat<(addc EAX, NormRegs:$src), (ADD16r NormRegs:$src)>;
-
-def : Pat<(subc EAX, NormRegs:$src), (SUB8r NormRegs:$src)>;
-def : Pat<(subc EAX, imm:$src), (SUB8r imm:$src)>;
 
 // calls
-def : Pat<(ZCPUcall (i48 tglobaladdr:$dst)), (CALL tglobaladdr:$dst)>;
-def : Pat<(ZCPUcall (i48 texternalsym:$dst)), (CALL texternalsym:$dst)>;
+
 
 // GlobalAddress
-def : Pat<(ZCPUwrapper tglobaladdr:$dst), (LD16ri tglobaladdr:$dst)>;
+

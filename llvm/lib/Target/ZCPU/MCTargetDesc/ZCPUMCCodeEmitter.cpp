@@ -115,13 +115,13 @@ ZCPUII::Prefixes ZCPUMCCodeEmitter::getRegPrefix(const MCInst &MI) const
       switch (MCOp.getReg())
       {
       default: continue;
-      case ZCPU::IX:
-      case ZCPU::XH:
-      case ZCPU::XL:
+      //case ZCPU::IX:
+      //case ZCPU::XH:
+      //case ZCPU::XL:
         return ZCPUII::DD;
-      case ZCPU::IY:
-      case ZCPU::YH:
-      case ZCPU::YL:
+      //case ZCPU::IY:
+      //case ZCPU::YH:
+      //case ZCPU::YL:
         return ZCPUII::FD;
       }
     }

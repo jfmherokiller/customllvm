@@ -324,7 +324,7 @@ let Uses = [EAX], Defs = [EAX] in {
     def ADD16r : IRp<0x09, (outs), (ins NormRegs:$src),
       "add\t{EAX, $src}", [(set EAX, (add EAX, NormRegs:$src))]>;
     let Uses = [EAX] in
-    def ADC16r : IRp<0x4EAX, (outs), (ins NormRegs:$src),
+    def ADC16r : IRp<0x4F, (outs), (ins NormRegs:$src),
       "adc\t{EAX, $src}", [(set EAX, (adde EAX, NormRegs:$src))]>, ED;
   }
   let Uses = [EAX] in

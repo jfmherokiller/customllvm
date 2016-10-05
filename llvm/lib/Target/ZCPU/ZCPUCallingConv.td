@@ -17,8 +17,8 @@
 
 def RetCC_ZCPU : CallingConv<[
   // i48 are returned in register EAX
-  CCIfType<[i48], CCAssignToReg<[EAX]>>,
-]>;
+  CCIfType<[i48], CCAssignToReg<[EAX]>>
+  ]>;
 
 //===----------------------------------------------------------------------===//
 // ZCPU Argument Calling Conventions

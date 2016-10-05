@@ -196,13 +196,3 @@ class II16<bits<8> opc, dag outs, dag ins, string asmstr, list<dag> pattern>
   bits<16> Imm;
   let Inst{23-8} = Imm;
 }
-
-//===----------------------------------------------------------------------===//
-// Simple Instruction RST
-//===----------------------------------------------------------------------===//
-
-class Irst<bits<8> opc, dag outs, dag ins, string asmstr, list<dag> pattern>
-  : I<opc, outs, ins, asmstr, pattern> {
-  bits<16> Imm;
-  let Inst{5-3} = Imm{5-3};
-}

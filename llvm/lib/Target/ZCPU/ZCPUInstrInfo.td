@@ -24,7 +24,7 @@ def SDT_ZCPUCall         : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
 def SDT_ZCPUCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i16>]>;
 def SDT_ZCPUCallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
 def SDT_ZCPUWrapper      : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,
-                                               SDTCisPtrTy<0>]>;
+                                               SDTCiESPtrTy<0>]>;
 def SDT_ZCPUCp           : SDTypeProfile<0, 2, [SDTCisSameAs<0, 1>]>;
 def SDT_ZCPUSelectCC     : SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>,
                                                SDTCisSameAs<1, 2>,
@@ -34,7 +34,7 @@ def SDT_ZCPUBrCC         : SDTypeProfile<0, 2, [SDTCisVT<0, OtherVT>,
 def SDT_ZCPUShift        : SDTypeProfile<1, 2, [SDTCisSameAs<0, 1>,
                                                SDTCisVT<2, i8>]>;
 //===----------------------------------------------------------------------===//
-// ZCPU Specific Node Definitions.
+// ZCPU ESPecific Node Definitions.
 //===----------------------------------------------------------------------===//
 def ZCPUcall          : SDNode<"ZCPUISD::CALL", SDT_ZCPUCall,
                      [SDNPHasChain, SDNPOutGlue, SDNPOptInGlue, SDNPVariadic]>;
@@ -98,7 +98,7 @@ def iaddr : ComplexPattern<iPTR, 1, "SelectIAddr", [], []>;
 //===----------------------------------------------------------------------===//
 // Instruction list.
 //===----------------------------------------------------------------------===//
-let Defs = [SP], Uses = [SP] in {
+let Defs = [ESP], Uses = [ESP] in {
   def ADJCALLSTACKDOWN : PseudoI<(outs), (ins i16imm:$amt),
     [(ZCPUcallseq_start timm:$amt)]>;
   def ADJCALLSTACKUP   : PseudoI<(outs), (ins i16imm:$amt1, i16imm:$amt2),
@@ -106,54 +106,49 @@ let Defs = [SP], Uses = [SP] in {
 }
 
 let usesCustomInserter = 1 in {
-  def SELECT8  : PseudoI<(outs GR8:$dst),  (ins GR8:$src,  GR8:$src2,  cc:$cc),
-    [(set GR8:$dst,  (ZCPUselectcc GR8:$src,  GR8:$src2,  imm:$cc))]>;
-  def SELECT16 : PseudoI<(outs GR16:$dst), (ins GR16:$src, GR16:$src2, cc:$cc),
-    [(set GR16:$dst, (ZCPUselectcc GR16:$src, GR16:$src2, imm:$cc))]>;
-  def SHL8   : PseudoI<(outs GR8:$dst), (ins GR8:$src, GR8:$cnt),
-    [(set GR8:$dst, (ZCPUshl GR8:$src, GR8:$cnt))]>;
-  def LSHR8  : PseudoI<(outs GR8:$dst), (ins GR8:$src, GR8:$cnt),
-    [(set GR8:$dst, (ZCPUlshr GR8:$src, GR8:$cnt))]>;
-  def ASHR8  : PseudoI<(outs GR8:$dst), (ins GR8:$src, GR8:$cnt),
-    [(set GR8:$dst, (ZCPUashr GR8:$src, GR8:$cnt))]>;
-  def SHL16  : PseudoI<(outs GR16:$dst), (ins GR16:$src, GR8:$cnt),
-    [(set GR16:$dst, (ZCPUshl GR16:$src, GR8:$cnt))]>;
-  def LSHR16 : PseudoI<(outs GR16:$dst), (ins GR16:$src, GR8:$cnt),
-    [(set GR16:$dst, (ZCPUlshr GR16:$src, GR8:$cnt))]>;
-  def ASHR16 : PseudoI<(outs GR16:$dst), (ins GR16:$src, GR8:$cnt),
-    [(set GR16:$dst, (ZCPUashr GR16:$src, GR8:$cnt))]>;
+  def SELECT8  : PseudoI<(outs NormRegs:$dst),  (ins NormRegs:$src,  NormRegs:$src2,  cc:$cc),
+    [(set NormRegs:$dst,  (ZCPUselectcc NormRegs:$src,  NormRegs:$src2,  imm:$cc))]>;
+  def SELECT16 : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$src2, cc:$cc),
+    [(set NormRegs:$dst, (ZCPUselectcc NormRegs:$src, NormRegs:$src2, imm:$cc))]>;
+  def SHL8   : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$cnt),
+    [(set NormRegs:$dst, (ZCPUshl NormRegs:$src, NormRegs:$cnt))]>;
+  def LSHR8  : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$cnt),
+    [(set NormRegs:$dst, (ZCPUlshr NormRegs:$src, NormRegs:$cnt))]>;
+  def ASHR8  : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$cnt),
+    [(set NormRegs:$dst, (ZCPUashr NormRegs:$src, NormRegs:$cnt))]>;
+  def SHL16  : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$cnt),
+    [(set NormRegs:$dst, (ZCPUshl NormRegs:$src, NormRegs:$cnt))]>;
+  def LSHR16 : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$cnt),
+    [(set NormRegs:$dst, (ZCPUlshr NormRegs:$src, NormRegs:$cnt))]>;
+  def ASHR16 : PseudoI<(outs NormRegs:$dst), (ins NormRegs:$src, NormRegs:$cnt),
+    [(set NormRegs:$dst, (ZCPUashr NormRegs:$src, NormRegs:$cnt))]>;
 }
 //===----------------------------------------------------------------------===//
 //  Miscellaneous Instructions.
 //===----------------------------------------------------------------------===//
-let Defs = [FLAGS] in {
-  def SCF : I<0x37, (outs), (ins), "scf", [(ZCPUscf)]>;
-  let Uses = [FLAGS] in
-  def CCF : I<0x3F, (outs), (ins), "ccf", [(ZCPUccf)]>;
+
+let Defs = [EAX], Uses = [EAX] in {
+  def CPL : I<0x2F, (outs), (ins), "cpl", [(set EAX, (not EAX))]>;
+  def NEG : I<0x44, (outs), (ins), "neg", [(set EAX, (ineg EAX))]>, ED;
 }
 
-let Defs = [A, FLAGS], Uses = [A] in {
-  def CPL : I<0x2F, (outs), (ins), "cpl", [(set A, (not A))]>;
-  def NEG : I<0x44, (outs), (ins), "neg", [(set A, (ineg A))]>, ED;
-}
-
-let Uses = [SP] in 
-  def ADD16rSP : I<0x39, (outs GR16:$dst), (ins), "add\t{$dst, sp}", []>;
-let Defs = [SP] in
-  def LD16SPr  : I<0xF9, (outs), (ins GR16:$src), "ld\t{sp, $src}", []>;
+let Uses = [ESP] in 
+  def ADD16rESP : I<0x39, (outs NormRegs:$dst), (ins), "add\t{$dst, ESP}", []>;
+let Defs = [ESP] in
+  def LD16ESPr  : I<0xF9, (outs), (ins NormRegs:$src), "ld\t{ESP, $src}", []>;
 let Defs = [HL, DE], Uses = [HL, DE] in
   def EX_DE_HL : I<0xEB, (outs), (ins), "ex\t{de, hl}", []>;
 
-let Defs = [SP], Uses = [SP] in {
+let Defs = [ESP], Uses = [ESP] in {
   let mayLoad = 1 in
-    def POP16r  : IRp<0xC1, (outs GR16:$reg), (ins), "pop\t{$reg}", []>;
+    def POP16r  : IRp<0xC1, (outs NormRegs:$reg), (ins), "pop\t{$reg}", []>;
   let mayStore = 1 in
-    def PUSH16r : IRp<0xC5, (outs), (ins GR16:$reg), "push\t{$reg}", []>;
+    def PUSH16r : IRp<0xC5, (outs), (ins NormRegs:$reg), "push\t{$reg}", []>;
 }
 //===----------------------------------------------------------------------===//
 // Control Flow Instructions.
 //===----------------------------------------------------------------------===//
-let isCall = 1, Uses = [SP] in {
+let isCall = 1, Uses = [ESP] in {
   def CALL : II16<0xCD, (outs), (ins calltarget:$dst, variable_ops),
     "call\t{$dst}", [(ZCPUcall imm:$dst)]>;
 }
@@ -165,7 +160,7 @@ let isBranch = 1, isTerminator = 1 in {
   let isBarrier = 1 in
   def JP : II16<0xC3, (outs), (ins brtarget:$dst),
     "jp\t{$dst}", [(br bb:$dst)]>;
-  let Uses = [FLAGS] in
+  let Uses = [EAX] in
   def JPCC : IRyI16<0xC2, (outs), (ins brtarget:$dst, cc:$Ry),
     "jp\t{$Ry, $dst}", [(ZCPUbrcc bb:$dst, imm:$Ry)]>;
 }
@@ -174,14 +169,14 @@ let isBranch = 1, isTerminator = 1 in {
 // Load Instructions.
 //===----------------------------------------------------------------------===//
 let neverHasSideEffects = 1 in
-def LD8rr : IRyRz<0x40, (outs GR8:$dst), (ins GR8:$src),
+def LD8rr : IRyRz<0x40, (outs NormRegs:$dst), (ins NormRegs:$src),
   "ld\t{$dst, $src}", []>;
 
 let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
-  def LD8ri  : IRyI8<0x06,  (outs GR8:$dst),  (ins i8imm:$src),
-    "ld\t{$dst, $src}", [(set GR8:$dst, imm:$src)]>;
-  def LD16ri : IRpI16<0x01, (outs GR16:$dst), (ins i16imm:$src),
-    "ld\t{$dst, $src}", [(set GR16:$dst, imm:$src)]>;
+  def LD8ri  : IRyI8<0x06,  (outs NormRegs:$dst),  (ins i8imm:$src),
+    "ld\t{$dst, $src}", [(set NormRegs:$dst, imm:$src)]>;
+  def LD16ri : IRpI16<0x01, (outs NormRegs:$dst), (ins i16imm:$src),
+    "ld\t{$dst, $src}", [(set NormRegs:$dst, imm:$src)]>;
 }
 
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
@@ -189,32 +184,32 @@ let canFoldAsLoad = 1, isReMaterializable = 1 in {
   def LD8Am : II16<0x3A, (outs), (ins i16imm:$src),
     "ld\t{a, ($src)}", [(set A, (load iaddr:$src))]>;
   let Uses = [HL] in
-  def LD8rHL : IRy<0x46, (outs GR8:$dst), (ins),
-    "ld\t{$dst, (hl)}", [(set GR8:$dst, (load HL))]>;
-  def LD16rm : IRpI16<0x4B, (outs GR16:$Rp), (ins i16imm:$Imm),
-    "ld\t{$Rp, ($Imm)}", [(set GR16:$Rp, (load iaddr:$Imm))]>, ED;
+  def LD8rHL : IRy<0x46, (outs NormRegs:$dst), (ins),
+    "ld\t{$dst, (hl)}", [(set NormRegs:$dst, (load HL))]>;
+  def LD16rm : IRpI16<0x4B, (outs NormRegs:$Rp), (ins i16imm:$Imm),
+    "ld\t{$Rp, ($Imm)}", [(set NormRegs:$Rp, (load iaddr:$Imm))]>, ED;
   def LD16rxm : PseudoI<(outs BR16:$dst), (ins xmem:$src),
     [(set BR16:$dst, (load xaddr:$src))]>;
-  def LD8rxm : IRyI8<0x46, (outs GR8:$dst), (ins xmem:$src),
-    "ld\t{$dst, ($src)}", [(set GR8:$dst, (load xaddr:$src))]>;
+  def LD8rxm : IRyI8<0x46, (outs NormRegs:$dst), (ins xmem:$src),
+    "ld\t{$dst, ($src)}", [(set NormRegs:$dst, (load xaddr:$src))]>;
 }
-let Uses = [A] in
+let Uses = [EAX] in
 def LD8mA : II16<0x32, (outs), (ins i16imm:$dst),
   "ld\t{($dst), a}", [(store A, iaddr:$dst)]>;
-let Uses = [HL] in {
-  def LD8HLr : IRz<0x70, (outs), (ins GR8:$src),
-    "ld\t{(hl), $src}", [(store GR8:$src, HL)]>;
+let Uses = [EAX] in {
+  def LD8HLr : IRz<0x70, (outs), (ins NormRegs:$src),
+    "ld\t{(hl), $src}", [(store NormRegs:$src, HL)]>;
   def LD8HLi : II8<0x36, (outs), (ins i8imm:$src),
     "ld\t{(hl), $src}", [(store (i8 imm:$src), HL)]>;
 }
-def LD16mr : IRpI16<0x43, (outs), (ins i16imm:$Imm, GR16:$Rp),
-  "ld\t{($Imm), $Rp}", [(store GR16:$Rp, iaddr:$Imm)]>, ED;
+def LD16mr : IRpI16<0x43, (outs), (ins i16imm:$Imm, NormRegs:$Rp),
+  "ld\t{($Imm), $Rp}", [(store NormRegs:$Rp, iaddr:$Imm)]>, ED;
 def LD16xmr : PseudoI<(outs), (ins xmem:$dst, BR16:$src),
   [(store BR16:$src, xaddr:$dst)]>;
 def LD16xmi : PseudoI<(outs), (ins xmem:$dst, i16imm:$src),
   [(store (i16 imm:$src), xaddr:$dst)]>;
-def LD8xmr : II8Rz<0x70, (outs), (ins xmem:$dst, GR8:$Rz),
-  "ld\t{($dst), $Rz}", [(store GR8:$Rz, xaddr:$dst)]>;
+def LD8xmr : II8Rz<0x70, (outs), (ins xmem:$dst, NormRegs:$Rz),
+  "ld\t{($dst), $Rz}", [(store NormRegs:$Rz, xaddr:$dst)]>;
 def LD8xmi : II8I8<0x36, (outs), (ins xmem:$dst, i8imm:$Imm2),
   "ld\t{($dst), $Imm2}", [(store (i8 imm:$Imm2), xaddr:$dst)]>;
 //===----------------------------------------------------------------------===//
@@ -238,7 +233,7 @@ def ALU_CP  : ALUOpType<7, ZCPUcp, "cp\t">;
 
 
 class ALUIr<ALUOpType alu, list<dag> pattern>
-  : IRz<0x80, (outs), (ins GR8:$Rz), alu.Asm#"$Rz", pattern> {
+  : IRz<0x80, (outs), (ins NormRegs:$Rz), alu.Asm#"$Rz", pattern> {
   ALUOpType aluType = alu;
   let Inst{5-3} = aluType.Value;
 }
@@ -254,13 +249,13 @@ class ALUIxm<ALUOpType alu, list<dag> pattern>
 }
 
 multiclass ALUI<ALUOpType alu> {
-  def r  : ALUIr<alu, [(set A, (alu.Node A, GR8:$Rz))]>;
+  def r  : ALUIr<alu, [(set A, (alu.Node A, NormRegs:$Rz))]>;
   def i  : ALUIi<alu, [(set A, (alu.Node A, imm:$Imm))]>;
   def xm : ALUIxm<alu, [(set A, (alu.Node A, (load xaddr:$Imm)))]>;
 }
 
 multiclass ALUICP<ALUOpType alu> {
-  def r  : ALUIr<alu, [(ZCPUcp A, GR8:$Rz)]>;
+  def r  : ALUIr<alu, [(ZCPUcp A, NormRegs:$Rz)]>;
   def i  : ALUIi<alu, [(ZCPUcp A, imm:$Imm)]>;
   def xm : ALUIxm<alu, [(ZCPUcp A, (load xaddr:$Imm))]>;
 }
@@ -281,8 +276,8 @@ def RS_SLL : RSOpType<6, ZCPUsll, "sll">;
 def RS_SRL : RSOpType<7, ZCPUsrl, "srl">;
 
 class RSIr<RSOpType rs>
-  : IRz<0x00, (outs GR8:$dst), (ins GR8:$src), rs.Asm#"\t$src",
-  [(set GR8:$dst, (rs.Node GR8:$src))]>, CB {
+  : IRz<0x00, (outs NormRegs:$dst), (ins NormRegs:$src), rs.Asm#"\t$src",
+  [(set NormRegs:$dst, (rs.Node NormRegs:$src))]>, CB {
   let Inst{5-3} = rs.Value;
   let Constraints = "$src = $dst";
 }
@@ -298,26 +293,26 @@ multiclass RSI<RSOpType rs> {
   def xm : RSIxm<rs>;
 }
 
-let Uses = [A], Defs = [A, FLAGS] in {
+let Uses = [EAX], Defs = [EAX] in {
   let isCommutable = 1 in {
     defm ADD8 : ALUI<ALU_ADD>;
-    let Uses = [A, FLAGS] in
+    let Uses = [EAX] in
     defm ADC8 : ALUI<ALU_ADC>;
     defm AND8 : ALUI<ALU_AND>;
     defm XOR8 : ALUI<ALU_XOR>;
     defm OR8  : ALUI<ALU_OR>;
   }
   defm SUB8 : ALUI<ALU_SUB>;
-  let Uses = [A, FLAGS] in
+  let Uses = [EAX] in
   defm SBC8 : ALUI<ALU_SBC>;
-  let Defs = [FLAGS] in
+  let Defs = [EAX] in
   defm CP8  : ALUICP<ALU_CP>;
 }
 
-let Defs = [FLAGS] in {
+let Defs = [EAX] in {
   defm RLC8 : RSI<RS_RLC>;
   defm RRC8 : RSI<RS_RRC>;
-  let Uses = [FLAGS] in {
+  let Uses = [EAX] in {
     defm RL8  : RSI<RS_RL>;
     defm RR8  : RSI<RS_RR>;
   }
@@ -327,25 +322,25 @@ let Defs = [FLAGS] in {
   defm SRL8 : RSI<RS_SRL>;
 }
 
-let Uses = [HL], Defs = [HL, FLAGS] in {
+let Uses = [EAX], Defs = [EAX] in {
   let isCommutable = 1 in {
-    def ADD16r : IRp<0x09, (outs), (ins GR16:$src),
-      "add\t{hl, $src}", [(set HL, (add HL, GR16:$src))]>;
-    let Uses = [HL, FLAGS] in
-    def ADC16r : IRp<0x4A, (outs), (ins GR16:$src),
-      "adc\t{hl, $src}", [(set HL, (adde HL, GR16:$src))]>, ED;
+    def ADD16r : IRp<0x09, (outs), (ins NormRegs:$src),
+      "add\t{hl, $src}", [(set HL, (add HL, NormRegs:$src))]>;
+    let Uses = [EAX] in
+    def ADC16r : IRp<0x4A, (outs), (ins NormRegs:$src),
+      "adc\t{hl, $src}", [(set EAX, (adde EAX, NormRegs:$src))]>, ED;
   }
-  let Uses = [HL, FLAGS] in
-  def SBC16r : IRp<0x42, (outs), (ins GR16:$src),
-    "sbc\t{hl, $src}", [(set HL, (sube HL, GR16:$src))]>, ED;
+  let Uses = [EAX] in
+  def SBC16r : IRp<0x42, (outs), (ins NormRegs:$src),
+    "sbc\t{hl, $src}", [(set EAX, (sube EAX, NormRegs:$src))]>, ED;
 }
 
 let Constraints = "$src = $dst" in {
-  let Defs = [FLAGS] in {
-    def INC8r : IRy<0x04, (outs GR8:$dst), (ins GR8:$src),
-      "inc\t{$src}", [(set GR8:$dst, (add GR8:$src, 1))]>;
-    def DEC8r : IRy<0x05, (outs GR8:$dst), (ins GR8:$src),
-      "dec\t{$src}", [(set GR8:$dst, (add GR8:$src, -1))]>;
+  let Defs = [EAX] in {
+    def INC8r : IRy<0x04, (outs NormRegs:$dst), (ins NormRegs:$src),
+      "inc\t{$src}", [(set NormRegs:$dst, (add NormRegs:$src, 1))]>;
+    def DEC8r : IRy<0x05, (outs NormRegs:$dst), (ins NormRegs:$src),
+      "dec\t{$src}", [(set NormRegs:$dst, (add NormRegs:$src, -1))]>;
     let Constraints = "" in {
       def INC8xm : II8<0x34, (outs), (ins xmem:$Imm),
         "inc\t{($Imm)}", [(store (add (i8 (load xaddr:$Imm)), 1), xaddr:$Imm)]>;
@@ -353,38 +348,31 @@ let Constraints = "$src = $dst" in {
         "dec\t{($Imm)}", [(store (add (i8 (load xaddr:$Imm)), -1), xaddr:$Imm)]>;
     }
   }
-  def INC16r : IRp<0x03, (outs GR16:$dst), (ins GR16:$src),
-    "inc\t{$src}", [(set GR16:$dst, (add GR16:$src, 1))]>;
-  def DEC16r : IRp<0x0B, (outs GR16:$dst), (ins GR16:$src),
-    "dec\t{$src}", [(set GR16:$dst, (add GR16:$src, -1))]>;
+  def INC16r : IRp<0x03, (outs NormRegs:$dst), (ins NormRegs:$src),
+    "inc\t{$src}", [(set NormRegs:$dst, (add NormRegs:$src, 1))]>;
+  def DEC16r : IRp<0x0B, (outs NormRegs:$dst), (ins NormRegs:$src),
+    "dec\t{$src}", [(set NormRegs:$dst, (add NormRegs:$src, -1))]>;
 }
 
 //===----------------------------------------------------------------------===//
 // Non-Instruction Patterns.
 //===----------------------------------------------------------------------===//
 
-// anyext
-def : Pat<(i16 (anyext GR8:$src)),
-  (SUBREG_TO_REG (i16 0), GR8:$src, subreg_lo)>;
-
-// trunc
-def : Pat<(i8 (trunc GR16:$src)), (EXTRACT_SUBREG GR16:$src, subreg_lo)>;
-
 // add, sub
-def : Pat<(addc A, GR8:$src), (ADD8r GR8:$src)>;
-def : Pat<(addc A, imm:$src), (ADD8r imm:$src)>;
+def : Pat<(addc EAX, NormRegs:$src), (ADD8r NormRegs:$src)>;
+def : Pat<(addc EAX, imm:$src), (ADD8r imm:$src)>;
 
-def : Pat<(addc HL, GR16:$src), (ADD16r GR16:$src)>;
+def : Pat<(addc EAX, NormRegs:$src), (ADD16r NormRegs:$src)>;
 
-def : Pat<(subc A, GR8:$src), (SUB8r GR8:$src)>;
-def : Pat<(subc A, imm:$src), (SUB8r imm:$src)>;
+def : Pat<(subc EAX, NormRegs:$src), (SUB8r NormRegs:$src)>;
+def : Pat<(subc EAX, imm:$src), (SUB8r imm:$src)>;
 
 // calls
-def : Pat<(ZCPUcall (i16 tglobaladdr:$dst)), (CALL tglobaladdr:$dst)>;
-def : Pat<(ZCPUcall (i16 texternalsym:$dst)), (CALL texternalsym:$dst)>;
+def : Pat<(ZCPUcall (i48 tglobaladdr:$dst)), (CALL tglobaladdr:$dst)>;
+def : Pat<(ZCPUcall (i48 texternalsym:$dst)), (CALL texternalsym:$dst)>;
 
 // neg
-def : Pat<(add (not A), 1), (NEG)>;
+def : Pat<(add (not EAX), 1), (NEG)>;
 
 // GlobalAddress
 def : Pat<(ZCPUwrapper tglobaladdr:$dst), (LD16ri tglobaladdr:$dst)>;

@@ -16,11 +16,8 @@
 //===----------------------------------------------------------------------===//
 
 def RetCC_ZCPU : CallingConv<[
-  // i8 are returned in register A
-  CCIfType<[i8], CCAssignToReg<[A]>>,
-
-  // i16 are returned in register A
-  CCIfType<[i16], CCAssignToReg<[A]>>
+  // i48 are returned in register EAX
+  CCIfType<[i48], CCAssignToReg<[EAX]>>,
 ]>;
 
 //===----------------------------------------------------------------------===//
@@ -28,17 +25,11 @@ def RetCC_ZCPU : CallingConv<[
 //===----------------------------------------------------------------------===//
 
 def CC_ZCPU : CallingConv<[
-  // Assign i8 arguments in registers
-  CCIfType<[i8], CCAssignToReg<[A, H, L]>>,
+  // Assign i48 arguments in registers
+  CCIfType<[i48], CCAssignToReg<[EAX, EBX, EDX]>>,
 
-  // Assign other i8 arguments to stack slots
-  CCIfType<[i8], CCAssignToStack<1, 1>>,
-
-  // Assign i16 arguments in registers
-  CCIfType<[i16], CCAssignToReg<[HL]>>,
-
-  // Assign other i16 arguments to stack slots
-  CCIfType<[i16], CCAssignToStack<2, 1>>
+  // Assign other i48 arguments to stack slots
+  CCIfType<[i48], CCAssignToStack<1, 1>>,
 ]>;
 
 //===----------------------------------------------------------------------===//

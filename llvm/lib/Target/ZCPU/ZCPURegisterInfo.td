@@ -38,5 +38,5 @@ def ESP : ZCPUReg<"esp">;
 def EBP : ZCPUReg<"ebp">;
 def IP : ZCPUReg<"ip">;
 
-def NormRegs : RegisterClass<"ZCPU", [i48], 48, (add EAX EBX ECX EDX ESI EDI)>;
+def NormRegs : RegisterClass<"ZCPU", [i48], 48, (add EAX, EBX, ECX, EDX, ESI, EDI)>;
 def RRegs : RegisterClass<"ZCPU", [i48], 48, (sequence "R%u", 0, 31)>;

@@ -178,7 +178,7 @@ let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
 
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
   let Defs = [EAX] in
-  def LD8Am : II16<0x3EAX, (outs), (ins i16imm:$src),
+  def LD8Am : II16<0x3A, (outs), (ins i16imm:$src),
     "ld\t{EAX, ($src)}", [(set EAX, (load iaddr:$src))]>;
   let Uses = [EAX] in
   def LD8rHL : IRy<0x46, (outs NormRegs:$dst), (ins),

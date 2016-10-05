@@ -135,8 +135,6 @@ let Uses = [ESP] in
   def ADD16rESP : I<0x39, (outs NormRegs:$dst), (ins), "add\t{$dst, ESP}", []>;
 let Defs = [ESP] in
   def LD16ESPr  : I<0xF9, (outs), (ins NormRegs:$src), "ld\t{ESP, $src}", []>;
-let Defs = [HL, DE], Uses = [HL, DE] in
-  def EX_DE_HL : I<0xEB, (outs), (ins), "ex\t{de, hl}", []>;
 
 let Defs = [ESP], Uses = [ESP] in {
   let mayLoad = 1 in

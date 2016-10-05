@@ -29,7 +29,7 @@ def CC_ZCPU : CallingConv<[
   CCIfType<[i48], CCAssignToReg<[EAX, EBX, EDX]>>,
 
   // Assign other i48 arguments to stack slots
-  CCIfType<[i48], CCAssignToStack<1, 1>>,
+  CCIfType<[i48], CCAssignToStack<1, 1>>
 ]>;
 
 //===----------------------------------------------------------------------===//
@@ -38,4 +38,4 @@ def CC_ZCPU : CallingConv<[
 
 def CSR_NoRegs : CalleeSavedRegs<(add)>;
 
-def CSR_16 : CalleeSavedRegs<(add BC, DE, IX, IY)>;
+def CSR_16 : CalleeSavedRegs<(add EAX, EBX, ECX, EDX)>;

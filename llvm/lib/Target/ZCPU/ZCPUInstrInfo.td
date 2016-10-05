@@ -23,8 +23,7 @@ include "ZCPUInstrFormats.td"
 def SDT_ZCPUCall         : SDTypeProfile<0, -1, [SDTCisVT<0, iPTR>]>;
 def SDT_ZCPUCallSeqStart : SDCallSeqStart<[SDTCisVT<0, i16>]>;
 def SDT_ZCPUCallSeqEnd   : SDCallSeqEnd<[SDTCisVT<0, i16>, SDTCisVT<1, i16>]>;
-def SDT_ZCPUWrapper      : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,
-                                               SDTCiESPtrTy<0>]>;
+def SDT_ZCPUWrapper      : SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,SDTCisPtrTy<0>]>;
 def SDT_ZCPUCp           : SDTypeProfile<0, 2, [SDTCisSameAs<0, 1>]>;
 def SDT_ZCPUSelectCC     : SDTypeProfile<1, 3, [SDTCisSameAs<0, 1>,
                                                SDTCisSameAs<1, 2>,

@@ -178,8 +178,8 @@ let isReMaterializable = 1, isAsCheapAsAMove = 1 in {
 
 let canFoldAsLoad = 1, isReMaterializable = 1 in {
   let Defs = [EAX] in
-  def LD8Am : II16<0x3A, (outs), (ins i16imm:$src),
-    "ld\t{a, ($src)}", [(set EAX, (load iaddr:$src))]>;
+  def LD8Am : II16<0x3EAX, (outs), (ins i16imm:$src),
+    "ld\t{EAX, ($src)}", [(set EAX, (load iaddr:$src))]>;
   let Uses = [EAX] in
   def LD8rHL : IRy<0x46, (outs NormRegs:$dst), (ins),
     "ld\t{$dst, (eax)}", [(set NormRegs:$dst, (load EAX))]>;
@@ -219,10 +219,10 @@ class ALUOpType<bits<3> val, SDNode ops, string asm> {
   string Asm = asm;
 }
 
-def ALU_ADD : ALUOpType<0, add,   "add\ta, ">;
-def ALU_ADC : ALUOpType<1, adde,  "adc\ta, ">;
+def ALU_ADD : ALUOpType<0, add,   "add\tEAX, ">;
+def ALU_ADC : ALUOpType<1, adde,  "adc\tEAX, ">;
 def ALU_SUB : ALUOpType<2, sub,   "sub\t">;
-def ALU_SBC : ALUOpType<3, sube,  "sbc\ta, ">;
+def ALU_SBC : ALUOpType<3, sube,  "sbc\tEAX, ">;
 def ALU_AND : ALUOpType<4, and,   "and\t">;
 def ALU_XOR : ALUOpType<5, xor,   "xor\t">;
 def ALU_OR  : ALUOpType<6, or,    "or\t">;
@@ -246,15 +246,15 @@ class ALUIxm<ALUOpType alu, list<dag> pattern>
 }
 
 multiclass ALUI<ALUOpType alu> {
-  def r  : ALUIr<alu, [(set A, (alu.Node A, NormRegs:$Rz))]>;
-  def i  : ALUIi<alu, [(set A, (alu.Node A, imm:$Imm))]>;
-  def xm : ALUIxm<alu, [(set A, (alu.Node A, (load xaddr:$Imm)))]>;
+  def r  : ALUIr<alu, [(set EAX, (alu.Node EAX, NormRegs:$Rz))]>;
+  def i  : ALUIi<alu, [(set EAX, (alu.Node EAX, imm:$Imm))]>;
+  def xm : ALUIxm<alu, [(set EAX, (alu.Node EAX, (load xaddr:$Imm)))]>;
 }
 
 multiclass ALUICP<ALUOpType alu> {
-  def r  : ALUIr<alu, [(ZCPUcp A, NormRegs:$Rz)]>;
-  def i  : ALUIi<alu, [(ZCPUcp A, imm:$Imm)]>;
-  def xm : ALUIxm<alu, [(ZCPUcp A, (load xaddr:$Imm))]>;
+  def r  : ALUIr<alu, [(ZCPUcp EAX, NormRegs:$Rz)]>;
+  def i  : ALUIi<alu, [(ZCPUcp EAX, imm:$Imm)]>;
+  def xm : ALUIxm<alu, [(ZCPUcp EAX, (load xaddr:$Imm))]>;
 }
 
 class RSOpType<bits<3> val, SDNode ops, string asm> {
@@ -324,7 +324,7 @@ let Uses = [EAX], Defs = [EAX] in {
     def ADD16r : IRp<0x09, (outs), (ins NormRegs:$src),
       "add\t{hl, $src}", [(set HL, (add HL, NormRegs:$src))]>;
     let Uses = [EAX] in
-    def ADC16r : IRp<0x4A, (outs), (ins NormRegs:$src),
+    def ADC16r : IRp<0x4EAX, (outs), (ins NormRegs:$src),
       "adc\t{hl, $src}", [(set EAX, (adde EAX, NormRegs:$src))]>, ED;
   }
   let Uses = [EAX] in

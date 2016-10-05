@@ -84,7 +84,7 @@ def cc : Operand<i8> {
 def xmem : Operand<i16> {
   let PrintMethod   = "printXMemOperand";
   let EncoderMethod = "getXMemOpValue";
-  let MIOperandInfo = (ops IR16, i8imm);
+  let MIOperandInfo = (ops NormRegs, i8imm);
 }
 
 //===----------------------------------------------------------------------===//

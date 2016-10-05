@@ -322,14 +322,14 @@ let Defs = [EAX] in {
 let Uses = [EAX], Defs = [EAX] in {
   let isCommutable = 1 in {
     def ADD16r : IRp<0x09, (outs), (ins NormRegs:$src),
-      "add\t{hl, $src}", [(set HL, (add HL, NormRegs:$src))]>;
+      "add\t{EAX, $src}", [(set EAX, (add EAX, NormRegs:$src))]>;
     let Uses = [EAX] in
     def ADC16r : IRp<0x4EAX, (outs), (ins NormRegs:$src),
-      "adc\t{hl, $src}", [(set EAX, (adde EAX, NormRegs:$src))]>, ED;
+      "adc\t{EAX, $src}", [(set EAX, (adde EAX, NormRegs:$src))]>, ED;
   }
   let Uses = [EAX] in
   def SBC16r : IRp<0x42, (outs), (ins NormRegs:$src),
-    "sbc\t{hl, $src}", [(set EAX, (sube EAX, NormRegs:$src))]>, ED;
+    "sbc\t{EAX, $src}", [(set EAX, (sube EAX, NormRegs:$src))]>, ED;
 }
 
 let Constraints = "$src = $dst" in {

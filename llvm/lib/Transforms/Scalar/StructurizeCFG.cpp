@@ -7,19 +7,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-#define DEBUG_TYPE "structurizecfg"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/SCCIterator.h"
+#include "llvm/Analysis/DivergenceAnalysis.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/RegionInfo.h"
 #include "llvm/Analysis/RegionIterator.h"
 #include "llvm/Analysis/RegionPass.h"
 #include "llvm/IR/Module.h"
-#include "llvm/Support/PatternMatch.h"
+#include "llvm/IR/PatternMatch.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/SSAUpdater.h"
 
 using namespace llvm;
 using namespace llvm::PatternMatch;
+
+#define DEBUG_TYPE "structurizecfg"
 
 namespace {
 
@@ -64,14 +70,14 @@ public:
   /// \brief Start a new query
   NearestCommonDominator(DominatorTree *DomTree) {
     DT = DomTree;
-    Result = 0;
+    Result = nullptr;
   }
 
   /// \brief Add BB to the resulting dominator
   void addBlock(BasicBlock *BB, bool Remember = true) {
     DomTreeNode *Node = DT->getNode(BB);
 
-    if (Result == 0) {
+    if (!Result) {
       unsigned Numbering = 0;
       for (;Node;Node = Node->getIDom())
         IndexMap[Node] = ++Numbering;
@@ -156,6 +162,9 @@ public:
 /// consist of a network of PHI nodes where the true incoming values expresses
 /// breaks and the false values expresses continue states.
 class StructurizeCFG : public RegionPass {
+  bool SkipUniformRegions;
+  DivergenceAnalysis *DA;
+
   Type *Boolean;
   ConstantInt *BoolTrue;
   ConstantInt *BoolFalse;
@@ -165,6 +174,7 @@ class StructurizeCFG : public RegionPass {
   Region *ParentRegion;
 
   DominatorTree *DT;
+  LoopInfo *LI;
 
   RNVector Order;
   BBSet Visited;
@@ -226,27 +236,37 @@ class StructurizeCFG : public RegionPass {
 
   void rebuildSSA();
 
+  bool hasOnlyUniformBranches(const Region *R);
+
 public:
   static char ID;
 
   StructurizeCFG() :
-    RegionPass(ID) {
+    RegionPass(ID), SkipUniformRegions(false) {
+    initializeStructurizeCFGPass(*PassRegistry::getPassRegistry());
+  }
+
+  StructurizeCFG(bool SkipUniformRegions) :
+    RegionPass(ID), SkipUniformRegions(SkipUniformRegions) {
     initializeStructurizeCFGPass(*PassRegistry::getPassRegistry());
   }
 
   using Pass::doInitialization;
-  virtual bool doInitialization(Region *R, RGPassManager &RGM);
+  bool doInitialization(Region *R, RGPassManager &RGM) override;
 
-  virtual bool runOnRegion(Region *R, RGPassManager &RGM);
+  bool runOnRegion(Region *R, RGPassManager &RGM) override;
 
-  virtual const char *getPassName() const {
+  const char *getPassName() const override {
     return "Structurize control flow";
   }
 
-  void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
+    if (SkipUniformRegions)
+      AU.addRequired<DivergenceAnalysis>();
     AU.addRequiredID(LowerSwitchID);
-    AU.addRequired<DominatorTree>();
-    AU.addPreserved<DominatorTree>();
+    AU.addRequired<DominatorTreeWrapperPass>();
+    AU.addRequired<LoopInfoWrapperPass>();
+    AU.addPreserved<DominatorTreeWrapperPass>();
     RegionPass::getAnalysisUsage(AU);
   }
 };
@@ -257,9 +277,10 @@ char StructurizeCFG::ID = 0;
 
 INITIALIZE_PASS_BEGIN(StructurizeCFG, "structurizecfg", "Structurize the CFG",
                       false, false)
+INITIALIZE_PASS_DEPENDENCY(DivergenceAnalysis)
 INITIALIZE_PASS_DEPENDENCY(LowerSwitch)
-INITIALIZE_PASS_DEPENDENCY(DominatorTree)
-INITIALIZE_PASS_DEPENDENCY(RegionInfo)
+INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(RegionInfoPass)
 INITIALIZE_PASS_END(StructurizeCFG, "structurizecfg", "Structurize the CFG",
                     false, false)
 
@@ -277,12 +298,61 @@ bool StructurizeCFG::doInitialization(Region *R, RGPassManager &RGM) {
 
 /// \brief Build up the general order of nodes
 void StructurizeCFG::orderNodes() {
-  scc_iterator<Region *> I = scc_begin(ParentRegion),
-                         E = scc_end(ParentRegion);
-  for (Order.clear(); I != E; ++I) {
-    std::vector<RegionNode *> &Nodes = *I;
-    Order.append(Nodes.begin(), Nodes.end());
+  RNVector TempOrder;
+  ReversePostOrderTraversal<Region*> RPOT(ParentRegion);
+  TempOrder.append(RPOT.begin(), RPOT.end());
+
+  std::map<Loop*, unsigned> LoopBlocks;
+
+
+  // The reverse post-order traversal of the list gives us an ordering close
+  // to what we want.  The only problem with it is that sometimes backedges
+  // for outer loops will be visited before backedges for inner loops.
+  for (RegionNode *RN : TempOrder) {
+    BasicBlock *BB = RN->getEntry();
+    Loop *Loop = LI->getLoopFor(BB);
+    ++LoopBlocks[Loop];
   }
+
+  unsigned CurrentLoopDepth = 0;
+  Loop *CurrentLoop = nullptr;
+  BBSet TempVisited;
+  for (RNVector::iterator I = TempOrder.begin(), E = TempOrder.end(); I != E; ++I) {
+    BasicBlock *BB = (*I)->getEntry();
+    unsigned LoopDepth = LI->getLoopDepth(BB);
+
+    if (std::find(Order.begin(), Order.end(), *I) != Order.end())
+      continue;
+
+    if (LoopDepth < CurrentLoopDepth) {
+      // Make sure we have visited all blocks in this loop before moving back to
+      // the outer loop.
+
+      RNVector::iterator LoopI = I;
+      while (unsigned &BlockCount = LoopBlocks[CurrentLoop]) {
+        LoopI++;
+        BasicBlock *LoopBB = (*LoopI)->getEntry();
+        if (LI->getLoopFor(LoopBB) == CurrentLoop) {
+          --BlockCount;
+          Order.push_back(*LoopI);
+        }
+      }
+    }
+
+    CurrentLoop = LI->getLoopFor(BB);
+    if (CurrentLoop) {
+      LoopBlocks[CurrentLoop]--;
+    }
+
+    CurrentLoopDepth = LoopDepth;
+    Order.push_back(*I);
+  }
+
+  // This pass originally used a post-order traversal and then operated on
+  // the list in reverse. Now that we are using a reverse post-order traversal
+  // rather than re-working the whole pass to operate on the list in order,
+  // we just reverse the list and continue to operate on it in reverse.
+  std::reverse(Order.begin(), Order.end());
 }
 
 /// \brief Determine the end of the loops
@@ -298,46 +368,42 @@ void StructurizeCFG::analyzeLoops(RegionNode *N) {
     BasicBlock *BB = N->getNodeAs<BasicBlock>();
     BranchInst *Term = cast<BranchInst>(BB->getTerminator());
 
-    for (unsigned i = 0, e = Term->getNumSuccessors(); i != e; ++i) {
-      BasicBlock *Succ = Term->getSuccessor(i);
-
+    for (BasicBlock *Succ : Term->successors())
       if (Visited.count(Succ))
         Loops[Succ] = BB;
-    }
   }
 }
 
 /// \brief Invert the given condition
 Value *StructurizeCFG::invert(Value *Condition) {
   // First: Check if it's a constant
-  if (Condition == BoolTrue)
-    return BoolFalse;
-
-  if (Condition == BoolFalse)
-    return BoolTrue;
-
-  if (Condition == BoolUndef)
-    return BoolUndef;
+  if (Constant *C = dyn_cast<Constant>(Condition))
+    return ConstantExpr::getNot(C);
 
   // Second: If the condition is already inverted, return the original value
   if (match(Condition, m_Not(m_Value(Condition))))
     return Condition;
 
-  // Third: Check all the users for an invert
-  BasicBlock *Parent = cast<Instruction>(Condition)->getParent();
-  for (Value::use_iterator I = Condition->use_begin(),
-       E = Condition->use_end(); I != E; ++I) {
+  if (Instruction *Inst = dyn_cast<Instruction>(Condition)) {
+    // Third: Check all the users for an invert
+    BasicBlock *Parent = Inst->getParent();
+    for (User *U : Condition->users())
+      if (Instruction *I = dyn_cast<Instruction>(U))
+        if (I->getParent() == Parent && match(I, m_Not(m_Specific(Condition))))
+          return I;
 
-    Instruction *User = dyn_cast<Instruction>(*I);
-    if (!User || User->getParent() != Parent)
-      continue;
-
-    if (match(*I, m_Not(m_Specific(Condition))))
-      return *I;
+    // Last option: Create a new instruction
+    return BinaryOperator::CreateNot(Condition, "", Parent->getTerminator());
   }
 
-  // Last option: Create a new instruction
-  return BinaryOperator::CreateNot(Condition, "", Parent->getTerminator());
+  if (Argument *Arg = dyn_cast<Argument>(Condition)) {
+    BasicBlock &EntryBlock = Arg->getParent()->getEntryBlock();
+    return BinaryOperator::CreateNot(Condition,
+                                     Arg->getName() + ".inv",
+                                     EntryBlock.getTerminator());
+  }
+
+  llvm_unreachable("Unhandled condition to invert");
 }
 
 /// \brief Build the condition for one edge
@@ -401,11 +467,11 @@ void StructurizeCFG::gatherPredicates(RegionNode *N) {
     } else {
 
       // It's an exit from a sub region
-      while(R->getParent() != ParentRegion)
+      while (R->getParent() != ParentRegion)
         R = R->getParent();
 
       // Edge from inside a subregion to its entry, ignore it
-      if (R == N)
+      if (*R == *N)
         continue;
 
       BasicBlock *Entry = R->getEntry();
@@ -429,17 +495,21 @@ void StructurizeCFG::collectInfos() {
   // Reset the visited nodes
   Visited.clear();
 
-  for (RNVector::reverse_iterator OI = Order.rbegin(), OE = Order.rend();
-       OI != OE; ++OI) {
+  for (RegionNode *RN : reverse(Order)) {
+
+    DEBUG(dbgs() << "Visiting: "
+                 << (RN->isSubRegion() ? "SubRegion with entry: " : "")
+                 << RN->getEntry()->getName() << " Loop Depth: "
+                 << LI->getLoopDepth(RN->getEntry()) << "\n");
 
     // Analyze all the conditions leading to a node
-    gatherPredicates(*OI);
+    gatherPredicates(RN);
 
     // Remember that we've seen this node
-    Visited.insert((*OI)->getEntry());
+    Visited.insert(RN->getEntry());
 
     // Find the last back edges
-    analyzeLoops(*OI);
+    analyzeLoops(RN);
   }
 }
 
@@ -449,10 +519,7 @@ void StructurizeCFG::insertConditions(bool Loops) {
   Value *Default = Loops ? BoolTrue : BoolFalse;
   SSAUpdater PhiInserter;
 
-  for (BranchVector::iterator I = Conds.begin(),
-       E = Conds.end(); I != E; ++I) {
-
-    BranchInst *Term = *I;
+  for (BranchInst *Term : Conds) {
     assert(Term->isConditional());
 
     BasicBlock *Parent = Term->getParent();
@@ -468,7 +535,7 @@ void StructurizeCFG::insertConditions(bool Loops) {
     NearestCommonDominator Dominator(DT);
     Dominator.addBlock(Parent, false);
 
-    Value *ParentValue = 0;
+    Value *ParentValue = nullptr;
     for (BBPredicates::iterator PI = Preds.begin(), PE = Preds.end();
          PI != PE; ++PI) {
 
@@ -521,20 +588,18 @@ void StructurizeCFG::addPhiValues(BasicBlock *From, BasicBlock *To) {
 /// \brief Add the real PHI value as soon as everything is set up
 void StructurizeCFG::setPhiValues() {
   SSAUpdater Updater;
-  for (BB2BBVecMap::iterator AI = AddedPhis.begin(), AE = AddedPhis.end();
-       AI != AE; ++AI) {
+  for (const auto &AddedPhi : AddedPhis) {
 
-    BasicBlock *To = AI->first;
-    BBVector &From = AI->second;
+    BasicBlock *To = AddedPhi.first;
+    const BBVector &From = AddedPhi.second;
 
     if (!DeletedPhis.count(To))
       continue;
 
     PhiMap &Map = DeletedPhis[To];
-    for (PhiMap::iterator PI = Map.begin(), PE = Map.end();
-         PI != PE; ++PI) {
+    for (const auto &PI : Map) {
 
-      PHINode *Phi = PI->first;
+      PHINode *Phi = PI.first;
       Value *Undef = UndefValue::get(Phi->getType());
       Updater.Initialize(Phi->getType(), "");
       Updater.AddAvailableValue(&Func->getEntryBlock(), Undef);
@@ -542,22 +607,20 @@ void StructurizeCFG::setPhiValues() {
 
       NearestCommonDominator Dominator(DT);
       Dominator.addBlock(To, false);
-      for (BBValueVector::iterator VI = PI->second.begin(),
-           VE = PI->second.end(); VI != VE; ++VI) {
+      for (const auto &VI : PI.second) {
 
-        Updater.AddAvailableValue(VI->first, VI->second);
-        Dominator.addBlock(VI->first);
+        Updater.AddAvailableValue(VI.first, VI.second);
+        Dominator.addBlock(VI.first);
       }
 
       if (!Dominator.wasResultExplicitMentioned())
         Updater.AddAvailableValue(Dominator.getResult(), Undef);
 
-      for (BBVector::iterator FI = From.begin(), FE = From.end();
-           FI != FE; ++FI) {
+      for (BasicBlock *FI : From) {
 
-        int Idx = Phi->getBasicBlockIndex(*FI);
+        int Idx = Phi->getBasicBlockIndex(FI);
         assert(Idx != -1);
-        Phi->setIncomingValue(Idx, Updater.GetValueAtEndOfBlock(*FI));
+        Phi->setIncomingValue(Idx, Updater.GetValueAtEndOfBlock(FI));
       }
     }
 
@@ -587,7 +650,7 @@ void StructurizeCFG::changeExit(RegionNode *Node, BasicBlock *NewExit,
   if (Node->isSubRegion()) {
     Region *SubRegion = Node->getNodeAs<Region>();
     BasicBlock *OldExit = SubRegion->getExit();
-    BasicBlock *Dominator = 0;
+    BasicBlock *Dominator = nullptr;
 
     // Find all the edges from the sub region to the exit
     for (pred_iterator I = pred_begin(OldExit), E = pred_end(OldExit);
@@ -674,7 +737,8 @@ BasicBlock *StructurizeCFG::needPostfix(BasicBlock *Flow,
 
 /// \brief Set the previous node
 void StructurizeCFG::setPrevNode(BasicBlock *BB) {
-  PrevNode =  ParentRegion->contains(BB) ? ParentRegion->getBBNode(BB) : 0;
+  PrevNode = ParentRegion->contains(BB) ? ParentRegion->getBBNode(BB)
+                                        : nullptr;
 }
 
 /// \brief Does BB dominate all the predicates of Node ?
@@ -695,7 +759,7 @@ bool StructurizeCFG::isPredictableTrue(RegionNode *Node) {
   bool Dominated = false;
 
   // Regionentry is always true
-  if (PrevNode == 0)
+  if (!PrevNode)
     return true;
 
   for (BBPredicates::iterator I = Preds.begin(), E = Preds.end();
@@ -768,6 +832,20 @@ void StructurizeCFG::handleLoops(bool ExitUseAllowed,
     handleLoops(false, LoopEnd);
   }
 
+  // If the start of the loop is the entry block, we can't branch to it so
+  // insert a new dummy entry block.
+  Function *LoopFunc = LoopStart->getParent();
+  if (LoopStart == &LoopFunc->getEntryBlock()) {
+    LoopStart->setName("entry.orig");
+
+    BasicBlock *NewEntry =
+      BasicBlock::Create(LoopStart->getContext(),
+                         "entry",
+                         LoopFunc,
+                         LoopStart);
+    BranchInst::Create(LoopStart, NewEntry);
+  }
+
   // Create an extra loop end node
   LoopEnd = needPrefix(false);
   BasicBlock *Next = needPostfix(LoopEnd, ExitUseAllowed);
@@ -788,11 +866,11 @@ void StructurizeCFG::createFlow() {
   Conditions.clear();
   LoopConds.clear();
 
-  PrevNode = 0;
+  PrevNode = nullptr;
   Visited.clear();
 
   while (!Order.empty()) {
-    handleLoops(EntryDominatesExit, 0);
+    handleLoops(EntryDominatesExit, nullptr);
   }
 
   if (PrevNode)
@@ -805,42 +883,48 @@ void StructurizeCFG::createFlow() {
 /// no longer dominate all their uses. Not sure if this is really nessasary
 void StructurizeCFG::rebuildSSA() {
   SSAUpdater Updater;
-  for (Region::block_iterator I = ParentRegion->block_begin(),
-                              E = ParentRegion->block_end();
-       I != E; ++I) {
-
-    BasicBlock *BB = *I;
+  for (auto *BB : ParentRegion->blocks())
     for (BasicBlock::iterator II = BB->begin(), IE = BB->end();
          II != IE; ++II) {
 
       bool Initialized = false;
-      for (Use *I = &II->use_begin().getUse(), *Next; I; I = Next) {
-
-        Next = I->getNext();
-
-        Instruction *User = cast<Instruction>(I->getUser());
+      for (auto I = II->use_begin(), E = II->use_end(); I != E;) {
+        Use &U = *I++;
+        Instruction *User = cast<Instruction>(U.getUser());
         if (User->getParent() == BB) {
           continue;
 
         } else if (PHINode *UserPN = dyn_cast<PHINode>(User)) {
-          if (UserPN->getIncomingBlock(*I) == BB)
+          if (UserPN->getIncomingBlock(U) == BB)
             continue;
         }
 
-        if (DT->dominates(II, User))
+        if (DT->dominates(&*II, User))
           continue;
 
         if (!Initialized) {
           Value *Undef = UndefValue::get(II->getType());
           Updater.Initialize(II->getType(), "");
           Updater.AddAvailableValue(&Func->getEntryBlock(), Undef);
-          Updater.AddAvailableValue(BB, II);
+          Updater.AddAvailableValue(BB, &*II);
           Initialized = true;
         }
-        Updater.RewriteUseAfterInsertions(*I);
+        Updater.RewriteUseAfterInsertions(U);
       }
     }
+}
+
+bool StructurizeCFG::hasOnlyUniformBranches(const Region *R) {
+  for (const BasicBlock *BB : R->blocks()) {
+    const BranchInst *Br = dyn_cast<BranchInst>(BB->getTerminator());
+    if (!Br || !Br->isConditional())
+      continue;
+
+    if (!DA->isUniform(Br->getCondition()))
+      return false;
+    DEBUG(dbgs() << "BB: " << BB->getName() << " has uniform terminator\n");
   }
+  return true;
 }
 
 /// \brief Run the transformation for each region found
@@ -848,10 +932,35 @@ bool StructurizeCFG::runOnRegion(Region *R, RGPassManager &RGM) {
   if (R->isTopLevelRegion())
     return false;
 
+  if (SkipUniformRegions) {
+    DA = &getAnalysis<DivergenceAnalysis>();
+    // TODO: We could probably be smarter here with how we handle sub-regions.
+    if (hasOnlyUniformBranches(R)) {
+      DEBUG(dbgs() << "Skipping region with uniform control flow: " << *R << '\n');
+
+      // Mark all direct child block terminators as having been treated as
+      // uniform. To account for a possible future in which non-uniform
+      // sub-regions are treated more cleverly, indirect children are not
+      // marked as uniform.
+      MDNode *MD = MDNode::get(R->getEntry()->getParent()->getContext(), {});
+      Region::element_iterator E = R->element_end();
+      for (Region::element_iterator I = R->element_begin(); I != E; ++I) {
+        if (I->isSubRegion())
+          continue;
+
+        if (Instruction *Term = I->getEntry()->getTerminator())
+          Term->setMetadata("structurizecfg.uniform", MD);
+      }
+
+      return false;
+    }
+  }
+
   Func = R->getEntry()->getParent();
   ParentRegion = R;
 
-  DT = &getAnalysis<DominatorTree>();
+  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
 
   orderNodes();
   collectInfos();
@@ -875,7 +984,6 @@ bool StructurizeCFG::runOnRegion(Region *R, RGPassManager &RGM) {
   return true;
 }
 
-/// \brief Create the pass
-Pass *llvm::createStructurizeCFGPass() {
-  return new StructurizeCFG();
+Pass *llvm::createStructurizeCFGPass(bool SkipUniformRegions) {
+  return new StructurizeCFG(SkipUniformRegions);
 }

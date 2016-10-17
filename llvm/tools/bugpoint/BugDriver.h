@@ -13,11 +13,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef BUGDRIVER_H
-#define BUGDRIVER_H
+#ifndef LLVM_TOOLS_BUGPOINT_BUGDRIVER_H
+#define LLVM_TOOLS_BUGPOINT_BUGDRIVER_H
 
-#include "llvm/ADT/ValueMap.h"
+#include "llvm/IR/ValueMap.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -35,7 +36,7 @@ class LLVMContext;
 
 class DebugCrashes;
 
-class GCC;
+class CC;
 
 extern bool DisableSimplifyCFG;
 
@@ -51,7 +52,7 @@ class BugDriver {
   std::vector<std::string> PassesToRun;
   AbstractInterpreter *Interpreter;   // How to run the program
   AbstractInterpreter *SafeInterpreter;  // To generate reference output, etc.
-  GCC *gcc;
+  CC *cc;
   bool run_find_bugs;
   unsigned Timeout;
   unsigned MemoryLimit;
@@ -75,7 +76,7 @@ public:
   // command line arguments into instance variables of BugDriver.
   //
   bool addSources(const std::vector<std::string> &FileNames);
-  void addPass(std::string p) { PassesToRun.push_back(p); }
+  void addPass(std::string p) { PassesToRun.push_back(std::move(p)); }
   void setPassesToRun(const std::vector<std::string> &PTR) {
     PassesToRun = PTR;
   }
@@ -129,12 +130,6 @@ public:
   ///
   bool isExecutingJIT();
 
-  /// runPasses - Run all of the passes in the "PassesToRun" list, discard the
-  /// output, and return true if any of the passes crashed.
-  bool runPasses(Module *M) const {
-    return runPasses(M, PassesToRun);
-  }
-
   Module *getProgram() const { return Program; }
 
   /// swapProgramIn - Set the current module to the specified module, returning
@@ -182,7 +177,7 @@ public:
   /// Error.
   ///
   std::string executeProgramSafely(const Module *Program,
-                                   std::string OutputFile,
+                                   const std::string &OutputFile,
                                    std::string *Error) const;
 
   /// createReferenceFile - calls compileProgram and then records the output
@@ -202,7 +197,7 @@ public:
                    const std::string &BitcodeFile = "",
                    const std::string &SharedObj = "",
                    bool RemoveBitcode = false,
-                   std::string *Error = 0) const;
+                   std::string *Error = nullptr) const;
 
   /// EmitProgressBitcode - This function is used to output M to a file named
   /// "bugpoint-ID.bc".
@@ -210,41 +205,42 @@ public:
   void EmitProgressBitcode(const Module *M, const std::string &ID,
                            bool NoFlyer = false) const;
 
-  /// deleteInstructionFromProgram - This method clones the current Program and
-  /// deletes the specified instruction from the cloned module.  It then runs a
-  /// series of cleanup passes (ADCE and SimplifyCFG) to eliminate any code
-  /// which depends on the value.  The modified module is then returned.
+  /// This method clones the current Program and deletes the specified
+  /// instruction from the cloned module.  It then runs a series of cleanup
+  /// passes (ADCE and SimplifyCFG) to eliminate any code which depends on the
+  /// value. The modified module is then returned.
   ///
-  Module *deleteInstructionFromProgram(const Instruction *I, unsigned Simp);
+  std::unique_ptr<Module> deleteInstructionFromProgram(const Instruction *I,
+                                                       unsigned Simp);
 
-  /// performFinalCleanups - This method clones the current Program and performs
-  /// a series of cleanups intended to get rid of extra cruft on the module.  If
-  /// the MayModifySemantics argument is true, then the cleanups is allowed to
+  /// This method clones the current Program and performs a series of cleanups
+  /// intended to get rid of extra cruft on the module. If the
+  /// MayModifySemantics argument is true, then the cleanups is allowed to
   /// modify how the code behaves.
   ///
-  Module *performFinalCleanups(Module *M, bool MayModifySemantics = false);
+  std::unique_ptr<Module> performFinalCleanups(Module *M,
+                                               bool MayModifySemantics = false);
 
-  /// ExtractLoop - Given a module, extract up to one loop from it into a new
-  /// function.  This returns null if there are no extractable loops in the
-  /// program or if the loop extractor crashes.
-  Module *ExtractLoop(Module *M);
+  /// Given a module, extract up to one loop from it into a new function. This
+  /// returns null if there are no extractable loops in the program or if the
+  /// loop extractor crashes.
+  std::unique_ptr<Module> extractLoop(Module *M);
 
-  /// ExtractMappedBlocksFromModule - Extract all but the specified basic blocks
-  /// into their own functions.  The only detail is that M is actually a module
-  /// cloned from the one the BBs are in, so some mapping needs to be performed.
-  /// If this operation fails for some reason (ie the implementation is buggy),
-  /// this function should return null, otherwise it returns a new Module.
-  Module *ExtractMappedBlocksFromModule(const std::vector<BasicBlock*> &BBs,
-                                        Module *M);
+  /// Extract all but the specified basic blocks into their own functions. The
+  /// only detail is that M is actually a module cloned from the one the BBs are
+  /// in, so some mapping needs to be performed. If this operation fails for
+  /// some reason (ie the implementation is buggy), this function should return
+  /// null, otherwise it returns a new Module.
+  std::unique_ptr<Module>
+  extractMappedBlocksFromModule(const std::vector<BasicBlock *> &BBs,
+                                Module *M);
 
-  /// runPassesOn - Carefully run the specified set of pass on the specified
-  /// module, returning the transformed module on success, or a null pointer on
-  /// failure.  If AutoDebugCrashes is set to true, then bugpoint will
-  /// automatically attempt to track down a crashing pass if one exists, and
-  /// this method will never return null.
-  Module *runPassesOn(Module *M, const std::vector<std::string> &Passes,
-                      bool AutoDebugCrashes = false, unsigned NumExtraArgs = 0,
-                      const char * const *ExtraArgs = NULL);
+  /// Carefully run the specified set of pass on the specified/ module,
+  /// returning the transformed module on success, or a null pointer on failure.
+  std::unique_ptr<Module> runPassesOn(Module *M,
+                                      const std::vector<std::string> &Passes,
+                                      unsigned NumExtraArgs = 0,
+                                      const char *const *ExtraArgs = nullptr);
 
   /// runPasses - Run the specified passes on Program, outputting a bitcode
   /// file and writting the filename into OutputFile if successful.  If the
@@ -259,7 +255,17 @@ public:
                  const std::vector<std::string> &PassesToRun,
                  std::string &OutputFilename, bool DeleteOutput = false,
                  bool Quiet = false, unsigned NumExtraArgs = 0,
-                 const char * const *ExtraArgs = NULL) const;
+                 const char * const *ExtraArgs = nullptr) const;
+
+  /// runPasses - Just like the method above, but this just returns true or
+  /// false indicating whether or not the optimizer crashed on the specified
+  /// input (true = crashed).  Does not produce any output.
+  ///
+  bool runPasses(Module *M,
+                 const std::vector<std::string> &PassesToRun) const {
+    std::string Filename;
+    return runPasses(M, PassesToRun, Filename, true);
+  }
                  
   /// runManyPasses - Take the specified pass list and create different 
   /// combinations of passes to compile the program with. Compile the program with
@@ -279,29 +285,17 @@ public:
                           const Module *M) const;
 
 private:
-  /// runPasses - Just like the method above, but this just returns true or
-  /// false indicating whether or not the optimizer crashed on the specified
-  /// input (true = crashed).
-  ///
-  bool runPasses(Module *M,
-                 const std::vector<std::string> &PassesToRun,
-                 bool DeleteOutput = true) const {
-    std::string Filename;
-    return runPasses(M, PassesToRun, Filename, DeleteOutput);
-  }
-
   /// initializeExecutionEnvironment - This method is used to set up the
   /// environment for executing LLVM programs.
   ///
   bool initializeExecutionEnvironment();
 };
 
-/// ParseInputFile - Given a bitcode or assembly input filename, parse and
-/// return it, or return null if not possible.
+///  Given a bitcode or assembly input filename, parse and return it, or return
+///  null if not possible.
 ///
-Module *ParseInputFile(const std::string &InputFilename,
-                       LLVMContext& ctxt);
-
+std::unique_ptr<Module> parseInputFile(StringRef InputFilename,
+                                       LLVMContext &ctxt);
 
 /// getPassesString - Turn a list of passes into a string which indicates the
 /// command line options that must be passed to add the passes.
@@ -316,16 +310,21 @@ void PrintFunctionList(const std::vector<Function*> &Funcs);
 ///
 void PrintGlobalVariableList(const std::vector<GlobalVariable*> &GVs);
 
+// DeleteGlobalInitializer - "Remove" the global variable by deleting its
+// initializer, making it external.
+//
+void DeleteGlobalInitializer(GlobalVariable *GV);
+
 // DeleteFunctionBody - "Remove" the function by deleting all of it's basic
 // blocks, making it external.
 //
 void DeleteFunctionBody(Function *F);
 
-/// SplitFunctionsOutOfModule - Given a module and a list of functions in the
-/// module, split the functions OUT of the specified module, and place them in
-/// the new module.
-Module *SplitFunctionsOutOfModule(Module *M, const std::vector<Function*> &F,
-                                  ValueToValueMapTy &VMap);
+/// Given a module and a list of functions in the module, split the functions
+/// OUT of the specified module, and place them in the new module.
+std::unique_ptr<Module>
+SplitFunctionsOutOfModule(Module *M, const std::vector<Function *> &F,
+                          ValueToValueMapTy &VMap);
 
 } // End llvm namespace
 

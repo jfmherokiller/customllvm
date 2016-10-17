@@ -16,51 +16,80 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm-c/Initialization.h"
 #include "llvm-c/Transforms/Scalar.h"
+#include "llvm/Analysis/BasicAliasAnalysis.h"
 #include "llvm/Analysis/Passes.h"
-#include "llvm/Analysis/Verifier.h"
+#include "llvm/Analysis/ScopedNoAliasAA.h"
+#include "llvm/Analysis/TypeBasedAliasAnalysis.h"
+#include "llvm/Transforms/Scalar/GVN.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
-#include "llvm/PassManager.h"
+#include "llvm/IR/LegacyPassManager.h"
 
 using namespace llvm;
 
 /// initializeScalarOptsPasses - Initialize all passes linked into the
 /// ScalarOpts library.
 void llvm::initializeScalarOpts(PassRegistry &Registry) {
-  initializeADCEPass(Registry);
-  initializeCodeGenPreparePass(Registry);
+  initializeADCELegacyPassPass(Registry);
+  initializeBDCELegacyPassPass(Registry);
+  initializeAlignmentFromAssumptionsPass(Registry);
+  initializeConstantHoistingLegacyPassPass(Registry);
   initializeConstantPropagationPass(Registry);
   initializeCorrelatedValuePropagationPass(Registry);
-  initializeDCEPass(Registry);
+  initializeDCELegacyPassPass(Registry);
   initializeDeadInstEliminationPass(Registry);
-  initializeDSEPass(Registry);
-  initializeGVNPass(Registry);
-  initializeEarlyCSEPass(Registry);
-  initializeIndVarSimplifyPass(Registry);
+  initializeScalarizerPass(Registry);
+  initializeDSELegacyPassPass(Registry);
+  initializeGuardWideningLegacyPassPass(Registry);
+  initializeGVNLegacyPassPass(Registry);
+  initializeEarlyCSELegacyPassPass(Registry);
+  initializeGVNHoistLegacyPassPass(Registry);
+  initializeFlattenCFGPassPass(Registry);
+  initializeInductiveRangeCheckEliminationPass(Registry);
+  initializeIndVarSimplifyLegacyPassPass(Registry);
   initializeJumpThreadingPass(Registry);
-  initializeLICMPass(Registry);
-  initializeLoopDeletionPass(Registry);
-  initializeLoopInstSimplifyPass(Registry);
-  initializeLoopRotatePass(Registry);
+  initializeLegacyLICMPassPass(Registry);
+  initializeLoopDataPrefetchPass(Registry);
+  initializeLoopDeletionLegacyPassPass(Registry);
+  initializeLoopAccessLegacyAnalysisPass(Registry);
+  initializeLoopInstSimplifyLegacyPassPass(Registry);
+  initializeLoopInterchangePass(Registry);
+  initializeLoopRotateLegacyPassPass(Registry);
   initializeLoopStrengthReducePass(Registry);
+  initializeLoopRerollPass(Registry);
   initializeLoopUnrollPass(Registry);
   initializeLoopUnswitchPass(Registry);
-  initializeLoopIdiomRecognizePass(Registry);
-  initializeLowerAtomicPass(Registry);
+  initializeLoopVersioningLICMPass(Registry);
+  initializeLoopIdiomRecognizeLegacyPassPass(Registry);
+  initializeLowerAtomicLegacyPassPass(Registry);
   initializeLowerExpectIntrinsicPass(Registry);
-  initializeMemCpyOptPass(Registry);
-  initializePartiallyInlineLibCallsPass(Registry);
-  initializeReassociatePass(Registry);
+  initializeLowerGuardIntrinsicPass(Registry);
+  initializeMemCpyOptLegacyPassPass(Registry);
+  initializeMergedLoadStoreMotionLegacyPassPass(Registry);
+  initializeNaryReassociatePass(Registry);
+  initializePartiallyInlineLibCallsLegacyPassPass(Registry);
+  initializeReassociateLegacyPassPass(Registry);
   initializeRegToMemPass(Registry);
-  initializeSCCPPass(Registry);
-  initializeIPSCCPPass(Registry);
-  initializeSROAPass(Registry);
-  initializeSROA_DTPass(Registry);
-  initializeSROA_SSAUpPass(Registry);
+  initializeRewriteStatepointsForGCPass(Registry);
+  initializeSCCPLegacyPassPass(Registry);
+  initializeIPSCCPLegacyPassPass(Registry);
+  initializeSROALegacyPassPass(Registry);
   initializeCFGSimplifyPassPass(Registry);
   initializeStructurizeCFGPass(Registry);
-  initializeSinkingPass(Registry);
+  initializeSinkingLegacyPassPass(Registry);
   initializeTailCallElimPass(Registry);
+  initializeSeparateConstOffsetFromGEPPass(Registry);
+  initializeSpeculativeExecutionPass(Registry);
+  initializeStraightLineStrengthReducePass(Registry);
+  initializeLoadCombinePass(Registry);
+  initializePlaceBackedgeSafepointsImplPass(Registry);
+  initializePlaceSafepointsPass(Registry);
+  initializeFloat2IntLegacyPassPass(Registry);
+  initializeLoopDistributeLegacyPass(Registry);
+  initializeLoopLoadEliminationPass(Registry);
+  initializeLoopSimplifyCFGLegacyPassPass(Registry);
+  initializeLoopVersioningPassPass(Registry);
 }
 
 void LLVMInitializeScalarOpts(LLVMPassRegistryRef R) {
@@ -71,6 +100,14 @@ void LLVMAddAggressiveDCEPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createAggressiveDCEPass());
 }
 
+void LLVMAddBitTrackingDCEPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createBitTrackingDCEPass());
+}
+
+void LLVMAddAlignmentFromAssumptionsPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createAlignmentFromAssumptionsPass());
+}
+
 void LLVMAddCFGSimplificationPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createCFGSimplificationPass());
 }
@@ -79,8 +116,16 @@ void LLVMAddDeadStoreEliminationPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createDeadStoreEliminationPass());
 }
 
+void LLVMAddScalarizerPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createScalarizerPass());
+}
+
 void LLVMAddGVNPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createGVNPass());
+}
+
+void LLVMAddMergedLoadStoreMotionPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createMergedLoadStoreMotionPass());
 }
 
 void LLVMAddIndVarSimplifyPass(LLVMPassManagerRef PM) {
@@ -111,6 +156,14 @@ void LLVMAddLoopRotatePass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createLoopRotatePass());
 }
 
+void LLVMAddLoopRerollPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createLoopRerollPass());
+}
+
+void LLVMAddLoopSimplifyCFGPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createLoopSimplifyCFGPass());
+}
+
 void LLVMAddLoopUnrollPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createLoopUnrollPass());
 }
@@ -127,6 +180,10 @@ void LLVMAddPartiallyInlineLibCallsPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createPartiallyInlineLibCallsPass());
 }
 
+void LLVMAddLowerSwitchPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createLowerSwitchPass());
+}
+
 void LLVMAddPromoteMemoryToRegisterPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createPromoteMemoryToRegisterPass());
 }
@@ -140,16 +197,16 @@ void LLVMAddSCCPPass(LLVMPassManagerRef PM) {
 }
 
 void LLVMAddScalarReplAggregatesPass(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createScalarReplAggregatesPass());
+  unwrap(PM)->add(createSROAPass());
 }
 
 void LLVMAddScalarReplAggregatesPassSSA(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createScalarReplAggregatesPass(-1, false));
+  unwrap(PM)->add(createSROAPass());
 }
 
 void LLVMAddScalarReplAggregatesPassWithThreshold(LLVMPassManagerRef PM,
                                                   int Threshold) {
-  unwrap(PM)->add(createScalarReplAggregatesPass(Threshold));
+  unwrap(PM)->add(createSROAPass());
 }
 
 void LLVMAddSimplifyLibCallsPass(LLVMPassManagerRef PM) {
@@ -180,12 +237,20 @@ void LLVMAddEarlyCSEPass(LLVMPassManagerRef PM) {
   unwrap(PM)->add(createEarlyCSEPass());
 }
 
+void LLVMAddGVNHoistLegacyPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createGVNHoistPass());
+}
+
 void LLVMAddTypeBasedAliasAnalysisPass(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createTypeBasedAliasAnalysisPass());
+  unwrap(PM)->add(createTypeBasedAAWrapperPass());
+}
+
+void LLVMAddScopedNoAliasAAPass(LLVMPassManagerRef PM) {
+  unwrap(PM)->add(createScopedNoAliasAAWrapperPass());
 }
 
 void LLVMAddBasicAliasAnalysisPass(LLVMPassManagerRef PM) {
-  unwrap(PM)->add(createBasicAliasAnalysisPass());
+  unwrap(PM)->add(createBasicAAWrapperPass());
 }
 
 void LLVMAddLowerExpectIntrinsicPass(LLVMPassManagerRef PM) {

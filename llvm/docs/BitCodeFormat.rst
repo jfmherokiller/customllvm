@@ -28,8 +28,9 @@ Unlike XML, the bitstream format is a binary encoding, and unlike XML it
 provides a mechanism for the file to self-describe "abbreviations", which are
 effectively size optimizations for the content.
 
-LLVM IR files may be optionally embedded into a `wrapper`_ structure that makes
-it easy to embed extra data along with LLVM IR files.
+LLVM IR files may be optionally embedded into a `wrapper`_ structure, or in a
+`native object file`_. Both of these mechanisms make it easy to embed extra
+data along with LLVM IR files.
 
 This document first describes the LLVM bitstream format, describes the wrapper
 format, then describes the record structure used by LLVM IR files.
@@ -460,6 +461,20 @@ to the start of the bitcode stream in the file, and the Size field is the size
 in bytes of the stream. CPUType is a target-specific value that can be used to
 encode the CPU of the target.
 
+.. _native object file:
+
+Native Object File Wrapper Format
+=================================
+
+Bitcode files for LLVM IR may also be wrapped in a native object file
+(i.e. ELF, COFF, Mach-O).  The bitcode must be stored in a section of the object
+file named ``__LLVM,__bitcode`` for MachO and ``.llvmbc`` for the other object
+formats.  This wrapper format is useful for accommodating LTO in compilation
+pipelines where intermediate objects must be native object files which contain
+metadata in other sections.
+
+Not all tools support this format.
+
 .. _encoding of LLVM IR:
 
 LLVM IR Encoding
@@ -658,7 +673,7 @@ for each library name referenced.
 MODULE_CODE_GLOBALVAR Record
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``[GLOBALVAR, pointer type, isconst, initid, linkage, alignment, section, visibility, threadlocal, unnamed_addr]``
+``[GLOBALVAR, pointer type, isconst, initid, linkage, alignment, section, visibility, threadlocal, unnamed_addr, externally_initialized, dllstorageclass, comdat]``
 
 The ``GLOBALVAR`` record (code 7) marks the declaration or definition of a
 global variable. The operand fields are:
@@ -675,6 +690,7 @@ global variable. The operand fields are:
 .. _linkage type:
 
 * *linkage*: An encoding of the linkage type for this variable:
+
   * ``external``: code 0
   * ``weak``: code 1
   * ``appending``: code 2
@@ -688,7 +704,8 @@ global variable. The operand fields are:
   * ``weak_odr``: code 10
   * ``linkonce_odr``: code 11
   * ``available_externally``: code 12
-  * ``linker_private``: code 13
+  * deprecated : code 13
+  * deprecated : code 14
 
 * alignment*: The logarithm base 2 of the variable's requested alignment, plus 1
 
@@ -698,27 +715,47 @@ global variable. The operand fields are:
 .. _visibility:
 
 * *visibility*: If present, an encoding of the visibility of this variable:
+
   * ``default``: code 0
   * ``hidden``: code 1
   * ``protected``: code 2
 
+.. _bcthreadlocal:
+
 * *threadlocal*: If present, an encoding of the thread local storage mode of the
   variable:
+
   * ``not thread local``: code 0
   * ``thread local; default TLS model``: code 1
   * ``localdynamic``: code 2
   * ``initialexec``: code 3
   * ``localexec``: code 4
 
-* *unnamed_addr*: If present and non-zero, indicates that the variable has
-  ``unnamed_addr``
+.. _bcunnamedaddr:
+
+* *unnamed_addr*: If present, an encoding of the ``unnamed_addr`` attribute of this
+  variable:
+
+  * not ``unnamed_addr``: code 0
+  * ``unnamed_addr``: code 1
+  * ``local_unnamed_addr``: code 2
+
+.. _bcdllstorageclass:
+
+* *dllstorageclass*: If present, an encoding of the DLL storage class of this variable:
+
+  * ``default``: code 0
+  * ``dllimport``: code 1
+  * ``dllexport``: code 2
+
+* *comdat*: An encoding of the COMDAT of this function
 
 .. _FUNCTION:
 
 MODULE_CODE_FUNCTION Record
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``[FUNCTION, type, callingconv, isproto, linkage, paramattr, alignment, section, visibility, gc, prefix]``
+``[FUNCTION, type, callingconv, isproto, linkage, paramattr, alignment, section, visibility, gc, prologuedata, dllstorageclass, comdat, prefixdata, personalityfn]``
 
 The ``FUNCTION`` record (code 8) marks the declaration or definition of a
 function. The operand fields are:
@@ -729,6 +766,12 @@ function. The operand fields are:
   * ``ccc``: code 0
   * ``fastcc``: code 8
   * ``coldcc``: code 9
+  * ``webkit_jscc``: code 12
+  * ``anyregcc``: code 13
+  * ``preserve_mostcc``: code 14
+  * ``preserve_allcc``: code 15
+  * ``swiftcc`` : code 16
+  * ``cxx_fast_tlscc``: code 17
   * ``x86_stdcallcc``: code 64
   * ``x86_fastcallcc``: code 65
   * ``arm_apcscc``: code 66
@@ -754,16 +797,27 @@ function. The operand fields are:
 * *gc*: If present and nonzero, the 1-based garbage collector index in the table
   of `MODULE_CODE_GCNAME`_ entries.
 
-* *unnamed_addr*: If present and non-zero, indicates that the function has
-  ``unnamed_addr``
+* *unnamed_addr*: If present, an encoding of the
+  :ref:`unnamed_addr<bcunnamedaddr>` attribute of this function
 
-* *prefix*: If non-zero, the value index of the prefix data for this function,
+* *prologuedata*: If non-zero, the value index of the prologue data for this function,
+  plus 1.
+
+* *dllstorageclass*: An encoding of the
+  :ref:`dllstorageclass<bcdllstorageclass>` of this function
+
+* *comdat*: An encoding of the COMDAT of this function
+
+* *prefixdata*: If non-zero, the value index of the prefix data for this function,
+  plus 1.
+
+* *personalityfn*: If non-zero, the value index of the personality function for this function,
   plus 1.
 
 MODULE_CODE_ALIAS Record
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-``[ALIAS, alias type, aliasee val#, linkage, visibility]``
+``[ALIAS, alias type, aliasee val#, linkage, visibility, dllstorageclass, threadlocal, unnamed_addr]``
 
 The ``ALIAS`` record (code 9) marks the definition of an alias. The operand
 fields are
@@ -775,6 +829,15 @@ fields are
 * *linkage*: An encoding of the `linkage type`_ for this alias
 
 * *visibility*: If present, an encoding of the `visibility`_ of the alias
+
+* *dllstorageclass*: If present, an encoding of the
+  :ref:`dllstorageclass<bcdllstorageclass>` of the alias
+
+* *threadlocal*: If present, an encoding of the
+  :ref:`thread local property<bcthreadlocal>` of the alias
+
+* *unnamed_addr*: If present, an encoding of the
+  :ref:`unnamed_addr<bcunnamedaddr>` attribute of this alias
 
 MODULE_CODE_PURGEVALS Record
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -810,7 +873,7 @@ in the *paramattr* field of module block `FUNCTION`_ records, or within the
 *attr* field of function block ``INST_INVOKE`` and ``INST_CALL`` records.
 
 Entries within ``PARAMATTR_BLOCK`` are constructed to ensure that each is unique
-(i.e., no two indicies represent equivalent attribute lists).
+(i.e., no two indices represent equivalent attribute lists).
 
 .. _PARAMATTR_CODE_ENTRY:
 
@@ -863,7 +926,7 @@ table entry, which may be referenced by 0-based index from instructions,
 constants, metadata, type symbol table entries, or other type operator records.
 
 Entries within ``TYPE_BLOCK`` are constructed to ensure that each entry is
-unique (i.e., no two indicies represent structurally equivalent types).
+unique (i.e., no two indices represent structurally equivalent types).
 
 .. _TYPE_CODE_NUMENTRY:
 .. _NUMENTRY:
@@ -1076,7 +1139,7 @@ named type.
 VALUE_SYMTAB_BLOCK Contents
 ---------------------------
 
-The ``VALUE_SYMTAB_BLOCK`` block (id 14) ... 
+The ``VALUE_SYMTAB_BLOCK`` block (id 14) ...
 
 .. _METADATA_BLOCK:
 

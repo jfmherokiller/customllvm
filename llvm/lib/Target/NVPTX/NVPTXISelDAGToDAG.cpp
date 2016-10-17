@@ -12,6 +12,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "NVPTXISelDAGToDAG.h"
+#include "NVPTXUtilities.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Support/CommandLine.h"
@@ -20,21 +22,14 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
 
-#undef DEBUG_TYPE
-#define DEBUG_TYPE "nvptx-isel"
-
 using namespace llvm;
 
-static cl::opt<int>
-FMAContractLevel("nvptx-fma-level", cl::ZeroOrMore, cl::Hidden,
-                 cl::desc("NVPTX Specific: FMA contraction (0: don't do it"
-                          " 1: do it  2: do it aggressively"),
-                 cl::init(2));
+#define DEBUG_TYPE "nvptx-isel"
 
 static cl::opt<int> UsePrecDivF32(
     "nvptx-prec-divf32", cl::ZeroOrMore, cl::Hidden,
     cl::desc("NVPTX Specifies: 0 use div.approx, 1 use div.full, 2 use"
-             " IEEE Compliant F32 div.rnd if avaiable."),
+             " IEEE Compliant F32 div.rnd if available."),
     cl::init(2));
 
 static cl::opt<bool>
@@ -57,19 +52,13 @@ FunctionPass *llvm::createNVPTXISelDag(NVPTXTargetMachine &TM,
 
 NVPTXDAGToDAGISel::NVPTXDAGToDAGISel(NVPTXTargetMachine &tm,
                                      CodeGenOpt::Level OptLevel)
-    : SelectionDAGISel(tm, OptLevel),
-      Subtarget(tm.getSubtarget<NVPTXSubtarget>()) {
-
-  doFMAF32 = (OptLevel > 0) && Subtarget.hasFMAF32() && (FMAContractLevel >= 1);
-  doFMAF64 = (OptLevel > 0) && Subtarget.hasFMAF64() && (FMAContractLevel >= 1);
-  doFMAF32AGG =
-      (OptLevel > 0) && Subtarget.hasFMAF32() && (FMAContractLevel == 2);
-  doFMAF64AGG =
-      (OptLevel > 0) && Subtarget.hasFMAF64() && (FMAContractLevel == 2);
-
-  allowFMA = (FMAContractLevel >= 1);
-
+    : SelectionDAGISel(tm, OptLevel), TM(tm) {
   doMulWide = (OptLevel > 0);
+}
+
+bool NVPTXDAGToDAGISel::runOnMachineFunction(MachineFunction &MF) {
+    Subtarget = &static_cast<const NVPTXSubtarget &>(MF.getSubtarget());
+    return SelectionDAGISel::runOnMachineFunction(MF);
 }
 
 int NVPTXDAGToDAGISel::getDivF32Level() const {
@@ -91,10 +80,7 @@ bool NVPTXDAGToDAGISel::usePrecSqrtF32() const {
     return UsePrecSqrtF32;
   } else {
     // Otherwise, use sqrt.approx if fast math is enabled
-    if (TM.Options.UnsafeFPMath)
-      return false;
-    else
-      return true;
+    return !TM.Options.UnsafeFPMath;
   }
 }
 
@@ -106,78 +92,457 @@ bool NVPTXDAGToDAGISel::useF32FTZ() const {
     const Function *F = MF->getFunction();
     // Otherwise, check for an nvptx-f32ftz attribute on the function
     if (F->hasFnAttribute("nvptx-f32ftz"))
-      return (F->getAttributes().getAttribute(AttributeSet::FunctionIndex,
-                                              "nvptx-f32ftz")
-                                              .getValueAsString() == "true");
+      return F->getFnAttribute("nvptx-f32ftz").getValueAsString() == "true";
     else
       return false;
   }
 }
 
+bool NVPTXDAGToDAGISel::allowFMA() const {
+  const NVPTXTargetLowering *TL = Subtarget->getTargetLowering();
+  return TL->allowFMA(*MF, OptLevel);
+}
+
 /// Select - Select instructions not customized! Used for
 /// expanded, promoted and normal instructions.
-SDNode *NVPTXDAGToDAGISel::Select(SDNode *N) {
+void NVPTXDAGToDAGISel::Select(SDNode *N) {
 
   if (N->isMachineOpcode()) {
     N->setNodeId(-1);
-    return NULL; // Already selected.
+    return; // Already selected.
   }
 
-  SDNode *ResNode = NULL;
   switch (N->getOpcode()) {
   case ISD::LOAD:
-    ResNode = SelectLoad(N);
+    if (tryLoad(N))
+      return;
     break;
   case ISD::STORE:
-    ResNode = SelectStore(N);
+    if (tryStore(N))
+      return;
     break;
   case NVPTXISD::LoadV2:
   case NVPTXISD::LoadV4:
-    ResNode = SelectLoadVector(N);
+    if (tryLoadVector(N))
+      return;
     break;
   case NVPTXISD::LDGV2:
   case NVPTXISD::LDGV4:
   case NVPTXISD::LDUV2:
   case NVPTXISD::LDUV4:
-    ResNode = SelectLDGLDUVector(N);
+    if (tryLDGLDU(N))
+      return;
     break;
   case NVPTXISD::StoreV2:
   case NVPTXISD::StoreV4:
-    ResNode = SelectStoreVector(N);
+    if (tryStoreVector(N))
+      return;
     break;
   case NVPTXISD::LoadParam:
   case NVPTXISD::LoadParamV2:
   case NVPTXISD::LoadParamV4:
-    ResNode = SelectLoadParam(N);
+    if (tryLoadParam(N))
+      return;
     break;
   case NVPTXISD::StoreRetval:
   case NVPTXISD::StoreRetvalV2:
   case NVPTXISD::StoreRetvalV4:
-    ResNode = SelectStoreRetval(N);
+    if (tryStoreRetval(N))
+      return;
     break;
   case NVPTXISD::StoreParam:
   case NVPTXISD::StoreParamV2:
   case NVPTXISD::StoreParamV4:
   case NVPTXISD::StoreParamS32:
   case NVPTXISD::StoreParamU32:
-    ResNode = SelectStoreParam(N);
+    if (tryStoreParam(N))
+      return;
     break;
+  case ISD::INTRINSIC_WO_CHAIN:
+    if (tryIntrinsicNoChain(N))
+      return;
+    break;
+  case ISD::INTRINSIC_W_CHAIN:
+    if (tryIntrinsicChain(N))
+      return;
+    break;
+  case NVPTXISD::Tex1DFloatS32:
+  case NVPTXISD::Tex1DFloatFloat:
+  case NVPTXISD::Tex1DFloatFloatLevel:
+  case NVPTXISD::Tex1DFloatFloatGrad:
+  case NVPTXISD::Tex1DS32S32:
+  case NVPTXISD::Tex1DS32Float:
+  case NVPTXISD::Tex1DS32FloatLevel:
+  case NVPTXISD::Tex1DS32FloatGrad:
+  case NVPTXISD::Tex1DU32S32:
+  case NVPTXISD::Tex1DU32Float:
+  case NVPTXISD::Tex1DU32FloatLevel:
+  case NVPTXISD::Tex1DU32FloatGrad:
+  case NVPTXISD::Tex1DArrayFloatS32:
+  case NVPTXISD::Tex1DArrayFloatFloat:
+  case NVPTXISD::Tex1DArrayFloatFloatLevel:
+  case NVPTXISD::Tex1DArrayFloatFloatGrad:
+  case NVPTXISD::Tex1DArrayS32S32:
+  case NVPTXISD::Tex1DArrayS32Float:
+  case NVPTXISD::Tex1DArrayS32FloatLevel:
+  case NVPTXISD::Tex1DArrayS32FloatGrad:
+  case NVPTXISD::Tex1DArrayU32S32:
+  case NVPTXISD::Tex1DArrayU32Float:
+  case NVPTXISD::Tex1DArrayU32FloatLevel:
+  case NVPTXISD::Tex1DArrayU32FloatGrad:
+  case NVPTXISD::Tex2DFloatS32:
+  case NVPTXISD::Tex2DFloatFloat:
+  case NVPTXISD::Tex2DFloatFloatLevel:
+  case NVPTXISD::Tex2DFloatFloatGrad:
+  case NVPTXISD::Tex2DS32S32:
+  case NVPTXISD::Tex2DS32Float:
+  case NVPTXISD::Tex2DS32FloatLevel:
+  case NVPTXISD::Tex2DS32FloatGrad:
+  case NVPTXISD::Tex2DU32S32:
+  case NVPTXISD::Tex2DU32Float:
+  case NVPTXISD::Tex2DU32FloatLevel:
+  case NVPTXISD::Tex2DU32FloatGrad:
+  case NVPTXISD::Tex2DArrayFloatS32:
+  case NVPTXISD::Tex2DArrayFloatFloat:
+  case NVPTXISD::Tex2DArrayFloatFloatLevel:
+  case NVPTXISD::Tex2DArrayFloatFloatGrad:
+  case NVPTXISD::Tex2DArrayS32S32:
+  case NVPTXISD::Tex2DArrayS32Float:
+  case NVPTXISD::Tex2DArrayS32FloatLevel:
+  case NVPTXISD::Tex2DArrayS32FloatGrad:
+  case NVPTXISD::Tex2DArrayU32S32:
+  case NVPTXISD::Tex2DArrayU32Float:
+  case NVPTXISD::Tex2DArrayU32FloatLevel:
+  case NVPTXISD::Tex2DArrayU32FloatGrad:
+  case NVPTXISD::Tex3DFloatS32:
+  case NVPTXISD::Tex3DFloatFloat:
+  case NVPTXISD::Tex3DFloatFloatLevel:
+  case NVPTXISD::Tex3DFloatFloatGrad:
+  case NVPTXISD::Tex3DS32S32:
+  case NVPTXISD::Tex3DS32Float:
+  case NVPTXISD::Tex3DS32FloatLevel:
+  case NVPTXISD::Tex3DS32FloatGrad:
+  case NVPTXISD::Tex3DU32S32:
+  case NVPTXISD::Tex3DU32Float:
+  case NVPTXISD::Tex3DU32FloatLevel:
+  case NVPTXISD::Tex3DU32FloatGrad:
+  case NVPTXISD::TexCubeFloatFloat:
+  case NVPTXISD::TexCubeFloatFloatLevel:
+  case NVPTXISD::TexCubeS32Float:
+  case NVPTXISD::TexCubeS32FloatLevel:
+  case NVPTXISD::TexCubeU32Float:
+  case NVPTXISD::TexCubeU32FloatLevel:
+  case NVPTXISD::TexCubeArrayFloatFloat:
+  case NVPTXISD::TexCubeArrayFloatFloatLevel:
+  case NVPTXISD::TexCubeArrayS32Float:
+  case NVPTXISD::TexCubeArrayS32FloatLevel:
+  case NVPTXISD::TexCubeArrayU32Float:
+  case NVPTXISD::TexCubeArrayU32FloatLevel:
+  case NVPTXISD::Tld4R2DFloatFloat:
+  case NVPTXISD::Tld4G2DFloatFloat:
+  case NVPTXISD::Tld4B2DFloatFloat:
+  case NVPTXISD::Tld4A2DFloatFloat:
+  case NVPTXISD::Tld4R2DS64Float:
+  case NVPTXISD::Tld4G2DS64Float:
+  case NVPTXISD::Tld4B2DS64Float:
+  case NVPTXISD::Tld4A2DS64Float:
+  case NVPTXISD::Tld4R2DU64Float:
+  case NVPTXISD::Tld4G2DU64Float:
+  case NVPTXISD::Tld4B2DU64Float:
+  case NVPTXISD::Tld4A2DU64Float:
+  case NVPTXISD::TexUnified1DFloatS32:
+  case NVPTXISD::TexUnified1DFloatFloat:
+  case NVPTXISD::TexUnified1DFloatFloatLevel:
+  case NVPTXISD::TexUnified1DFloatFloatGrad:
+  case NVPTXISD::TexUnified1DS32S32:
+  case NVPTXISD::TexUnified1DS32Float:
+  case NVPTXISD::TexUnified1DS32FloatLevel:
+  case NVPTXISD::TexUnified1DS32FloatGrad:
+  case NVPTXISD::TexUnified1DU32S32:
+  case NVPTXISD::TexUnified1DU32Float:
+  case NVPTXISD::TexUnified1DU32FloatLevel:
+  case NVPTXISD::TexUnified1DU32FloatGrad:
+  case NVPTXISD::TexUnified1DArrayFloatS32:
+  case NVPTXISD::TexUnified1DArrayFloatFloat:
+  case NVPTXISD::TexUnified1DArrayFloatFloatLevel:
+  case NVPTXISD::TexUnified1DArrayFloatFloatGrad:
+  case NVPTXISD::TexUnified1DArrayS32S32:
+  case NVPTXISD::TexUnified1DArrayS32Float:
+  case NVPTXISD::TexUnified1DArrayS32FloatLevel:
+  case NVPTXISD::TexUnified1DArrayS32FloatGrad:
+  case NVPTXISD::TexUnified1DArrayU32S32:
+  case NVPTXISD::TexUnified1DArrayU32Float:
+  case NVPTXISD::TexUnified1DArrayU32FloatLevel:
+  case NVPTXISD::TexUnified1DArrayU32FloatGrad:
+  case NVPTXISD::TexUnified2DFloatS32:
+  case NVPTXISD::TexUnified2DFloatFloat:
+  case NVPTXISD::TexUnified2DFloatFloatLevel:
+  case NVPTXISD::TexUnified2DFloatFloatGrad:
+  case NVPTXISD::TexUnified2DS32S32:
+  case NVPTXISD::TexUnified2DS32Float:
+  case NVPTXISD::TexUnified2DS32FloatLevel:
+  case NVPTXISD::TexUnified2DS32FloatGrad:
+  case NVPTXISD::TexUnified2DU32S32:
+  case NVPTXISD::TexUnified2DU32Float:
+  case NVPTXISD::TexUnified2DU32FloatLevel:
+  case NVPTXISD::TexUnified2DU32FloatGrad:
+  case NVPTXISD::TexUnified2DArrayFloatS32:
+  case NVPTXISD::TexUnified2DArrayFloatFloat:
+  case NVPTXISD::TexUnified2DArrayFloatFloatLevel:
+  case NVPTXISD::TexUnified2DArrayFloatFloatGrad:
+  case NVPTXISD::TexUnified2DArrayS32S32:
+  case NVPTXISD::TexUnified2DArrayS32Float:
+  case NVPTXISD::TexUnified2DArrayS32FloatLevel:
+  case NVPTXISD::TexUnified2DArrayS32FloatGrad:
+  case NVPTXISD::TexUnified2DArrayU32S32:
+  case NVPTXISD::TexUnified2DArrayU32Float:
+  case NVPTXISD::TexUnified2DArrayU32FloatLevel:
+  case NVPTXISD::TexUnified2DArrayU32FloatGrad:
+  case NVPTXISD::TexUnified3DFloatS32:
+  case NVPTXISD::TexUnified3DFloatFloat:
+  case NVPTXISD::TexUnified3DFloatFloatLevel:
+  case NVPTXISD::TexUnified3DFloatFloatGrad:
+  case NVPTXISD::TexUnified3DS32S32:
+  case NVPTXISD::TexUnified3DS32Float:
+  case NVPTXISD::TexUnified3DS32FloatLevel:
+  case NVPTXISD::TexUnified3DS32FloatGrad:
+  case NVPTXISD::TexUnified3DU32S32:
+  case NVPTXISD::TexUnified3DU32Float:
+  case NVPTXISD::TexUnified3DU32FloatLevel:
+  case NVPTXISD::TexUnified3DU32FloatGrad:
+  case NVPTXISD::TexUnifiedCubeFloatFloat:
+  case NVPTXISD::TexUnifiedCubeFloatFloatLevel:
+  case NVPTXISD::TexUnifiedCubeS32Float:
+  case NVPTXISD::TexUnifiedCubeS32FloatLevel:
+  case NVPTXISD::TexUnifiedCubeU32Float:
+  case NVPTXISD::TexUnifiedCubeU32FloatLevel:
+  case NVPTXISD::TexUnifiedCubeArrayFloatFloat:
+  case NVPTXISD::TexUnifiedCubeArrayFloatFloatLevel:
+  case NVPTXISD::TexUnifiedCubeArrayS32Float:
+  case NVPTXISD::TexUnifiedCubeArrayS32FloatLevel:
+  case NVPTXISD::TexUnifiedCubeArrayU32Float:
+  case NVPTXISD::TexUnifiedCubeArrayU32FloatLevel:
+  case NVPTXISD::Tld4UnifiedR2DFloatFloat:
+  case NVPTXISD::Tld4UnifiedG2DFloatFloat:
+  case NVPTXISD::Tld4UnifiedB2DFloatFloat:
+  case NVPTXISD::Tld4UnifiedA2DFloatFloat:
+  case NVPTXISD::Tld4UnifiedR2DS64Float:
+  case NVPTXISD::Tld4UnifiedG2DS64Float:
+  case NVPTXISD::Tld4UnifiedB2DS64Float:
+  case NVPTXISD::Tld4UnifiedA2DS64Float:
+  case NVPTXISD::Tld4UnifiedR2DU64Float:
+  case NVPTXISD::Tld4UnifiedG2DU64Float:
+  case NVPTXISD::Tld4UnifiedB2DU64Float:
+  case NVPTXISD::Tld4UnifiedA2DU64Float:
+    if (tryTextureIntrinsic(N))
+      return;
+    break;
+  case NVPTXISD::Suld1DI8Clamp:
+  case NVPTXISD::Suld1DI16Clamp:
+  case NVPTXISD::Suld1DI32Clamp:
+  case NVPTXISD::Suld1DI64Clamp:
+  case NVPTXISD::Suld1DV2I8Clamp:
+  case NVPTXISD::Suld1DV2I16Clamp:
+  case NVPTXISD::Suld1DV2I32Clamp:
+  case NVPTXISD::Suld1DV2I64Clamp:
+  case NVPTXISD::Suld1DV4I8Clamp:
+  case NVPTXISD::Suld1DV4I16Clamp:
+  case NVPTXISD::Suld1DV4I32Clamp:
+  case NVPTXISD::Suld1DArrayI8Clamp:
+  case NVPTXISD::Suld1DArrayI16Clamp:
+  case NVPTXISD::Suld1DArrayI32Clamp:
+  case NVPTXISD::Suld1DArrayI64Clamp:
+  case NVPTXISD::Suld1DArrayV2I8Clamp:
+  case NVPTXISD::Suld1DArrayV2I16Clamp:
+  case NVPTXISD::Suld1DArrayV2I32Clamp:
+  case NVPTXISD::Suld1DArrayV2I64Clamp:
+  case NVPTXISD::Suld1DArrayV4I8Clamp:
+  case NVPTXISD::Suld1DArrayV4I16Clamp:
+  case NVPTXISD::Suld1DArrayV4I32Clamp:
+  case NVPTXISD::Suld2DI8Clamp:
+  case NVPTXISD::Suld2DI16Clamp:
+  case NVPTXISD::Suld2DI32Clamp:
+  case NVPTXISD::Suld2DI64Clamp:
+  case NVPTXISD::Suld2DV2I8Clamp:
+  case NVPTXISD::Suld2DV2I16Clamp:
+  case NVPTXISD::Suld2DV2I32Clamp:
+  case NVPTXISD::Suld2DV2I64Clamp:
+  case NVPTXISD::Suld2DV4I8Clamp:
+  case NVPTXISD::Suld2DV4I16Clamp:
+  case NVPTXISD::Suld2DV4I32Clamp:
+  case NVPTXISD::Suld2DArrayI8Clamp:
+  case NVPTXISD::Suld2DArrayI16Clamp:
+  case NVPTXISD::Suld2DArrayI32Clamp:
+  case NVPTXISD::Suld2DArrayI64Clamp:
+  case NVPTXISD::Suld2DArrayV2I8Clamp:
+  case NVPTXISD::Suld2DArrayV2I16Clamp:
+  case NVPTXISD::Suld2DArrayV2I32Clamp:
+  case NVPTXISD::Suld2DArrayV2I64Clamp:
+  case NVPTXISD::Suld2DArrayV4I8Clamp:
+  case NVPTXISD::Suld2DArrayV4I16Clamp:
+  case NVPTXISD::Suld2DArrayV4I32Clamp:
+  case NVPTXISD::Suld3DI8Clamp:
+  case NVPTXISD::Suld3DI16Clamp:
+  case NVPTXISD::Suld3DI32Clamp:
+  case NVPTXISD::Suld3DI64Clamp:
+  case NVPTXISD::Suld3DV2I8Clamp:
+  case NVPTXISD::Suld3DV2I16Clamp:
+  case NVPTXISD::Suld3DV2I32Clamp:
+  case NVPTXISD::Suld3DV2I64Clamp:
+  case NVPTXISD::Suld3DV4I8Clamp:
+  case NVPTXISD::Suld3DV4I16Clamp:
+  case NVPTXISD::Suld3DV4I32Clamp:
+  case NVPTXISD::Suld1DI8Trap:
+  case NVPTXISD::Suld1DI16Trap:
+  case NVPTXISD::Suld1DI32Trap:
+  case NVPTXISD::Suld1DI64Trap:
+  case NVPTXISD::Suld1DV2I8Trap:
+  case NVPTXISD::Suld1DV2I16Trap:
+  case NVPTXISD::Suld1DV2I32Trap:
+  case NVPTXISD::Suld1DV2I64Trap:
+  case NVPTXISD::Suld1DV4I8Trap:
+  case NVPTXISD::Suld1DV4I16Trap:
+  case NVPTXISD::Suld1DV4I32Trap:
+  case NVPTXISD::Suld1DArrayI8Trap:
+  case NVPTXISD::Suld1DArrayI16Trap:
+  case NVPTXISD::Suld1DArrayI32Trap:
+  case NVPTXISD::Suld1DArrayI64Trap:
+  case NVPTXISD::Suld1DArrayV2I8Trap:
+  case NVPTXISD::Suld1DArrayV2I16Trap:
+  case NVPTXISD::Suld1DArrayV2I32Trap:
+  case NVPTXISD::Suld1DArrayV2I64Trap:
+  case NVPTXISD::Suld1DArrayV4I8Trap:
+  case NVPTXISD::Suld1DArrayV4I16Trap:
+  case NVPTXISD::Suld1DArrayV4I32Trap:
+  case NVPTXISD::Suld2DI8Trap:
+  case NVPTXISD::Suld2DI16Trap:
+  case NVPTXISD::Suld2DI32Trap:
+  case NVPTXISD::Suld2DI64Trap:
+  case NVPTXISD::Suld2DV2I8Trap:
+  case NVPTXISD::Suld2DV2I16Trap:
+  case NVPTXISD::Suld2DV2I32Trap:
+  case NVPTXISD::Suld2DV2I64Trap:
+  case NVPTXISD::Suld2DV4I8Trap:
+  case NVPTXISD::Suld2DV4I16Trap:
+  case NVPTXISD::Suld2DV4I32Trap:
+  case NVPTXISD::Suld2DArrayI8Trap:
+  case NVPTXISD::Suld2DArrayI16Trap:
+  case NVPTXISD::Suld2DArrayI32Trap:
+  case NVPTXISD::Suld2DArrayI64Trap:
+  case NVPTXISD::Suld2DArrayV2I8Trap:
+  case NVPTXISD::Suld2DArrayV2I16Trap:
+  case NVPTXISD::Suld2DArrayV2I32Trap:
+  case NVPTXISD::Suld2DArrayV2I64Trap:
+  case NVPTXISD::Suld2DArrayV4I8Trap:
+  case NVPTXISD::Suld2DArrayV4I16Trap:
+  case NVPTXISD::Suld2DArrayV4I32Trap:
+  case NVPTXISD::Suld3DI8Trap:
+  case NVPTXISD::Suld3DI16Trap:
+  case NVPTXISD::Suld3DI32Trap:
+  case NVPTXISD::Suld3DI64Trap:
+  case NVPTXISD::Suld3DV2I8Trap:
+  case NVPTXISD::Suld3DV2I16Trap:
+  case NVPTXISD::Suld3DV2I32Trap:
+  case NVPTXISD::Suld3DV2I64Trap:
+  case NVPTXISD::Suld3DV4I8Trap:
+  case NVPTXISD::Suld3DV4I16Trap:
+  case NVPTXISD::Suld3DV4I32Trap:
+  case NVPTXISD::Suld1DI8Zero:
+  case NVPTXISD::Suld1DI16Zero:
+  case NVPTXISD::Suld1DI32Zero:
+  case NVPTXISD::Suld1DI64Zero:
+  case NVPTXISD::Suld1DV2I8Zero:
+  case NVPTXISD::Suld1DV2I16Zero:
+  case NVPTXISD::Suld1DV2I32Zero:
+  case NVPTXISD::Suld1DV2I64Zero:
+  case NVPTXISD::Suld1DV4I8Zero:
+  case NVPTXISD::Suld1DV4I16Zero:
+  case NVPTXISD::Suld1DV4I32Zero:
+  case NVPTXISD::Suld1DArrayI8Zero:
+  case NVPTXISD::Suld1DArrayI16Zero:
+  case NVPTXISD::Suld1DArrayI32Zero:
+  case NVPTXISD::Suld1DArrayI64Zero:
+  case NVPTXISD::Suld1DArrayV2I8Zero:
+  case NVPTXISD::Suld1DArrayV2I16Zero:
+  case NVPTXISD::Suld1DArrayV2I32Zero:
+  case NVPTXISD::Suld1DArrayV2I64Zero:
+  case NVPTXISD::Suld1DArrayV4I8Zero:
+  case NVPTXISD::Suld1DArrayV4I16Zero:
+  case NVPTXISD::Suld1DArrayV4I32Zero:
+  case NVPTXISD::Suld2DI8Zero:
+  case NVPTXISD::Suld2DI16Zero:
+  case NVPTXISD::Suld2DI32Zero:
+  case NVPTXISD::Suld2DI64Zero:
+  case NVPTXISD::Suld2DV2I8Zero:
+  case NVPTXISD::Suld2DV2I16Zero:
+  case NVPTXISD::Suld2DV2I32Zero:
+  case NVPTXISD::Suld2DV2I64Zero:
+  case NVPTXISD::Suld2DV4I8Zero:
+  case NVPTXISD::Suld2DV4I16Zero:
+  case NVPTXISD::Suld2DV4I32Zero:
+  case NVPTXISD::Suld2DArrayI8Zero:
+  case NVPTXISD::Suld2DArrayI16Zero:
+  case NVPTXISD::Suld2DArrayI32Zero:
+  case NVPTXISD::Suld2DArrayI64Zero:
+  case NVPTXISD::Suld2DArrayV2I8Zero:
+  case NVPTXISD::Suld2DArrayV2I16Zero:
+  case NVPTXISD::Suld2DArrayV2I32Zero:
+  case NVPTXISD::Suld2DArrayV2I64Zero:
+  case NVPTXISD::Suld2DArrayV4I8Zero:
+  case NVPTXISD::Suld2DArrayV4I16Zero:
+  case NVPTXISD::Suld2DArrayV4I32Zero:
+  case NVPTXISD::Suld3DI8Zero:
+  case NVPTXISD::Suld3DI16Zero:
+  case NVPTXISD::Suld3DI32Zero:
+  case NVPTXISD::Suld3DI64Zero:
+  case NVPTXISD::Suld3DV2I8Zero:
+  case NVPTXISD::Suld3DV2I16Zero:
+  case NVPTXISD::Suld3DV2I32Zero:
+  case NVPTXISD::Suld3DV2I64Zero:
+  case NVPTXISD::Suld3DV4I8Zero:
+  case NVPTXISD::Suld3DV4I16Zero:
+  case NVPTXISD::Suld3DV4I32Zero:
+    if (trySurfaceIntrinsic(N))
+      return;
+    break;
+  case ISD::AND:
+  case ISD::SRA:
+  case ISD::SRL:
+    // Try to select BFE
+    if (tryBFE(N))
+      return;
+    break;
+  case ISD::ADDRSPACECAST:
+    SelectAddrSpaceCast(N);
+    return;
   default:
     break;
   }
-  if (ResNode)
-    return ResNode;
-  return SelectCode(N);
+  SelectCode(N);
 }
 
-static unsigned int getCodeAddrSpace(MemSDNode *N,
-                                     const NVPTXSubtarget &Subtarget) {
-  const Value *Src = N->getSrcValue();
+bool NVPTXDAGToDAGISel::tryIntrinsicChain(SDNode *N) {
+  unsigned IID = cast<ConstantSDNode>(N->getOperand(1))->getZExtValue();
+  switch (IID) {
+  default:
+    return false;
+  case Intrinsic::nvvm_ldg_global_f:
+  case Intrinsic::nvvm_ldg_global_i:
+  case Intrinsic::nvvm_ldg_global_p:
+  case Intrinsic::nvvm_ldu_global_f:
+  case Intrinsic::nvvm_ldu_global_i:
+  case Intrinsic::nvvm_ldu_global_p:
+    return tryLDGLDU(N);
+  }
+}
+
+static unsigned int getCodeAddrSpace(MemSDNode *N) {
+  const Value *Src = N->getMemOperand()->getValue();
 
   if (!Src)
     return NVPTX::PTXLdStInstCode::GENERIC;
 
-  if (const PointerType *PT = dyn_cast<PointerType>(Src->getType())) {
+  if (auto *PT = dyn_cast<PointerType>(Src->getType())) {
     switch (PT->getAddressSpace()) {
     case llvm::ADDRESS_SPACE_LOCAL: return NVPTX::PTXLdStInstCode::LOCAL;
     case llvm::ADDRESS_SPACE_GLOBAL: return NVPTX::PTXLdStInstCode::GLOBAL;
@@ -191,21 +556,141 @@ static unsigned int getCodeAddrSpace(MemSDNode *N,
   return NVPTX::PTXLdStInstCode::GENERIC;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
+static bool canLowerToLDG(MemSDNode *N, const NVPTXSubtarget &Subtarget,
+                          unsigned CodeAddrSpace, MachineFunction *F) {
+  // To use non-coherent caching, the load has to be from global
+  // memory and we have to prove that the memory area is not written
+  // to anywhere for the duration of the kernel call, not even after
+  // the load.
+  //
+  // To ensure that there are no writes to the memory, we require the
+  // underlying pointer to be a noalias (__restrict) kernel parameter
+  // that is never used for a write. We can only do this for kernel
+  // functions since from within a device function, we cannot know if
+  // there were or will be writes to the memory from the caller - or we
+  // could, but then we would have to do inter-procedural analysis.
+  if (!Subtarget.hasLDG() || CodeAddrSpace != NVPTX::PTXLdStInstCode::GLOBAL ||
+      !isKernelFunction(*F->getFunction())) {
+    return false;
+  }
+
+  // We use GetUnderlyingObjects() here instead of
+  // GetUnderlyingObject() mainly because the former looks through phi
+  // nodes while the latter does not. We need to look through phi
+  // nodes to handle pointer induction variables.
+  SmallVector<Value *, 8> Objs;
+  GetUnderlyingObjects(const_cast<Value *>(N->getMemOperand()->getValue()),
+                       Objs, F->getDataLayout());
+  for (Value *Obj : Objs) {
+    auto *A = dyn_cast<const Argument>(Obj);
+    if (!A || !A->onlyReadsMemory() || !A->hasNoAliasAttr()) return false;
+  }
+
+  return true;
+}
+
+bool NVPTXDAGToDAGISel::tryIntrinsicNoChain(SDNode *N) {
+  unsigned IID = cast<ConstantSDNode>(N->getOperand(0))->getZExtValue();
+  switch (IID) {
+  default:
+    return false;
+  case Intrinsic::nvvm_texsurf_handle_internal:
+    SelectTexSurfHandle(N);
+    return true;
+  }
+}
+
+void NVPTXDAGToDAGISel::SelectTexSurfHandle(SDNode *N) {
+  // Op 0 is the intrinsic ID
+  SDValue Wrapper = N->getOperand(1);
+  SDValue GlobalVal = Wrapper.getOperand(0);
+  ReplaceNode(N, CurDAG->getMachineNode(NVPTX::texsurf_handles, SDLoc(N),
+                                        MVT::i64, GlobalVal));
+}
+
+void NVPTXDAGToDAGISel::SelectAddrSpaceCast(SDNode *N) {
+  SDValue Src = N->getOperand(0);
+  AddrSpaceCastSDNode *CastN = cast<AddrSpaceCastSDNode>(N);
+  unsigned SrcAddrSpace = CastN->getSrcAddressSpace();
+  unsigned DstAddrSpace = CastN->getDestAddressSpace();
+
+  assert(SrcAddrSpace != DstAddrSpace &&
+         "addrspacecast must be between different address spaces");
+
+  if (DstAddrSpace == ADDRESS_SPACE_GENERIC) {
+    // Specific to generic
+    unsigned Opc;
+    switch (SrcAddrSpace) {
+    default: report_fatal_error("Bad address space in addrspacecast");
+    case ADDRESS_SPACE_GLOBAL:
+      Opc = TM.is64Bit() ? NVPTX::cvta_global_yes_64 : NVPTX::cvta_global_yes;
+      break;
+    case ADDRESS_SPACE_SHARED:
+      Opc = TM.is64Bit() ? NVPTX::cvta_shared_yes_64 : NVPTX::cvta_shared_yes;
+      break;
+    case ADDRESS_SPACE_CONST:
+      Opc = TM.is64Bit() ? NVPTX::cvta_const_yes_64 : NVPTX::cvta_const_yes;
+      break;
+    case ADDRESS_SPACE_LOCAL:
+      Opc = TM.is64Bit() ? NVPTX::cvta_local_yes_64 : NVPTX::cvta_local_yes;
+      break;
+    }
+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
+                                          Src));
+    return;
+  } else {
+    // Generic to specific
+    if (SrcAddrSpace != 0)
+      report_fatal_error("Cannot cast between two non-generic address spaces");
+    unsigned Opc;
+    switch (DstAddrSpace) {
+    default: report_fatal_error("Bad address space in addrspacecast");
+    case ADDRESS_SPACE_GLOBAL:
+      Opc = TM.is64Bit() ? NVPTX::cvta_to_global_yes_64
+                         : NVPTX::cvta_to_global_yes;
+      break;
+    case ADDRESS_SPACE_SHARED:
+      Opc = TM.is64Bit() ? NVPTX::cvta_to_shared_yes_64
+                         : NVPTX::cvta_to_shared_yes;
+      break;
+    case ADDRESS_SPACE_CONST:
+      Opc =
+          TM.is64Bit() ? NVPTX::cvta_to_const_yes_64 : NVPTX::cvta_to_const_yes;
+      break;
+    case ADDRESS_SPACE_LOCAL:
+      Opc =
+          TM.is64Bit() ? NVPTX::cvta_to_local_yes_64 : NVPTX::cvta_to_local_yes;
+      break;
+    case ADDRESS_SPACE_PARAM:
+      Opc = TM.is64Bit() ? NVPTX::nvvm_ptr_gen_to_param_64
+                         : NVPTX::nvvm_ptr_gen_to_param;
+      break;
+    }
+    ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getValueType(0),
+                                          Src));
+    return;
+  }
+}
+
+bool NVPTXDAGToDAGISel::tryLoad(SDNode *N) {
   SDLoc dl(N);
   LoadSDNode *LD = cast<LoadSDNode>(N);
   EVT LoadedVT = LD->getMemoryVT();
-  SDNode *NVPTXLD = NULL;
+  SDNode *NVPTXLD = nullptr;
 
   // do not support pre/post inc/dec
   if (LD->isIndexed())
-    return NULL;
+    return false;
 
   if (!LoadedVT.isSimple())
-    return NULL;
+    return false;
 
   // Address Space Setting
-  unsigned int codeAddrSpace = getCodeAddrSpace(LD, Subtarget);
+  unsigned int codeAddrSpace = getCodeAddrSpace(LD);
+
+  if (canLowerToLDG(LD, *Subtarget, codeAddrSpace, MF)) {
+    return tryLDGLDU(N);
+  }
 
   // Volatile Setting
   // - .volatile is only availalble for .global and .shared
@@ -225,7 +710,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
     else if (num == 4)
       vecType = NVPTX::PTXLdStInstCode::V4;
     else
-      return NULL;
+      return false;
   }
 
   // Type Setting: fromType + fromTypeWidth
@@ -274,15 +759,14 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
       Opcode = NVPTX::LD_f64_avar;
       break;
     default:
-      return NULL;
+      return false;
     }
-    SDValue Ops[] = { getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(fromType),
-                      getI32Imm(fromTypeWidth), Addr, Chain };
+    SDValue Ops[] = { getI32Imm(isVolatile, dl), getI32Imm(codeAddrSpace, dl),
+                      getI32Imm(vecType, dl), getI32Imm(fromType, dl),
+                      getI32Imm(fromTypeWidth, dl), Addr, Chain };
     NVPTXLD = CurDAG->getMachineNode(Opcode, dl, TargetVT, MVT::Other, Ops);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRsi64(N1.getNode(), N1, Base, Offset)
-                 : SelectADDRsi(N1.getNode(), N1, Base, Offset)) {
+  } else if (TM.is64Bit() ? SelectADDRsi64(N1.getNode(), N1, Base, Offset)
+                          : SelectADDRsi(N1.getNode(), N1, Base, Offset)) {
     switch (TargetVT) {
     case MVT::i8:
       Opcode = NVPTX::LD_i8_asi;
@@ -303,16 +787,15 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
       Opcode = NVPTX::LD_f64_asi;
       break;
     default:
-      return NULL;
+      return false;
     }
-    SDValue Ops[] = { getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(fromType),
-                      getI32Imm(fromTypeWidth), Base, Offset, Chain };
+    SDValue Ops[] = { getI32Imm(isVolatile, dl), getI32Imm(codeAddrSpace, dl),
+                      getI32Imm(vecType, dl), getI32Imm(fromType, dl),
+                      getI32Imm(fromTypeWidth, dl), Base, Offset, Chain };
     NVPTXLD = CurDAG->getMachineNode(Opcode, dl, TargetVT, MVT::Other, Ops);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRri64(N1.getNode(), N1, Base, Offset)
-                 : SelectADDRri(N1.getNode(), N1, Base, Offset)) {
-    if (Subtarget.is64Bit()) {
+  } else if (TM.is64Bit() ? SelectADDRri64(N1.getNode(), N1, Base, Offset)
+                          : SelectADDRri(N1.getNode(), N1, Base, Offset)) {
+    if (TM.is64Bit()) {
       switch (TargetVT) {
       case MVT::i8:
         Opcode = NVPTX::LD_i8_ari_64;
@@ -333,7 +816,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
         Opcode = NVPTX::LD_f64_ari_64;
         break;
       default:
-        return NULL;
+        return false;
       }
     } else {
       switch (TargetVT) {
@@ -356,15 +839,15 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
         Opcode = NVPTX::LD_f64_ari;
         break;
       default:
-        return NULL;
+        return false;
       }
     }
-    SDValue Ops[] = { getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(fromType),
-                      getI32Imm(fromTypeWidth), Base, Offset, Chain };
+    SDValue Ops[] = { getI32Imm(isVolatile, dl), getI32Imm(codeAddrSpace, dl),
+                      getI32Imm(vecType, dl), getI32Imm(fromType, dl),
+                      getI32Imm(fromTypeWidth, dl), Base, Offset, Chain };
     NVPTXLD = CurDAG->getMachineNode(Opcode, dl, TargetVT, MVT::Other, Ops);
   } else {
-    if (Subtarget.is64Bit()) {
+    if (TM.is64Bit()) {
       switch (TargetVT) {
       case MVT::i8:
         Opcode = NVPTX::LD_i8_areg_64;
@@ -385,7 +868,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
         Opcode = NVPTX::LD_f64_areg_64;
         break;
       default:
-        return NULL;
+        return false;
       }
     } else {
       switch (TargetVT) {
@@ -408,25 +891,27 @@ SDNode *NVPTXDAGToDAGISel::SelectLoad(SDNode *N) {
         Opcode = NVPTX::LD_f64_areg;
         break;
       default:
-        return NULL;
+        return false;
       }
     }
-    SDValue Ops[] = { getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(fromType),
-                      getI32Imm(fromTypeWidth), N1, Chain };
+    SDValue Ops[] = { getI32Imm(isVolatile, dl), getI32Imm(codeAddrSpace, dl),
+                      getI32Imm(vecType, dl), getI32Imm(fromType, dl),
+                      getI32Imm(fromTypeWidth, dl), N1, Chain };
     NVPTXLD = CurDAG->getMachineNode(Opcode, dl, TargetVT, MVT::Other, Ops);
   }
 
-  if (NVPTXLD != NULL) {
-    MachineSDNode::mmo_iterator MemRefs0 = MF->allocateMemRefsArray(1);
-    MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
-    cast<MachineSDNode>(NVPTXLD)->setMemRefs(MemRefs0, MemRefs0 + 1);
-  }
+  if (!NVPTXLD)
+    return false;
 
-  return NVPTXLD;
+  MachineSDNode::mmo_iterator MemRefs0 = MF->allocateMemRefsArray(1);
+  MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
+  cast<MachineSDNode>(NVPTXLD)->setMemRefs(MemRefs0, MemRefs0 + 1);
+
+  ReplaceNode(N, NVPTXLD);
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
+bool NVPTXDAGToDAGISel::tryLoadVector(SDNode *N) {
 
   SDValue Chain = N->getOperand(0);
   SDValue Op1 = N->getOperand(1);
@@ -438,10 +923,14 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
   EVT LoadedVT = MemSD->getMemoryVT();
 
   if (!LoadedVT.isSimple())
-    return NULL;
+    return false;
 
   // Address Space Setting
-  unsigned int CodeAddrSpace = getCodeAddrSpace(MemSD, Subtarget);
+  unsigned int CodeAddrSpace = getCodeAddrSpace(MemSD);
+
+  if (canLowerToLDG(MemSD, *Subtarget, CodeAddrSpace, MF)) {
+    return tryLDGLDU(N);
+  }
 
   // Volatile Setting
   // - .volatile is only availalble for .global and .shared
@@ -484,7 +973,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
     VecType = NVPTX::PTXLdStInstCode::V4;
     break;
   default:
-    return NULL;
+    return false;
   }
 
   EVT EltVT = N->getValueType(0);
@@ -492,11 +981,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
   if (SelectDirectAddr(Op1, Addr)) {
     switch (N->getOpcode()) {
     default:
-      return NULL;
+      return false;
     case NVPTXISD::LoadV2:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::LDV_i8_v2_avar;
         break;
@@ -520,7 +1009,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
     case NVPTXISD::LoadV4:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::LDV_i8_v4_avar;
         break;
@@ -537,20 +1026,19 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       break;
     }
 
-    SDValue Ops[] = { getI32Imm(IsVolatile), getI32Imm(CodeAddrSpace),
-                      getI32Imm(VecType), getI32Imm(FromType),
-                      getI32Imm(FromTypeWidth), Addr, Chain };
+    SDValue Ops[] = { getI32Imm(IsVolatile, DL), getI32Imm(CodeAddrSpace, DL),
+                      getI32Imm(VecType, DL), getI32Imm(FromType, DL),
+                      getI32Imm(FromTypeWidth, DL), Addr, Chain };
     LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(), Ops);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRsi64(Op1.getNode(), Op1, Base, Offset)
-                 : SelectADDRsi(Op1.getNode(), Op1, Base, Offset)) {
+  } else if (TM.is64Bit() ? SelectADDRsi64(Op1.getNode(), Op1, Base, Offset)
+                          : SelectADDRsi(Op1.getNode(), Op1, Base, Offset)) {
     switch (N->getOpcode()) {
     default:
-      return NULL;
+      return false;
     case NVPTXISD::LoadV2:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::LDV_i8_v2_asi;
         break;
@@ -574,7 +1062,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
     case NVPTXISD::LoadV4:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::LDV_i8_v4_asi;
         break;
@@ -591,21 +1079,20 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       break;
     }
 
-    SDValue Ops[] = { getI32Imm(IsVolatile), getI32Imm(CodeAddrSpace),
-                      getI32Imm(VecType), getI32Imm(FromType),
-                      getI32Imm(FromTypeWidth), Base, Offset, Chain };
+    SDValue Ops[] = { getI32Imm(IsVolatile, DL), getI32Imm(CodeAddrSpace, DL),
+                      getI32Imm(VecType, DL), getI32Imm(FromType, DL),
+                      getI32Imm(FromTypeWidth, DL), Base, Offset, Chain };
     LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(), Ops);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRri64(Op1.getNode(), Op1, Base, Offset)
-                 : SelectADDRri(Op1.getNode(), Op1, Base, Offset)) {
-    if (Subtarget.is64Bit()) {
+  } else if (TM.is64Bit() ? SelectADDRri64(Op1.getNode(), Op1, Base, Offset)
+                          : SelectADDRri(Op1.getNode(), Op1, Base, Offset)) {
+    if (TM.is64Bit()) {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::LoadV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v2_ari_64;
           break;
@@ -629,7 +1116,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       case NVPTXISD::LoadV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v4_ari_64;
           break;
@@ -648,11 +1135,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
     } else {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::LoadV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v2_ari;
           break;
@@ -676,7 +1163,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       case NVPTXISD::LoadV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v4_ari;
           break;
@@ -694,20 +1181,20 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       }
     }
 
-    SDValue Ops[] = { getI32Imm(IsVolatile), getI32Imm(CodeAddrSpace),
-                      getI32Imm(VecType), getI32Imm(FromType),
-                      getI32Imm(FromTypeWidth), Base, Offset, Chain };
+    SDValue Ops[] = { getI32Imm(IsVolatile, DL), getI32Imm(CodeAddrSpace, DL),
+                      getI32Imm(VecType, DL), getI32Imm(FromType, DL),
+                      getI32Imm(FromTypeWidth, DL), Base, Offset, Chain };
 
     LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(), Ops);
   } else {
-    if (Subtarget.is64Bit()) {
+    if (TM.is64Bit()) {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::LoadV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v2_areg_64;
           break;
@@ -731,7 +1218,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       case NVPTXISD::LoadV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v4_areg_64;
           break;
@@ -750,11 +1237,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
     } else {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::LoadV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v2_areg;
           break;
@@ -778,7 +1265,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       case NVPTXISD::LoadV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::LDV_i8_v4_areg;
           break;
@@ -796,9 +1283,9 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
       }
     }
 
-    SDValue Ops[] = { getI32Imm(IsVolatile), getI32Imm(CodeAddrSpace),
-                      getI32Imm(VecType), getI32Imm(FromType),
-                      getI32Imm(FromTypeWidth), Op1, Chain };
+    SDValue Ops[] = { getI32Imm(IsVolatile, DL), getI32Imm(CodeAddrSpace, DL),
+                      getI32Imm(VecType, DL), getI32Imm(FromType, DL),
+                      getI32Imm(FromTypeWidth, DL), Op1, Chain };
     LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(), Ops);
   }
 
@@ -806,29 +1293,122 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadVector(SDNode *N) {
   MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
   cast<MachineSDNode>(LD)->setMemRefs(MemRefs0, MemRefs0 + 1);
 
-  return LD;
+  ReplaceNode(N, LD);
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
+bool NVPTXDAGToDAGISel::tryLDGLDU(SDNode *N) {
 
   SDValue Chain = N->getOperand(0);
-  SDValue Op1 = N->getOperand(1);
+  SDValue Op1;
+  MemSDNode *Mem;
+  bool IsLDG = true;
+
+  // If this is an LDG intrinsic, the address is the third operand. If its an
+  // LDG/LDU SD node (from custom vector handling), then its the second operand
+  if (N->getOpcode() == ISD::INTRINSIC_W_CHAIN) {
+    Op1 = N->getOperand(2);
+    Mem = cast<MemIntrinsicSDNode>(N);
+    unsigned IID = cast<ConstantSDNode>(N->getOperand(1))->getZExtValue();
+    switch (IID) {
+    default:
+      return false;
+    case Intrinsic::nvvm_ldg_global_f:
+    case Intrinsic::nvvm_ldg_global_i:
+    case Intrinsic::nvvm_ldg_global_p:
+      IsLDG = true;
+      break;
+    case Intrinsic::nvvm_ldu_global_f:
+    case Intrinsic::nvvm_ldu_global_i:
+    case Intrinsic::nvvm_ldu_global_p:
+      IsLDG = false;
+      break;
+    }
+  } else {
+    Op1 = N->getOperand(1);
+    Mem = cast<MemSDNode>(N);
+  }
+
   unsigned Opcode;
   SDLoc DL(N);
   SDNode *LD;
-  MemSDNode *Mem = cast<MemSDNode>(N);
   SDValue Base, Offset, Addr;
 
-  EVT EltVT = Mem->getMemoryVT().getVectorElementType();
+  EVT EltVT = Mem->getMemoryVT();
+  unsigned NumElts = 1;
+  if (EltVT.isVector()) {
+    NumElts = EltVT.getVectorNumElements();
+    EltVT = EltVT.getVectorElementType();
+  }
+
+  // Build the "promoted" result VTList for the load. If we are really loading
+  // i8s, then the return type will be promoted to i16 since we do not expose
+  // 8-bit registers in NVPTX.
+  EVT NodeVT = (EltVT == MVT::i8) ? MVT::i16 : EltVT;
+  SmallVector<EVT, 5> InstVTs;
+  for (unsigned i = 0; i != NumElts; ++i) {
+    InstVTs.push_back(NodeVT);
+  }
+  InstVTs.push_back(MVT::Other);
+  SDVTList InstVTList = CurDAG->getVTList(InstVTs);
 
   if (SelectDirectAddr(Op1, Addr)) {
     switch (N->getOpcode()) {
     default:
-      return NULL;
+      return false;
+    case ISD::INTRINSIC_W_CHAIN:
+      if (IsLDG) {
+        switch (EltVT.getSimpleVT().SimpleTy) {
+        default:
+          return false;
+        case MVT::i8:
+          Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i8avar;
+          break;
+        case MVT::i16:
+          Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i16avar;
+          break;
+        case MVT::i32:
+          Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i32avar;
+          break;
+        case MVT::i64:
+          Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i64avar;
+          break;
+        case MVT::f32:
+          Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f32avar;
+          break;
+        case MVT::f64:
+          Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f64avar;
+          break;
+        }
+      } else {
+        switch (EltVT.getSimpleVT().SimpleTy) {
+        default:
+          return false;
+        case MVT::i8:
+          Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i8avar;
+          break;
+        case MVT::i16:
+          Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i16avar;
+          break;
+        case MVT::i32:
+          Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i32avar;
+          break;
+        case MVT::i64:
+          Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i64avar;
+          break;
+        case MVT::f32:
+          Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f32avar;
+          break;
+        case MVT::f64:
+          Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f64avar;
+          break;
+        }
+      }
+      break;
     case NVPTXISD::LDGV2:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::INT_PTX_LDG_G_v2i8_ELE_avar;
         break;
@@ -852,7 +1432,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     case NVPTXISD::LDUV2:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::INT_PTX_LDU_G_v2i8_ELE_avar;
         break;
@@ -876,7 +1456,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     case NVPTXISD::LDGV4:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::INT_PTX_LDG_G_v4i8_ELE_avar;
         break;
@@ -894,7 +1474,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     case NVPTXISD::LDUV4:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::INT_PTX_LDU_G_v4i8_ELE_avar;
         break;
@@ -912,19 +1492,68 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     }
 
     SDValue Ops[] = { Addr, Chain };
-    LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(),
-                                ArrayRef<SDValue>(Ops, 2));
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRri64(Op1.getNode(), Op1, Base, Offset)
-                 : SelectADDRri(Op1.getNode(), Op1, Base, Offset)) {
-    if (Subtarget.is64Bit()) {
+    LD = CurDAG->getMachineNode(Opcode, DL, InstVTList, Ops);
+  } else if (TM.is64Bit() ? SelectADDRri64(Op1.getNode(), Op1, Base, Offset)
+                          : SelectADDRri(Op1.getNode(), Op1, Base, Offset)) {
+    if (TM.is64Bit()) {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
+      case ISD::LOAD:
+      case ISD::INTRINSIC_W_CHAIN:
+        if (IsLDG) {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i8ari64;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i16ari64;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i32ari64;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i64ari64;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f32ari64;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f64ari64;
+            break;
+          }
+        } else {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i8ari64;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i16ari64;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i32ari64;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i64ari64;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f32ari64;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f64ari64;
+            break;
+          }
+        }
+        break;
+      case NVPTXISD::LoadV2:
       case NVPTXISD::LDGV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v2i8_ELE_ari64;
           break;
@@ -948,7 +1577,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v2i8_ELE_ari64;
           break;
@@ -969,10 +1598,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
           break;
         }
         break;
+      case NVPTXISD::LoadV4:
       case NVPTXISD::LDGV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v4i8_ELE_ari64;
           break;
@@ -990,7 +1620,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v4i8_ELE_ari64;
           break;
@@ -1009,11 +1639,62 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     } else {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
+      case ISD::LOAD:
+      case ISD::INTRINSIC_W_CHAIN:
+        if (IsLDG) {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i8ari;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i16ari;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i32ari;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i64ari;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f32ari;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f64ari;
+            break;
+          }
+        } else {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i8ari;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i16ari;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i32ari;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i64ari;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f32ari;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f64ari;
+            break;
+          }
+        }
+        break;
+      case NVPTXISD::LoadV2:
       case NVPTXISD::LDGV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v2i8_ELE_ari32;
           break;
@@ -1037,7 +1718,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v2i8_ELE_ari32;
           break;
@@ -1058,10 +1739,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
           break;
         }
         break;
+      case NVPTXISD::LoadV4:
       case NVPTXISD::LDGV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v4i8_ELE_ari32;
           break;
@@ -1079,7 +1761,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v4i8_ELE_ari32;
           break;
@@ -1099,17 +1781,67 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
 
     SDValue Ops[] = { Base, Offset, Chain };
 
-    LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(),
-                                ArrayRef<SDValue>(Ops, 3));
+    LD = CurDAG->getMachineNode(Opcode, DL, InstVTList, Ops);
   } else {
-    if (Subtarget.is64Bit()) {
+    if (TM.is64Bit()) {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
+      case ISD::LOAD:
+      case ISD::INTRINSIC_W_CHAIN:
+        if (IsLDG) {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i8areg64;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i16areg64;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i32areg64;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i64areg64;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f32areg64;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f64areg64;
+            break;
+          }
+        } else {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i8areg64;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i16areg64;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i32areg64;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i64areg64;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f32areg64;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f64areg64;
+            break;
+          }
+        }
+        break;
+      case NVPTXISD::LoadV2:
       case NVPTXISD::LDGV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v2i8_ELE_areg64;
           break;
@@ -1133,7 +1865,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v2i8_ELE_areg64;
           break;
@@ -1154,10 +1886,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
           break;
         }
         break;
+      case NVPTXISD::LoadV4:
       case NVPTXISD::LDGV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v4i8_ELE_areg64;
           break;
@@ -1175,7 +1908,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v4i8_ELE_areg64;
           break;
@@ -1194,11 +1927,62 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     } else {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
+      case ISD::LOAD:
+      case ISD::INTRINSIC_W_CHAIN:
+        if (IsLDG) {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i8areg;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i16areg;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i32areg;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_i64areg;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f32areg;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDG_GLOBAL_f64areg;
+            break;
+          }
+        } else {
+          switch (EltVT.getSimpleVT().SimpleTy) {
+          default:
+            return false;
+          case MVT::i8:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i8areg;
+            break;
+          case MVT::i16:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i16areg;
+            break;
+          case MVT::i32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i32areg;
+            break;
+          case MVT::i64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_i64areg;
+            break;
+          case MVT::f32:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f32areg;
+            break;
+          case MVT::f64:
+            Opcode = NVPTX::INT_PTX_LDU_GLOBAL_f64areg;
+            break;
+          }
+        }
+        break;
+      case NVPTXISD::LoadV2:
       case NVPTXISD::LDGV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v2i8_ELE_areg32;
           break;
@@ -1222,7 +2006,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v2i8_ELE_areg32;
           break;
@@ -1243,10 +2027,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
           break;
         }
         break;
+      case NVPTXISD::LoadV4:
       case NVPTXISD::LDGV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDG_G_v4i8_ELE_areg32;
           break;
@@ -1264,7 +2049,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
       case NVPTXISD::LDUV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::INT_PTX_LDU_G_v4i8_ELE_areg32;
           break;
@@ -1283,32 +2068,68 @@ SDNode *NVPTXDAGToDAGISel::SelectLDGLDUVector(SDNode *N) {
     }
 
     SDValue Ops[] = { Op1, Chain };
-    LD = CurDAG->getMachineNode(Opcode, DL, N->getVTList(),
-                                ArrayRef<SDValue>(Ops, 2));
+    LD = CurDAG->getMachineNode(Opcode, DL, InstVTList, Ops);
   }
 
   MachineSDNode::mmo_iterator MemRefs0 = MF->allocateMemRefsArray(1);
-  MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
+  MemRefs0[0] = Mem->getMemOperand();
   cast<MachineSDNode>(LD)->setMemRefs(MemRefs0, MemRefs0 + 1);
 
-  return LD;
+  // For automatic generation of LDG (through SelectLoad[Vector], not the
+  // intrinsics), we may have an extending load like:
+  //
+  //   i32,ch = load<LD1[%data1(addrspace=1)], zext from i8> t0, t7, undef:i64
+  //
+  // In this case, the matching logic above will select a load for the original
+  // memory type (in this case, i8) and our types will not match (the node needs
+  // to return an i32 in this case). Our LDG/LDU nodes do not support the
+  // concept of sign-/zero-extension, so emulate it here by adding an explicit
+  // CVT instruction. Ptxas should clean up any redundancies here.
+
+  EVT OrigType = N->getValueType(0);
+  LoadSDNode *LdNode = dyn_cast<LoadSDNode>(N);
+
+  if (OrigType != EltVT && LdNode) {
+    // We have an extending-load. The instruction we selected operates on the
+    // smaller type, but the SDNode we are replacing has the larger type. We
+    // need to emit a CVT to make the types match.
+    bool IsSigned = LdNode->getExtensionType() == ISD::SEXTLOAD;
+    unsigned CvtOpc = GetConvertOpcode(OrigType.getSimpleVT(),
+                                       EltVT.getSimpleVT(), IsSigned);
+
+    // For each output value, apply the manual sign/zero-extension and make sure
+    // all users of the load go through that CVT.
+    for (unsigned i = 0; i != NumElts; ++i) {
+      SDValue Res(LD, i);
+      SDValue OrigVal(N, i);
+
+      SDNode *CvtNode =
+        CurDAG->getMachineNode(CvtOpc, DL, OrigType, Res,
+                               CurDAG->getTargetConstant(NVPTX::PTXCvtMode::NONE,
+                                                         DL, MVT::i32));
+      ReplaceUses(OrigVal, SDValue(CvtNode, 0));
+    }
+  }
+
+  ReplaceNode(N, LD);
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
+bool NVPTXDAGToDAGISel::tryStore(SDNode *N) {
   SDLoc dl(N);
   StoreSDNode *ST = cast<StoreSDNode>(N);
   EVT StoreVT = ST->getMemoryVT();
-  SDNode *NVPTXST = NULL;
+  SDNode *NVPTXST = nullptr;
 
   // do not support pre/post inc/dec
   if (ST->isIndexed())
-    return NULL;
+    return false;
 
   if (!StoreVT.isSimple())
-    return NULL;
+    return false;
 
   // Address Space Setting
-  unsigned int codeAddrSpace = getCodeAddrSpace(ST, Subtarget);
+  unsigned int codeAddrSpace = getCodeAddrSpace(ST);
 
   // Volatile Setting
   // - .volatile is only availalble for .global and .shared
@@ -1328,7 +2149,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
     else if (num == 4)
       vecType = NVPTX::PTXLdStInstCode::V4;
     else
-      return NULL;
+      return false;
   }
 
   // Type Setting: toType + toTypeWidth
@@ -1372,15 +2193,15 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
       Opcode = NVPTX::ST_f64_avar;
       break;
     default:
-      return NULL;
+      return false;
     }
-    SDValue Ops[] = { N1, getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(toType),
-                      getI32Imm(toTypeWidth), Addr, Chain };
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(codeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), Addr,
+                      Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode, dl, MVT::Other, Ops);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRsi64(N2.getNode(), N2, Base, Offset)
-                 : SelectADDRsi(N2.getNode(), N2, Base, Offset)) {
+  } else if (TM.is64Bit() ? SelectADDRsi64(N2.getNode(), N2, Base, Offset)
+                          : SelectADDRsi(N2.getNode(), N2, Base, Offset)) {
     switch (SourceVT) {
     case MVT::i8:
       Opcode = NVPTX::ST_i8_asi;
@@ -1401,16 +2222,16 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
       Opcode = NVPTX::ST_f64_asi;
       break;
     default:
-      return NULL;
+      return false;
     }
-    SDValue Ops[] = { N1, getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(toType),
-                      getI32Imm(toTypeWidth), Base, Offset, Chain };
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(codeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), Base,
+                      Offset, Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode, dl, MVT::Other, Ops);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRri64(N2.getNode(), N2, Base, Offset)
-                 : SelectADDRri(N2.getNode(), N2, Base, Offset)) {
-    if (Subtarget.is64Bit()) {
+  } else if (TM.is64Bit() ? SelectADDRri64(N2.getNode(), N2, Base, Offset)
+                          : SelectADDRri(N2.getNode(), N2, Base, Offset)) {
+    if (TM.is64Bit()) {
       switch (SourceVT) {
       case MVT::i8:
         Opcode = NVPTX::ST_i8_ari_64;
@@ -1431,7 +2252,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
         Opcode = NVPTX::ST_f64_ari_64;
         break;
       default:
-        return NULL;
+        return false;
       }
     } else {
       switch (SourceVT) {
@@ -1454,15 +2275,16 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
         Opcode = NVPTX::ST_f64_ari;
         break;
       default:
-        return NULL;
+        return false;
       }
     }
-    SDValue Ops[] = { N1, getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(toType),
-                      getI32Imm(toTypeWidth), Base, Offset, Chain };
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(codeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), Base,
+                      Offset, Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode, dl, MVT::Other, Ops);
   } else {
-    if (Subtarget.is64Bit()) {
+    if (TM.is64Bit()) {
       switch (SourceVT) {
       case MVT::i8:
         Opcode = NVPTX::ST_i8_areg_64;
@@ -1483,7 +2305,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
         Opcode = NVPTX::ST_f64_areg_64;
         break;
       default:
-        return NULL;
+        return false;
       }
     } else {
       switch (SourceVT) {
@@ -1506,25 +2328,27 @@ SDNode *NVPTXDAGToDAGISel::SelectStore(SDNode *N) {
         Opcode = NVPTX::ST_f64_areg;
         break;
       default:
-        return NULL;
+        return false;
       }
     }
-    SDValue Ops[] = { N1, getI32Imm(isVolatile), getI32Imm(codeAddrSpace),
-                      getI32Imm(vecType), getI32Imm(toType),
-                      getI32Imm(toTypeWidth), N2, Chain };
+    SDValue Ops[] = { N1, getI32Imm(isVolatile, dl),
+                      getI32Imm(codeAddrSpace, dl), getI32Imm(vecType, dl),
+                      getI32Imm(toType, dl), getI32Imm(toTypeWidth, dl), N2,
+                      Chain };
     NVPTXST = CurDAG->getMachineNode(Opcode, dl, MVT::Other, Ops);
   }
 
-  if (NVPTXST != NULL) {
-    MachineSDNode::mmo_iterator MemRefs0 = MF->allocateMemRefsArray(1);
-    MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
-    cast<MachineSDNode>(NVPTXST)->setMemRefs(MemRefs0, MemRefs0 + 1);
-  }
+  if (!NVPTXST)
+    return false;
 
-  return NVPTXST;
+  MachineSDNode::mmo_iterator MemRefs0 = MF->allocateMemRefsArray(1);
+  MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
+  cast<MachineSDNode>(NVPTXST)->setMemRefs(MemRefs0, MemRefs0 + 1);
+  ReplaceNode(N, NVPTXST);
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
+bool NVPTXDAGToDAGISel::tryStoreVector(SDNode *N) {
   SDValue Chain = N->getOperand(0);
   SDValue Op1 = N->getOperand(1);
   SDValue Addr, Offset, Base;
@@ -1536,7 +2360,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
   EVT StoreVT = MemSD->getMemoryVT();
 
   // Address Space Setting
-  unsigned CodeAddrSpace = getCodeAddrSpace(MemSD, Subtarget);
+  unsigned CodeAddrSpace = getCodeAddrSpace(MemSD);
 
   if (CodeAddrSpace == NVPTX::PTXLdStInstCode::CONSTANT) {
     report_fatal_error("Cannot store to pointer that points to constant "
@@ -1582,23 +2406,23 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     N2 = N->getOperand(5);
     break;
   default:
-    return NULL;
+    return false;
   }
 
-  StOps.push_back(getI32Imm(IsVolatile));
-  StOps.push_back(getI32Imm(CodeAddrSpace));
-  StOps.push_back(getI32Imm(VecType));
-  StOps.push_back(getI32Imm(ToType));
-  StOps.push_back(getI32Imm(ToTypeWidth));
+  StOps.push_back(getI32Imm(IsVolatile, DL));
+  StOps.push_back(getI32Imm(CodeAddrSpace, DL));
+  StOps.push_back(getI32Imm(VecType, DL));
+  StOps.push_back(getI32Imm(ToType, DL));
+  StOps.push_back(getI32Imm(ToTypeWidth, DL));
 
   if (SelectDirectAddr(N2, Addr)) {
     switch (N->getOpcode()) {
     default:
-      return NULL;
+      return false;
     case NVPTXISD::StoreV2:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::STV_i8_v2_avar;
         break;
@@ -1622,7 +2446,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     case NVPTXISD::StoreV4:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::STV_i8_v4_avar;
         break;
@@ -1639,16 +2463,15 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
       break;
     }
     StOps.push_back(Addr);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRsi64(N2.getNode(), N2, Base, Offset)
-                 : SelectADDRsi(N2.getNode(), N2, Base, Offset)) {
+  } else if (TM.is64Bit() ? SelectADDRsi64(N2.getNode(), N2, Base, Offset)
+                          : SelectADDRsi(N2.getNode(), N2, Base, Offset)) {
     switch (N->getOpcode()) {
     default:
-      return NULL;
+      return false;
     case NVPTXISD::StoreV2:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::STV_i8_v2_asi;
         break;
@@ -1672,7 +2495,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     case NVPTXISD::StoreV4:
       switch (EltVT.getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i8:
         Opcode = NVPTX::STV_i8_v4_asi;
         break;
@@ -1690,17 +2513,16 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     }
     StOps.push_back(Base);
     StOps.push_back(Offset);
-  } else if (Subtarget.is64Bit()
-                 ? SelectADDRri64(N2.getNode(), N2, Base, Offset)
-                 : SelectADDRri(N2.getNode(), N2, Base, Offset)) {
-    if (Subtarget.is64Bit()) {
+  } else if (TM.is64Bit() ? SelectADDRri64(N2.getNode(), N2, Base, Offset)
+                          : SelectADDRri(N2.getNode(), N2, Base, Offset)) {
+    if (TM.is64Bit()) {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::StoreV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v2_ari_64;
           break;
@@ -1724,7 +2546,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
       case NVPTXISD::StoreV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v4_ari_64;
           break;
@@ -1743,11 +2565,11 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     } else {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::StoreV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v2_ari;
           break;
@@ -1771,7 +2593,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
       case NVPTXISD::StoreV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v4_ari;
           break;
@@ -1791,14 +2613,14 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     StOps.push_back(Base);
     StOps.push_back(Offset);
   } else {
-    if (Subtarget.is64Bit()) {
+    if (TM.is64Bit()) {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::StoreV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v2_areg_64;
           break;
@@ -1822,7 +2644,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
       case NVPTXISD::StoreV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v4_areg_64;
           break;
@@ -1841,11 +2663,11 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
     } else {
       switch (N->getOpcode()) {
       default:
-        return NULL;
+        return false;
       case NVPTXISD::StoreV2:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v2_areg;
           break;
@@ -1869,7 +2691,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
       case NVPTXISD::StoreV4:
         switch (EltVT.getSimpleVT().SimpleTy) {
         default:
-          return NULL;
+          return false;
         case MVT::i8:
           Opcode = NVPTX::STV_i8_v4_areg;
           break;
@@ -1897,10 +2719,11 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreVector(SDNode *N) {
   MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
   cast<MachineSDNode>(ST)->setMemRefs(MemRefs0, MemRefs0 + 1);
 
-  return ST;
+  ReplaceNode(N, ST);
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectLoadParam(SDNode *Node) {
+bool NVPTXDAGToDAGISel::tryLoadParam(SDNode *Node) {
   SDValue Chain = Node->getOperand(0);
   SDValue Offset = Node->getOperand(2);
   SDValue Flag = Node->getOperand(3);
@@ -1910,7 +2733,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadParam(SDNode *Node) {
   unsigned VecSize;
   switch (Node->getOpcode()) {
   default:
-    return NULL;
+    return false;
   case NVPTXISD::LoadParam:
     VecSize = 1;
     break;
@@ -1929,11 +2752,11 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadParam(SDNode *Node) {
 
   switch (VecSize) {
   default:
-    return NULL;
+    return false;
   case 1:
     switch (MemVT.getSimpleVT().SimpleTy) {
     default:
-      return NULL;
+      return false;
     case MVT::i1:
       Opc = NVPTX::LoadParamMemI8;
       break;
@@ -1960,7 +2783,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadParam(SDNode *Node) {
   case 2:
     switch (MemVT.getSimpleVT().SimpleTy) {
     default:
-      return NULL;
+      return false;
     case MVT::i1:
       Opc = NVPTX::LoadParamMemV2I8;
       break;
@@ -1987,7 +2810,7 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadParam(SDNode *Node) {
   case 4:
     switch (MemVT.getSimpleVT().SimpleTy) {
     default:
-      return NULL;
+      return false;
     case MVT::i1:
       Opc = NVPTX::LoadParamMemV4I8;
       break;
@@ -2014,22 +2837,21 @@ SDNode *NVPTXDAGToDAGISel::SelectLoadParam(SDNode *Node) {
     VTs = CurDAG->getVTList(EltVT, EltVT, MVT::Other, MVT::Glue);
   } else {
     EVT EVTs[] = { EltVT, EltVT, EltVT, EltVT, MVT::Other, MVT::Glue };
-    VTs = CurDAG->getVTList(&EVTs[0], 5);
+    VTs = CurDAG->getVTList(EVTs);
   }
 
   unsigned OffsetVal = cast<ConstantSDNode>(Offset)->getZExtValue();
 
   SmallVector<SDValue, 2> Ops;
-  Ops.push_back(CurDAG->getTargetConstant(OffsetVal, MVT::i32));
+  Ops.push_back(CurDAG->getTargetConstant(OffsetVal, DL, MVT::i32));
   Ops.push_back(Chain);
   Ops.push_back(Flag);
 
-  SDNode *Ret =
-      CurDAG->getMachineNode(Opc, DL, VTs, Ops);
-  return Ret;
+  ReplaceNode(Node, CurDAG->getMachineNode(Opc, DL, VTs, Ops));
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
+bool NVPTXDAGToDAGISel::tryStoreRetval(SDNode *N) {
   SDLoc DL(N);
   SDValue Chain = N->getOperand(0);
   SDValue Offset = N->getOperand(1);
@@ -2040,7 +2862,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
   unsigned NumElts = 1;
   switch (N->getOpcode()) {
   default:
-    return NULL;
+    return false;
   case NVPTXISD::StoreRetval:
     NumElts = 1;
     break;
@@ -2056,7 +2878,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
   SmallVector<SDValue, 6> Ops;
   for (unsigned i = 0; i < NumElts; ++i)
     Ops.push_back(N->getOperand(i + 2));
-  Ops.push_back(CurDAG->getTargetConstant(OffsetVal, MVT::i32));
+  Ops.push_back(CurDAG->getTargetConstant(OffsetVal, DL, MVT::i32));
   Ops.push_back(Chain);
 
   // Determine target opcode
@@ -2065,11 +2887,11 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
   unsigned Opcode = 0;
   switch (NumElts) {
   default:
-    return NULL;
+    return false;
   case 1:
     switch (Mem->getMemoryVT().getSimpleVT().SimpleTy) {
     default:
-      return NULL;
+      return false;
     case MVT::i1:
       Opcode = NVPTX::StoreRetvalI8;
       break;
@@ -2096,7 +2918,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
   case 2:
     switch (Mem->getMemoryVT().getSimpleVT().SimpleTy) {
     default:
-      return NULL;
+      return false;
     case MVT::i1:
       Opcode = NVPTX::StoreRetvalV2I8;
       break;
@@ -2123,7 +2945,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
   case 4:
     switch (Mem->getMemoryVT().getSimpleVT().SimpleTy) {
     default:
-      return NULL;
+      return false;
     case MVT::i1:
       Opcode = NVPTX::StoreRetvalV4I8;
       break;
@@ -2149,10 +2971,11 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreRetval(SDNode *N) {
   MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
   cast<MachineSDNode>(Ret)->setMemRefs(MemRefs0, MemRefs0 + 1);
 
-  return Ret;
+  ReplaceNode(N, Ret);
+  return true;
 }
 
-SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
+bool NVPTXDAGToDAGISel::tryStoreParam(SDNode *N) {
   SDLoc DL(N);
   SDValue Chain = N->getOperand(0);
   SDValue Param = N->getOperand(1);
@@ -2166,7 +2989,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
   unsigned NumElts = 1;
   switch (N->getOpcode()) {
   default:
-    return NULL;
+    return false;
   case NVPTXISD::StoreParamU32:
   case NVPTXISD::StoreParamS32:
   case NVPTXISD::StoreParam:
@@ -2184,8 +3007,8 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
   SmallVector<SDValue, 8> Ops;
   for (unsigned i = 0; i < NumElts; ++i)
     Ops.push_back(N->getOperand(i + 3));
-  Ops.push_back(CurDAG->getTargetConstant(ParamVal, MVT::i32));
-  Ops.push_back(CurDAG->getTargetConstant(OffsetVal, MVT::i32));
+  Ops.push_back(CurDAG->getTargetConstant(ParamVal, DL, MVT::i32));
+  Ops.push_back(CurDAG->getTargetConstant(OffsetVal, DL, MVT::i32));
   Ops.push_back(Chain);
   Ops.push_back(Flag);
 
@@ -2197,11 +3020,11 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
   default:
     switch (NumElts) {
     default:
-      return NULL;
+      return false;
     case 1:
       switch (Mem->getMemoryVT().getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i1:
         Opcode = NVPTX::StoreParamI8;
         break;
@@ -2228,7 +3051,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
     case 2:
       switch (Mem->getMemoryVT().getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i1:
         Opcode = NVPTX::StoreParamV2I8;
         break;
@@ -2255,7 +3078,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
     case 4:
       switch (Mem->getMemoryVT().getSimpleVT().SimpleTy) {
       default:
-        return NULL;
+        return false;
       case MVT::i1:
         Opcode = NVPTX::StoreParamV4I8;
         break;
@@ -2280,7 +3103,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
   // the selected StoreParam node.
   case NVPTXISD::StoreParamU32: {
     Opcode = NVPTX::StoreParamI32;
-    SDValue CvtNone = CurDAG->getTargetConstant(NVPTX::PTXCvtMode::NONE,
+    SDValue CvtNone = CurDAG->getTargetConstant(NVPTX::PTXCvtMode::NONE, DL,
                                                 MVT::i32);
     SDNode *Cvt = CurDAG->getMachineNode(NVPTX::CVT_u32_u16, DL,
                                          MVT::i32, Ops[0], CvtNone);
@@ -2289,7 +3112,7 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
   }
   case NVPTXISD::StoreParamS32: {
     Opcode = NVPTX::StoreParamI32;
-    SDValue CvtNone = CurDAG->getTargetConstant(NVPTX::PTXCvtMode::NONE,
+    SDValue CvtNone = CurDAG->getTargetConstant(NVPTX::PTXCvtMode::NONE, DL,
                                                 MVT::i32);
     SDNode *Cvt = CurDAG->getMachineNode(NVPTX::CVT_s32_s16, DL,
                                          MVT::i32, Ops[0], CvtNone);
@@ -2305,7 +3128,1939 @@ SDNode *NVPTXDAGToDAGISel::SelectStoreParam(SDNode *N) {
   MemRefs0[0] = cast<MemSDNode>(N)->getMemOperand();
   cast<MachineSDNode>(Ret)->setMemRefs(MemRefs0, MemRefs0 + 1);
 
-  return Ret;
+  ReplaceNode(N, Ret);
+  return true;
+}
+
+bool NVPTXDAGToDAGISel::tryTextureIntrinsic(SDNode *N) {
+  SDValue Chain = N->getOperand(0);
+  unsigned Opc = 0;
+  SmallVector<SDValue, 8> Ops;
+
+  switch (N->getOpcode()) {
+  default: return false;
+  case NVPTXISD::Tex1DFloatS32:
+    Opc = NVPTX::TEX_1D_F32_S32;
+    break;
+  case NVPTXISD::Tex1DFloatFloat:
+    Opc = NVPTX::TEX_1D_F32_F32;
+    break;
+  case NVPTXISD::Tex1DFloatFloatLevel:
+    Opc = NVPTX::TEX_1D_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex1DFloatFloatGrad:
+    Opc = NVPTX::TEX_1D_F32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex1DS32S32:
+    Opc = NVPTX::TEX_1D_S32_S32;
+    break;
+  case NVPTXISD::Tex1DS32Float:
+    Opc = NVPTX::TEX_1D_S32_F32;
+    break;
+  case NVPTXISD::Tex1DS32FloatLevel:
+    Opc = NVPTX::TEX_1D_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex1DS32FloatGrad:
+    Opc = NVPTX::TEX_1D_S32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex1DU32S32:
+    Opc = NVPTX::TEX_1D_U32_S32;
+    break;
+  case NVPTXISD::Tex1DU32Float:
+    Opc = NVPTX::TEX_1D_U32_F32;
+    break;
+  case NVPTXISD::Tex1DU32FloatLevel:
+    Opc = NVPTX::TEX_1D_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex1DU32FloatGrad:
+    Opc = NVPTX::TEX_1D_U32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex1DArrayFloatS32:
+    Opc = NVPTX::TEX_1D_ARRAY_F32_S32;
+    break;
+  case NVPTXISD::Tex1DArrayFloatFloat:
+    Opc = NVPTX::TEX_1D_ARRAY_F32_F32;
+    break;
+  case NVPTXISD::Tex1DArrayFloatFloatLevel:
+    Opc = NVPTX::TEX_1D_ARRAY_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex1DArrayFloatFloatGrad:
+    Opc = NVPTX::TEX_1D_ARRAY_F32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex1DArrayS32S32:
+    Opc = NVPTX::TEX_1D_ARRAY_S32_S32;
+    break;
+  case NVPTXISD::Tex1DArrayS32Float:
+    Opc = NVPTX::TEX_1D_ARRAY_S32_F32;
+    break;
+  case NVPTXISD::Tex1DArrayS32FloatLevel:
+    Opc = NVPTX::TEX_1D_ARRAY_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex1DArrayS32FloatGrad:
+    Opc = NVPTX::TEX_1D_ARRAY_S32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex1DArrayU32S32:
+    Opc = NVPTX::TEX_1D_ARRAY_U32_S32;
+    break;
+  case NVPTXISD::Tex1DArrayU32Float:
+    Opc = NVPTX::TEX_1D_ARRAY_U32_F32;
+    break;
+  case NVPTXISD::Tex1DArrayU32FloatLevel:
+    Opc = NVPTX::TEX_1D_ARRAY_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex1DArrayU32FloatGrad:
+    Opc = NVPTX::TEX_1D_ARRAY_U32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex2DFloatS32:
+    Opc = NVPTX::TEX_2D_F32_S32;
+    break;
+  case NVPTXISD::Tex2DFloatFloat:
+    Opc = NVPTX::TEX_2D_F32_F32;
+    break;
+  case NVPTXISD::Tex2DFloatFloatLevel:
+    Opc = NVPTX::TEX_2D_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex2DFloatFloatGrad:
+    Opc = NVPTX::TEX_2D_F32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex2DS32S32:
+    Opc = NVPTX::TEX_2D_S32_S32;
+    break;
+  case NVPTXISD::Tex2DS32Float:
+    Opc = NVPTX::TEX_2D_S32_F32;
+    break;
+  case NVPTXISD::Tex2DS32FloatLevel:
+    Opc = NVPTX::TEX_2D_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex2DS32FloatGrad:
+    Opc = NVPTX::TEX_2D_S32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex2DU32S32:
+    Opc = NVPTX::TEX_2D_U32_S32;
+    break;
+  case NVPTXISD::Tex2DU32Float:
+    Opc = NVPTX::TEX_2D_U32_F32;
+    break;
+  case NVPTXISD::Tex2DU32FloatLevel:
+    Opc = NVPTX::TEX_2D_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex2DU32FloatGrad:
+    Opc = NVPTX::TEX_2D_U32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex2DArrayFloatS32:
+    Opc = NVPTX::TEX_2D_ARRAY_F32_S32;
+    break;
+  case NVPTXISD::Tex2DArrayFloatFloat:
+    Opc = NVPTX::TEX_2D_ARRAY_F32_F32;
+    break;
+  case NVPTXISD::Tex2DArrayFloatFloatLevel:
+    Opc = NVPTX::TEX_2D_ARRAY_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex2DArrayFloatFloatGrad:
+    Opc = NVPTX::TEX_2D_ARRAY_F32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex2DArrayS32S32:
+    Opc = NVPTX::TEX_2D_ARRAY_S32_S32;
+    break;
+  case NVPTXISD::Tex2DArrayS32Float:
+    Opc = NVPTX::TEX_2D_ARRAY_S32_F32;
+    break;
+  case NVPTXISD::Tex2DArrayS32FloatLevel:
+    Opc = NVPTX::TEX_2D_ARRAY_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex2DArrayS32FloatGrad:
+    Opc = NVPTX::TEX_2D_ARRAY_S32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex2DArrayU32S32:
+    Opc = NVPTX::TEX_2D_ARRAY_U32_S32;
+    break;
+  case NVPTXISD::Tex2DArrayU32Float:
+    Opc = NVPTX::TEX_2D_ARRAY_U32_F32;
+    break;
+  case NVPTXISD::Tex2DArrayU32FloatLevel:
+    Opc = NVPTX::TEX_2D_ARRAY_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex2DArrayU32FloatGrad:
+    Opc = NVPTX::TEX_2D_ARRAY_U32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex3DFloatS32:
+    Opc = NVPTX::TEX_3D_F32_S32;
+    break;
+  case NVPTXISD::Tex3DFloatFloat:
+    Opc = NVPTX::TEX_3D_F32_F32;
+    break;
+  case NVPTXISD::Tex3DFloatFloatLevel:
+    Opc = NVPTX::TEX_3D_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex3DFloatFloatGrad:
+    Opc = NVPTX::TEX_3D_F32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex3DS32S32:
+    Opc = NVPTX::TEX_3D_S32_S32;
+    break;
+  case NVPTXISD::Tex3DS32Float:
+    Opc = NVPTX::TEX_3D_S32_F32;
+    break;
+  case NVPTXISD::Tex3DS32FloatLevel:
+    Opc = NVPTX::TEX_3D_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex3DS32FloatGrad:
+    Opc = NVPTX::TEX_3D_S32_F32_GRAD;
+    break;
+  case NVPTXISD::Tex3DU32S32:
+    Opc = NVPTX::TEX_3D_U32_S32;
+    break;
+  case NVPTXISD::Tex3DU32Float:
+    Opc = NVPTX::TEX_3D_U32_F32;
+    break;
+  case NVPTXISD::Tex3DU32FloatLevel:
+    Opc = NVPTX::TEX_3D_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tex3DU32FloatGrad:
+    Opc = NVPTX::TEX_3D_U32_F32_GRAD;
+    break;
+  case NVPTXISD::TexCubeFloatFloat:
+    Opc = NVPTX::TEX_CUBE_F32_F32;
+    break;
+  case NVPTXISD::TexCubeFloatFloatLevel:
+    Opc = NVPTX::TEX_CUBE_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexCubeS32Float:
+    Opc = NVPTX::TEX_CUBE_S32_F32;
+    break;
+  case NVPTXISD::TexCubeS32FloatLevel:
+    Opc = NVPTX::TEX_CUBE_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexCubeU32Float:
+    Opc = NVPTX::TEX_CUBE_U32_F32;
+    break;
+  case NVPTXISD::TexCubeU32FloatLevel:
+    Opc = NVPTX::TEX_CUBE_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexCubeArrayFloatFloat:
+    Opc = NVPTX::TEX_CUBE_ARRAY_F32_F32;
+    break;
+  case NVPTXISD::TexCubeArrayFloatFloatLevel:
+    Opc = NVPTX::TEX_CUBE_ARRAY_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexCubeArrayS32Float:
+    Opc = NVPTX::TEX_CUBE_ARRAY_S32_F32;
+    break;
+  case NVPTXISD::TexCubeArrayS32FloatLevel:
+    Opc = NVPTX::TEX_CUBE_ARRAY_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexCubeArrayU32Float:
+    Opc = NVPTX::TEX_CUBE_ARRAY_U32_F32;
+    break;
+  case NVPTXISD::TexCubeArrayU32FloatLevel:
+    Opc = NVPTX::TEX_CUBE_ARRAY_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tld4R2DFloatFloat:
+    Opc = NVPTX::TLD4_R_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4G2DFloatFloat:
+    Opc = NVPTX::TLD4_G_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4B2DFloatFloat:
+    Opc = NVPTX::TLD4_B_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4A2DFloatFloat:
+    Opc = NVPTX::TLD4_A_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4R2DS64Float:
+    Opc = NVPTX::TLD4_R_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4G2DS64Float:
+    Opc = NVPTX::TLD4_G_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4B2DS64Float:
+    Opc = NVPTX::TLD4_B_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4A2DS64Float:
+    Opc = NVPTX::TLD4_A_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4R2DU64Float:
+    Opc = NVPTX::TLD4_R_2D_U32_F32;
+    break;
+  case NVPTXISD::Tld4G2DU64Float:
+    Opc = NVPTX::TLD4_G_2D_U32_F32;
+    break;
+  case NVPTXISD::Tld4B2DU64Float:
+    Opc = NVPTX::TLD4_B_2D_U32_F32;
+    break;
+  case NVPTXISD::Tld4A2DU64Float:
+    Opc = NVPTX::TLD4_A_2D_U32_F32;
+    break;
+  case NVPTXISD::TexUnified1DFloatS32:
+    Opc = NVPTX::TEX_UNIFIED_1D_F32_S32;
+    break;
+  case NVPTXISD::TexUnified1DFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_1D_F32_F32;
+    break;
+  case NVPTXISD::TexUnified1DFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_1D_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified1DFloatFloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_1D_F32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified1DS32S32:
+    Opc = NVPTX::TEX_UNIFIED_1D_S32_S32;
+    break;
+  case NVPTXISD::TexUnified1DS32Float:
+    Opc = NVPTX::TEX_UNIFIED_1D_S32_F32;
+    break;
+  case NVPTXISD::TexUnified1DS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_1D_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified1DS32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_1D_S32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified1DU32S32:
+    Opc = NVPTX::TEX_UNIFIED_1D_U32_S32;
+    break;
+  case NVPTXISD::TexUnified1DU32Float:
+    Opc = NVPTX::TEX_UNIFIED_1D_U32_F32;
+    break;
+  case NVPTXISD::TexUnified1DU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_1D_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified1DU32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_1D_U32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified1DArrayFloatS32:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_F32_S32;
+    break;
+  case NVPTXISD::TexUnified1DArrayFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_F32_F32;
+    break;
+  case NVPTXISD::TexUnified1DArrayFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified1DArrayFloatFloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_F32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified1DArrayS32S32:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_S32_S32;
+    break;
+  case NVPTXISD::TexUnified1DArrayS32Float:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_S32_F32;
+    break;
+  case NVPTXISD::TexUnified1DArrayS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified1DArrayS32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_S32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified1DArrayU32S32:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_U32_S32;
+    break;
+  case NVPTXISD::TexUnified1DArrayU32Float:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_U32_F32;
+    break;
+  case NVPTXISD::TexUnified1DArrayU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified1DArrayU32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_1D_ARRAY_U32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified2DFloatS32:
+    Opc = NVPTX::TEX_UNIFIED_2D_F32_S32;
+    break;
+  case NVPTXISD::TexUnified2DFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_2D_F32_F32;
+    break;
+  case NVPTXISD::TexUnified2DFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_2D_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified2DFloatFloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_2D_F32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified2DS32S32:
+    Opc = NVPTX::TEX_UNIFIED_2D_S32_S32;
+    break;
+  case NVPTXISD::TexUnified2DS32Float:
+    Opc = NVPTX::TEX_UNIFIED_2D_S32_F32;
+    break;
+  case NVPTXISD::TexUnified2DS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_2D_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified2DS32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_2D_S32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified2DU32S32:
+    Opc = NVPTX::TEX_UNIFIED_2D_U32_S32;
+    break;
+  case NVPTXISD::TexUnified2DU32Float:
+    Opc = NVPTX::TEX_UNIFIED_2D_U32_F32;
+    break;
+  case NVPTXISD::TexUnified2DU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_2D_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified2DU32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_2D_U32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified2DArrayFloatS32:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_F32_S32;
+    break;
+  case NVPTXISD::TexUnified2DArrayFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_F32_F32;
+    break;
+  case NVPTXISD::TexUnified2DArrayFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified2DArrayFloatFloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_F32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified2DArrayS32S32:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_S32_S32;
+    break;
+  case NVPTXISD::TexUnified2DArrayS32Float:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_S32_F32;
+    break;
+  case NVPTXISD::TexUnified2DArrayS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified2DArrayS32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_S32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified2DArrayU32S32:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_U32_S32;
+    break;
+  case NVPTXISD::TexUnified2DArrayU32Float:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_U32_F32;
+    break;
+  case NVPTXISD::TexUnified2DArrayU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified2DArrayU32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_2D_ARRAY_U32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified3DFloatS32:
+    Opc = NVPTX::TEX_UNIFIED_3D_F32_S32;
+    break;
+  case NVPTXISD::TexUnified3DFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_3D_F32_F32;
+    break;
+  case NVPTXISD::TexUnified3DFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_3D_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified3DFloatFloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_3D_F32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified3DS32S32:
+    Opc = NVPTX::TEX_UNIFIED_3D_S32_S32;
+    break;
+  case NVPTXISD::TexUnified3DS32Float:
+    Opc = NVPTX::TEX_UNIFIED_3D_S32_F32;
+    break;
+  case NVPTXISD::TexUnified3DS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_3D_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified3DS32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_3D_S32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnified3DU32S32:
+    Opc = NVPTX::TEX_UNIFIED_3D_U32_S32;
+    break;
+  case NVPTXISD::TexUnified3DU32Float:
+    Opc = NVPTX::TEX_UNIFIED_3D_U32_F32;
+    break;
+  case NVPTXISD::TexUnified3DU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_3D_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnified3DU32FloatGrad:
+    Opc = NVPTX::TEX_UNIFIED_3D_U32_F32_GRAD;
+    break;
+  case NVPTXISD::TexUnifiedCubeFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_F32_F32;
+    break;
+  case NVPTXISD::TexUnifiedCubeFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnifiedCubeS32Float:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_S32_F32;
+    break;
+  case NVPTXISD::TexUnifiedCubeS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnifiedCubeU32Float:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_U32_F32;
+    break;
+  case NVPTXISD::TexUnifiedCubeU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnifiedCubeArrayFloatFloat:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_ARRAY_F32_F32;
+    break;
+  case NVPTXISD::TexUnifiedCubeArrayFloatFloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_ARRAY_F32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnifiedCubeArrayS32Float:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_ARRAY_S32_F32;
+    break;
+  case NVPTXISD::TexUnifiedCubeArrayS32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_ARRAY_S32_F32_LEVEL;
+    break;
+  case NVPTXISD::TexUnifiedCubeArrayU32Float:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_ARRAY_U32_F32;
+    break;
+  case NVPTXISD::TexUnifiedCubeArrayU32FloatLevel:
+    Opc = NVPTX::TEX_UNIFIED_CUBE_ARRAY_U32_F32_LEVEL;
+    break;
+  case NVPTXISD::Tld4UnifiedR2DFloatFloat:
+    Opc = NVPTX::TLD4_UNIFIED_R_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedG2DFloatFloat:
+    Opc = NVPTX::TLD4_UNIFIED_G_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedB2DFloatFloat:
+    Opc = NVPTX::TLD4_UNIFIED_B_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedA2DFloatFloat:
+    Opc = NVPTX::TLD4_UNIFIED_A_2D_F32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedR2DS64Float:
+    Opc = NVPTX::TLD4_UNIFIED_R_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedG2DS64Float:
+    Opc = NVPTX::TLD4_UNIFIED_G_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedB2DS64Float:
+    Opc = NVPTX::TLD4_UNIFIED_B_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedA2DS64Float:
+    Opc = NVPTX::TLD4_UNIFIED_A_2D_S32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedR2DU64Float:
+    Opc = NVPTX::TLD4_UNIFIED_R_2D_U32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedG2DU64Float:
+    Opc = NVPTX::TLD4_UNIFIED_G_2D_U32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedB2DU64Float:
+    Opc = NVPTX::TLD4_UNIFIED_B_2D_U32_F32;
+    break;
+  case NVPTXISD::Tld4UnifiedA2DU64Float:
+    Opc = NVPTX::TLD4_UNIFIED_A_2D_U32_F32;
+    break;
+  }
+
+  // Copy over operands
+  for (unsigned i = 1; i < N->getNumOperands(); ++i) {
+    Ops.push_back(N->getOperand(i));
+  }
+
+  Ops.push_back(Chain);
+  ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getVTList(), Ops));
+  return true;
+}
+
+bool NVPTXDAGToDAGISel::trySurfaceIntrinsic(SDNode *N) {
+  SDValue Chain = N->getOperand(0);
+  SDValue TexHandle = N->getOperand(1);
+  unsigned Opc = 0;
+  SmallVector<SDValue, 8> Ops;
+  switch (N->getOpcode()) {
+  default: return false;
+  case NVPTXISD::Suld1DI8Clamp:
+    Opc = NVPTX::SULD_1D_I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI16Clamp:
+    Opc = NVPTX::SULD_1D_I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI32Clamp:
+    Opc = NVPTX::SULD_1D_I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI64Clamp:
+    Opc = NVPTX::SULD_1D_I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I8Clamp:
+    Opc = NVPTX::SULD_1D_V2I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I16Clamp:
+    Opc = NVPTX::SULD_1D_V2I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I32Clamp:
+    Opc = NVPTX::SULD_1D_V2I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I64Clamp:
+    Opc = NVPTX::SULD_1D_V2I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I8Clamp:
+    Opc = NVPTX::SULD_1D_V4I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I16Clamp:
+    Opc = NVPTX::SULD_1D_V4I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I32Clamp:
+    Opc = NVPTX::SULD_1D_V4I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI8Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI16Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI32Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI64Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I8Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I16Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I32Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I64Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I8Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I16Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I32Clamp:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI8Clamp:
+    Opc = NVPTX::SULD_2D_I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI16Clamp:
+    Opc = NVPTX::SULD_2D_I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI32Clamp:
+    Opc = NVPTX::SULD_2D_I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI64Clamp:
+    Opc = NVPTX::SULD_2D_I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I8Clamp:
+    Opc = NVPTX::SULD_2D_V2I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I16Clamp:
+    Opc = NVPTX::SULD_2D_V2I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I32Clamp:
+    Opc = NVPTX::SULD_2D_V2I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I64Clamp:
+    Opc = NVPTX::SULD_2D_V2I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I8Clamp:
+    Opc = NVPTX::SULD_2D_V4I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I16Clamp:
+    Opc = NVPTX::SULD_2D_V4I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I32Clamp:
+    Opc = NVPTX::SULD_2D_V4I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI8Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI16Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI32Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI64Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I8Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I16Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I32Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I64Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I8Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I16Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I32Clamp:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI8Clamp:
+    Opc = NVPTX::SULD_3D_I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI16Clamp:
+    Opc = NVPTX::SULD_3D_I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI32Clamp:
+    Opc = NVPTX::SULD_3D_I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI64Clamp:
+    Opc = NVPTX::SULD_3D_I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I8Clamp:
+    Opc = NVPTX::SULD_3D_V2I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I16Clamp:
+    Opc = NVPTX::SULD_3D_V2I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I32Clamp:
+    Opc = NVPTX::SULD_3D_V2I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I64Clamp:
+    Opc = NVPTX::SULD_3D_V2I64_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I8Clamp:
+    Opc = NVPTX::SULD_3D_V4I8_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I16Clamp:
+    Opc = NVPTX::SULD_3D_V4I16_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I32Clamp:
+    Opc = NVPTX::SULD_3D_V4I32_CLAMP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI8Trap:
+    Opc = NVPTX::SULD_1D_I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI16Trap:
+    Opc = NVPTX::SULD_1D_I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI32Trap:
+    Opc = NVPTX::SULD_1D_I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI64Trap:
+    Opc = NVPTX::SULD_1D_I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I8Trap:
+    Opc = NVPTX::SULD_1D_V2I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I16Trap:
+    Opc = NVPTX::SULD_1D_V2I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I32Trap:
+    Opc = NVPTX::SULD_1D_V2I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I64Trap:
+    Opc = NVPTX::SULD_1D_V2I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I8Trap:
+    Opc = NVPTX::SULD_1D_V4I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I16Trap:
+    Opc = NVPTX::SULD_1D_V4I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I32Trap:
+    Opc = NVPTX::SULD_1D_V4I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI8Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI16Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI32Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI64Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I8Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I16Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I32Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I64Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I8Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I16Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I32Trap:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI8Trap:
+    Opc = NVPTX::SULD_2D_I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI16Trap:
+    Opc = NVPTX::SULD_2D_I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI32Trap:
+    Opc = NVPTX::SULD_2D_I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI64Trap:
+    Opc = NVPTX::SULD_2D_I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I8Trap:
+    Opc = NVPTX::SULD_2D_V2I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I16Trap:
+    Opc = NVPTX::SULD_2D_V2I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I32Trap:
+    Opc = NVPTX::SULD_2D_V2I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I64Trap:
+    Opc = NVPTX::SULD_2D_V2I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I8Trap:
+    Opc = NVPTX::SULD_2D_V4I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I16Trap:
+    Opc = NVPTX::SULD_2D_V4I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I32Trap:
+    Opc = NVPTX::SULD_2D_V4I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI8Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI16Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI32Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI64Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I8Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I16Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I32Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I64Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I8Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I16Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I32Trap:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI8Trap:
+    Opc = NVPTX::SULD_3D_I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI16Trap:
+    Opc = NVPTX::SULD_3D_I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI32Trap:
+    Opc = NVPTX::SULD_3D_I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI64Trap:
+    Opc = NVPTX::SULD_3D_I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I8Trap:
+    Opc = NVPTX::SULD_3D_V2I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I16Trap:
+    Opc = NVPTX::SULD_3D_V2I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I32Trap:
+    Opc = NVPTX::SULD_3D_V2I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I64Trap:
+    Opc = NVPTX::SULD_3D_V2I64_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I8Trap:
+    Opc = NVPTX::SULD_3D_V4I8_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I16Trap:
+    Opc = NVPTX::SULD_3D_V4I16_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I32Trap:
+    Opc = NVPTX::SULD_3D_V4I32_TRAP;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI8Zero:
+    Opc = NVPTX::SULD_1D_I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI16Zero:
+    Opc = NVPTX::SULD_1D_I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI32Zero:
+    Opc = NVPTX::SULD_1D_I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DI64Zero:
+    Opc = NVPTX::SULD_1D_I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I8Zero:
+    Opc = NVPTX::SULD_1D_V2I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I16Zero:
+    Opc = NVPTX::SULD_1D_V2I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I32Zero:
+    Opc = NVPTX::SULD_1D_V2I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV2I64Zero:
+    Opc = NVPTX::SULD_1D_V2I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I8Zero:
+    Opc = NVPTX::SULD_1D_V4I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I16Zero:
+    Opc = NVPTX::SULD_1D_V4I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DV4I32Zero:
+    Opc = NVPTX::SULD_1D_V4I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI8Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI16Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI32Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayI64Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I8Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I16Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I32Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV2I64Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V2I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I8Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I16Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld1DArrayV4I32Zero:
+    Opc = NVPTX::SULD_1D_ARRAY_V4I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI8Zero:
+    Opc = NVPTX::SULD_2D_I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI16Zero:
+    Opc = NVPTX::SULD_2D_I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI32Zero:
+    Opc = NVPTX::SULD_2D_I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DI64Zero:
+    Opc = NVPTX::SULD_2D_I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I8Zero:
+    Opc = NVPTX::SULD_2D_V2I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I16Zero:
+    Opc = NVPTX::SULD_2D_V2I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I32Zero:
+    Opc = NVPTX::SULD_2D_V2I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV2I64Zero:
+    Opc = NVPTX::SULD_2D_V2I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I8Zero:
+    Opc = NVPTX::SULD_2D_V4I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I16Zero:
+    Opc = NVPTX::SULD_2D_V4I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DV4I32Zero:
+    Opc = NVPTX::SULD_2D_V4I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI8Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI16Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI32Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayI64Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I8Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I16Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I32Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV2I64Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V2I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I8Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I16Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld2DArrayV4I32Zero:
+    Opc = NVPTX::SULD_2D_ARRAY_V4I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI8Zero:
+    Opc = NVPTX::SULD_3D_I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI16Zero:
+    Opc = NVPTX::SULD_3D_I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI32Zero:
+    Opc = NVPTX::SULD_3D_I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DI64Zero:
+    Opc = NVPTX::SULD_3D_I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I8Zero:
+    Opc = NVPTX::SULD_3D_V2I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I16Zero:
+    Opc = NVPTX::SULD_3D_V2I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I32Zero:
+    Opc = NVPTX::SULD_3D_V2I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV2I64Zero:
+    Opc = NVPTX::SULD_3D_V2I64_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I8Zero:
+    Opc = NVPTX::SULD_3D_V4I8_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I16Zero:
+    Opc = NVPTX::SULD_3D_V4I16_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  case NVPTXISD::Suld3DV4I32Zero:
+    Opc = NVPTX::SULD_3D_V4I32_ZERO;
+    Ops.push_back(TexHandle);
+    Ops.push_back(N->getOperand(2));
+    Ops.push_back(N->getOperand(3));
+    Ops.push_back(N->getOperand(4));
+    Ops.push_back(Chain);
+    break;
+  }
+  ReplaceNode(N, CurDAG->getMachineNode(Opc, SDLoc(N), N->getVTList(), Ops));
+  return true;
+}
+
+
+/// SelectBFE - Look for instruction sequences that can be made more efficient
+/// by using the 'bfe' (bit-field extract) PTX instruction
+bool NVPTXDAGToDAGISel::tryBFE(SDNode *N) {
+  SDLoc DL(N);
+  SDValue LHS = N->getOperand(0);
+  SDValue RHS = N->getOperand(1);
+  SDValue Len;
+  SDValue Start;
+  SDValue Val;
+  bool IsSigned = false;
+
+  if (N->getOpcode() == ISD::AND) {
+    // Canonicalize the operands
+    // We want 'and %val, %mask'
+    if (isa<ConstantSDNode>(LHS) && !isa<ConstantSDNode>(RHS)) {
+      std::swap(LHS, RHS);
+    }
+
+    ConstantSDNode *Mask = dyn_cast<ConstantSDNode>(RHS);
+    if (!Mask) {
+      // We need a constant mask on the RHS of the AND
+      return false;
+    }
+
+    // Extract the mask bits
+    uint64_t MaskVal = Mask->getZExtValue();
+    if (!isMask_64(MaskVal)) {
+      // We *could* handle shifted masks here, but doing so would require an
+      // 'and' operation to fix up the low-order bits so we would trade
+      // shr+and for bfe+and, which has the same throughput
+      return false;
+    }
+
+    // How many bits are in our mask?
+    uint64_t NumBits = countTrailingOnes(MaskVal);
+    Len = CurDAG->getTargetConstant(NumBits, DL, MVT::i32);
+
+    if (LHS.getOpcode() == ISD::SRL || LHS.getOpcode() == ISD::SRA) {
+      // We have a 'srl/and' pair, extract the effective start bit and length
+      Val = LHS.getNode()->getOperand(0);
+      Start = LHS.getNode()->getOperand(1);
+      ConstantSDNode *StartConst = dyn_cast<ConstantSDNode>(Start);
+      if (StartConst) {
+        uint64_t StartVal = StartConst->getZExtValue();
+        // How many "good" bits do we have left?  "good" is defined here as bits
+        // that exist in the original value, not shifted in.
+        uint64_t GoodBits = Start.getValueType().getSizeInBits() - StartVal;
+        if (NumBits > GoodBits) {
+          // Do not handle the case where bits have been shifted in. In theory
+          // we could handle this, but the cost is likely higher than just
+          // emitting the srl/and pair.
+          return false;
+        }
+        Start = CurDAG->getTargetConstant(StartVal, DL, MVT::i32);
+      } else {
+        // Do not handle the case where the shift amount (can be zero if no srl
+        // was found) is not constant. We could handle this case, but it would
+        // require run-time logic that would be more expensive than just
+        // emitting the srl/and pair.
+        return false;
+      }
+    } else {
+      // Do not handle the case where the LHS of the and is not a shift. While
+      // it would be trivial to handle this case, it would just transform
+      // 'and' -> 'bfe', but 'and' has higher-throughput.
+      return false;
+    }
+  } else if (N->getOpcode() == ISD::SRL || N->getOpcode() == ISD::SRA) {
+    if (LHS->getOpcode() == ISD::AND) {
+      ConstantSDNode *ShiftCnst = dyn_cast<ConstantSDNode>(RHS);
+      if (!ShiftCnst) {
+        // Shift amount must be constant
+        return false;
+      }
+
+      uint64_t ShiftAmt = ShiftCnst->getZExtValue();
+
+      SDValue AndLHS = LHS->getOperand(0);
+      SDValue AndRHS = LHS->getOperand(1);
+
+      // Canonicalize the AND to have the mask on the RHS
+      if (isa<ConstantSDNode>(AndLHS)) {
+        std::swap(AndLHS, AndRHS);
+      }
+
+      ConstantSDNode *MaskCnst = dyn_cast<ConstantSDNode>(AndRHS);
+      if (!MaskCnst) {
+        // Mask must be constant
+        return false;
+      }
+
+      uint64_t MaskVal = MaskCnst->getZExtValue();
+      uint64_t NumZeros;
+      uint64_t NumBits;
+      if (isMask_64(MaskVal)) {
+        NumZeros = 0;
+        // The number of bits in the result bitfield will be the number of
+        // trailing ones (the AND) minus the number of bits we shift off
+        NumBits = countTrailingOnes(MaskVal) - ShiftAmt;
+      } else if (isShiftedMask_64(MaskVal)) {
+        NumZeros = countTrailingZeros(MaskVal);
+        unsigned NumOnes = countTrailingOnes(MaskVal >> NumZeros);
+        // The number of bits in the result bitfield will be the number of
+        // trailing zeros plus the number of set bits in the mask minus the
+        // number of bits we shift off
+        NumBits = NumZeros + NumOnes - ShiftAmt;
+      } else {
+        // This is not a mask we can handle
+        return false;
+      }
+
+      if (ShiftAmt < NumZeros) {
+        // Handling this case would require extra logic that would make this
+        // transformation non-profitable
+        return false;
+      }
+
+      Val = AndLHS;
+      Start = CurDAG->getTargetConstant(ShiftAmt, DL, MVT::i32);
+      Len = CurDAG->getTargetConstant(NumBits, DL, MVT::i32);
+    } else if (LHS->getOpcode() == ISD::SHL) {
+      // Here, we have a pattern like:
+      //
+      // (sra (shl val, NN), MM)
+      // or
+      // (srl (shl val, NN), MM)
+      //
+      // If MM >= NN, we can efficiently optimize this with bfe
+      Val = LHS->getOperand(0);
+
+      SDValue ShlRHS = LHS->getOperand(1);
+      ConstantSDNode *ShlCnst = dyn_cast<ConstantSDNode>(ShlRHS);
+      if (!ShlCnst) {
+        // Shift amount must be constant
+        return false;
+      }
+      uint64_t InnerShiftAmt = ShlCnst->getZExtValue();
+
+      SDValue ShrRHS = RHS;
+      ConstantSDNode *ShrCnst = dyn_cast<ConstantSDNode>(ShrRHS);
+      if (!ShrCnst) {
+        // Shift amount must be constant
+        return false;
+      }
+      uint64_t OuterShiftAmt = ShrCnst->getZExtValue();
+
+      // To avoid extra codegen and be profitable, we need Outer >= Inner
+      if (OuterShiftAmt < InnerShiftAmt) {
+        return false;
+      }
+
+      // If the outer shift is more than the type size, we have no bitfield to
+      // extract (since we also check that the inner shift is <= the outer shift
+      // then this also implies that the inner shift is < the type size)
+      if (OuterShiftAmt >= Val.getValueType().getSizeInBits()) {
+        return false;
+      }
+
+      Start =
+        CurDAG->getTargetConstant(OuterShiftAmt - InnerShiftAmt, DL, MVT::i32);
+      Len =
+        CurDAG->getTargetConstant(Val.getValueType().getSizeInBits() -
+                                  OuterShiftAmt, DL, MVT::i32);
+
+      if (N->getOpcode() == ISD::SRA) {
+        // If we have a arithmetic right shift, we need to use the signed bfe
+        // variant
+        IsSigned = true;
+      }
+    } else {
+      // No can do...
+      return false;
+    }
+  } else {
+    // No can do...
+    return false;
+  }
+
+
+  unsigned Opc;
+  // For the BFE operations we form here from "and" and "srl", always use the
+  // unsigned variants.
+  if (Val.getValueType() == MVT::i32) {
+    if (IsSigned) {
+      Opc = NVPTX::BFE_S32rii;
+    } else {
+      Opc = NVPTX::BFE_U32rii;
+    }
+  } else if (Val.getValueType() == MVT::i64) {
+    if (IsSigned) {
+      Opc = NVPTX::BFE_S64rii;
+    } else {
+      Opc = NVPTX::BFE_U64rii;
+    }
+  } else {
+    // We cannot handle this type
+    return false;
+  }
+
+  SDValue Ops[] = {
+    Val, Start, Len
+  };
+
+  ReplaceNode(N, CurDAG->getMachineNode(Opc, DL, N->getVTList(), Ops));
+  return true;
 }
 
 // SelectDirectAddr - Match a direct address for DAG.
@@ -2337,7 +5092,8 @@ bool NVPTXDAGToDAGISel::SelectADDRsi_imp(
     if (ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Addr.getOperand(1))) {
       SDValue base = Addr.getOperand(0);
       if (SelectDirectAddr(base, Base)) {
-        Offset = CurDAG->getTargetConstant(CN->getZExtValue(), mvt);
+        Offset = CurDAG->getTargetConstant(CN->getZExtValue(), SDLoc(OpNode),
+                                           mvt);
         return true;
       }
     }
@@ -2362,7 +5118,7 @@ bool NVPTXDAGToDAGISel::SelectADDRri_imp(
     SDNode *OpNode, SDValue Addr, SDValue &Base, SDValue &Offset, MVT mvt) {
   if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
     Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), mvt);
-    Offset = CurDAG->getTargetConstant(0, mvt);
+    Offset = CurDAG->getTargetConstant(0, SDLoc(OpNode), mvt);
     return true;
   }
   if (Addr.getOpcode() == ISD::TargetExternalSymbol ||
@@ -2380,7 +5136,8 @@ bool NVPTXDAGToDAGISel::SelectADDRri_imp(
         Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), mvt);
       else
         Base = Addr.getOperand(0);
-      Offset = CurDAG->getTargetConstant(CN->getZExtValue(), mvt);
+      Offset = CurDAG->getTargetConstant(CN->getZExtValue(), SDLoc(OpNode),
+                                         mvt);
       return true;
     }
   }
@@ -2401,18 +5158,15 @@ bool NVPTXDAGToDAGISel::SelectADDRri64(SDNode *OpNode, SDValue Addr,
 
 bool NVPTXDAGToDAGISel::ChkMemSDNodeAddressSpace(SDNode *N,
                                                  unsigned int spN) const {
-  const Value *Src = NULL;
-  // Even though MemIntrinsicSDNode is a subclas of MemSDNode,
-  // the classof() for MemSDNode does not include MemIntrinsicSDNode
-  // (See SelectionDAGNodes.h). So we need to check for both.
+  const Value *Src = nullptr;
   if (MemSDNode *mN = dyn_cast<MemSDNode>(N)) {
-    Src = mN->getSrcValue();
-  } else if (MemSDNode *mN = dyn_cast<MemIntrinsicSDNode>(N)) {
-    Src = mN->getSrcValue();
+    if (spN == 0 && mN->getMemOperand()->getPseudoValue())
+      return true;
+    Src = mN->getMemOperand()->getValue();
   }
   if (!Src)
     return false;
-  if (const PointerType *PT = dyn_cast<PointerType>(Src->getType()))
+  if (auto *PT = dyn_cast<PointerType>(Src->getType()))
     return (PT->getAddressSpace() == spN);
   return false;
 }
@@ -2420,15 +5174,15 @@ bool NVPTXDAGToDAGISel::ChkMemSDNodeAddressSpace(SDNode *N,
 /// SelectInlineAsmMemoryOperand - Implement addressing mode selection for
 /// inline asm expressions.
 bool NVPTXDAGToDAGISel::SelectInlineAsmMemoryOperand(
-    const SDValue &Op, char ConstraintCode, std::vector<SDValue> &OutOps) {
+    const SDValue &Op, unsigned ConstraintID, std::vector<SDValue> &OutOps) {
   SDValue Op0, Op1;
-  switch (ConstraintCode) {
+  switch (ConstraintID) {
   default:
     return true;
-  case 'm': // memory
+  case InlineAsm::Constraint_m: // memory
     if (SelectDirectAddr(Op, Op0)) {
       OutOps.push_back(Op0);
-      OutOps.push_back(CurDAG->getTargetConstant(0, MVT::i32));
+      OutOps.push_back(CurDAG->getTargetConstant(0, SDLoc(Op), MVT::i32));
       return false;
     }
     if (SelectADDRri(Op.getNode(), Op, Op0, Op1)) {
@@ -2441,23 +5195,56 @@ bool NVPTXDAGToDAGISel::SelectInlineAsmMemoryOperand(
   return true;
 }
 
-// Return true if N is a undef or a constant.
-// If N was undef, return a (i8imm 0) in Retval
-// If N was imm, convert it to i8imm and return in Retval
-// Note: The convert to i8imm is required, otherwise the
-// pattern matcher inserts a bunch of IMOVi8rr to convert
-// the imm to i8imm, and this causes instruction selection
-// to fail.
-bool NVPTXDAGToDAGISel::UndefOrImm(SDValue Op, SDValue N, SDValue &Retval) {
-  if (!(N.getOpcode() == ISD::UNDEF) && !(N.getOpcode() == ISD::Constant))
-    return false;
-
-  if (N.getOpcode() == ISD::UNDEF)
-    Retval = CurDAG->getTargetConstant(0, MVT::i8);
-  else {
-    ConstantSDNode *cn = cast<ConstantSDNode>(N.getNode());
-    unsigned retval = cn->getZExtValue();
-    Retval = CurDAG->getTargetConstant(retval, MVT::i8);
+/// GetConvertOpcode - Returns the CVT_ instruction opcode that implements a
+/// conversion from \p SrcTy to \p DestTy.
+unsigned NVPTXDAGToDAGISel::GetConvertOpcode(MVT DestTy, MVT SrcTy,
+                                             bool IsSigned) {
+  switch (SrcTy.SimpleTy) {
+  default:
+    llvm_unreachable("Unhandled source type");
+  case MVT::i8:
+    switch (DestTy.SimpleTy) {
+    default:
+      llvm_unreachable("Unhandled dest type");
+    case MVT::i16:
+      return IsSigned ? NVPTX::CVT_s16_s8 : NVPTX::CVT_u16_u8;
+    case MVT::i32:
+      return IsSigned ? NVPTX::CVT_s32_s8 : NVPTX::CVT_u32_u8;
+    case MVT::i64:
+      return IsSigned ? NVPTX::CVT_s64_s8 : NVPTX::CVT_u64_u8;
+    }
+  case MVT::i16:
+    switch (DestTy.SimpleTy) {
+    default:
+      llvm_unreachable("Unhandled dest type");
+    case MVT::i8:
+      return IsSigned ? NVPTX::CVT_s8_s16 : NVPTX::CVT_u8_u16;
+    case MVT::i32:
+      return IsSigned ? NVPTX::CVT_s32_s16 : NVPTX::CVT_u32_u16;
+    case MVT::i64:
+      return IsSigned ? NVPTX::CVT_s64_s16 : NVPTX::CVT_u64_u16;
+    }
+  case MVT::i32:
+    switch (DestTy.SimpleTy) {
+    default:
+      llvm_unreachable("Unhandled dest type");
+    case MVT::i8:
+      return IsSigned ? NVPTX::CVT_s8_s32 : NVPTX::CVT_u8_u32;
+    case MVT::i16:
+      return IsSigned ? NVPTX::CVT_s16_s32 : NVPTX::CVT_u16_u32;
+    case MVT::i64:
+      return IsSigned ? NVPTX::CVT_s64_s32 : NVPTX::CVT_u64_u32;
+    }
+  case MVT::i64:
+    switch (DestTy.SimpleTy) {
+    default:
+      llvm_unreachable("Unhandled dest type");
+    case MVT::i8:
+      return IsSigned ? NVPTX::CVT_s8_s64 : NVPTX::CVT_u8_u64;
+    case MVT::i16:
+      return IsSigned ? NVPTX::CVT_s16_s64 : NVPTX::CVT_u16_u64;
+    case MVT::i32:
+      return IsSigned ? NVPTX::CVT_s32_s64 : NVPTX::CVT_u32_u64;
+    }
   }
-  return true;
 }

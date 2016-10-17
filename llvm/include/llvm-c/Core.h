@@ -15,7 +15,8 @@
 #ifndef LLVM_C_CORE_H
 #define LLVM_C_CORE_H
 
-#include "llvm/Support/DataTypes.h"
+#include "llvm-c/ErrorHandling.h"
+#include "llvm-c/Types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,15 +41,6 @@ extern "C" {
  * the LLVM intermediate representation as well as other related types
  * and utilities.
  *
- * LLVM uses a polymorphic type hierarchy which C cannot represent, therefore
- * parameters must be passed as base types. Despite the declared types, most
- * of the functions provided operate only on branches of the type hierarchy.
- * The declared parameter names are descriptive and specify which type is
- * required. Additionally, each type hierarchy is documented along with the
- * functions that operate upon it. For more detail, refer to LLVM's C++ code.
- * If in doubt, refer to Core.cpp, which performs parameter downcasts in the
- * form unwrap<RequiredType>(Param).
- *
  * Many exotic languages can interoperate with C code but have a harder time
  * with C++ due to name mangling. So in addition to C, this interface enables
  * tools written in such languages.
@@ -61,77 +53,6 @@ extern "C" {
  *
  * @{
  */
-
-typedef int LLVMBool;
-
-/* Opaque types. */
-
-/**
- * The top-level container for all LLVM global data. See the LLVMContext class.
- */
-typedef struct LLVMOpaqueContext *LLVMContextRef;
-
-/**
- * The top-level container for all other LLVM Intermediate Representation (IR)
- * objects.
- *
- * @see llvm::Module
- */
-typedef struct LLVMOpaqueModule *LLVMModuleRef;
-
-/**
- * Each value in the LLVM IR has a type, an LLVMTypeRef.
- *
- * @see llvm::Type
- */
-typedef struct LLVMOpaqueType *LLVMTypeRef;
-
-/**
- * Represents an individual value in LLVM IR.
- *
- * This models llvm::Value.
- */
-typedef struct LLVMOpaqueValue *LLVMValueRef;
-
-/**
- * Represents a basic block of instructions in LLVM IR.
- *
- * This models llvm::BasicBlock.
- */
-typedef struct LLVMOpaqueBasicBlock *LLVMBasicBlockRef;
-
-/**
- * Represents an LLVM basic block builder.
- *
- * This models llvm::IRBuilder.
- */
-typedef struct LLVMOpaqueBuilder *LLVMBuilderRef;
-
-/**
- * Interface used to provide a module to JIT or interpreter.
- * This is now just a synonym for llvm::Module, but we have to keep using the
- * different type to keep binary compatibility.
- */
-typedef struct LLVMOpaqueModuleProvider *LLVMModuleProviderRef;
-
-/**
- * Used to provide a module to JIT or interpreter.
- *
- * @see llvm::MemoryBuffer
- */
-typedef struct LLVMOpaqueMemoryBuffer *LLVMMemoryBufferRef;
-
-/** @see llvm::PassManagerBase */
-typedef struct LLVMOpaquePassManager *LLVMPassManagerRef;
-
-/** @see llvm::PassRegistry */
-typedef struct LLVMOpaquePassRegistry *LLVMPassRegistryRef;
-
-/**
- * Used to get the users and usees of a Value.
- *
- * @see llvm::Use */
-typedef struct LLVMOpaqueUse *LLVMUseRef;
 
 typedef enum {
     LLVMZExtAttribute       = 1<<0,
@@ -164,10 +85,17 @@ typedef enum {
     /* FIXME: These attributes are currently not included in the C API as
        a temporary measure until the API/ABI impact to the C API is understood
        and the path forward agreed upon.
-    LLVMAddressSafety = 1ULL << 32,
-    LLVMStackProtectStrongAttribute = 1ULL<<33,
-    LLVMCold = 1ULL << 34,
-    LLVMOptimizeNone = 1ULL << 35
+    LLVMSanitizeAddressAttribute = 1ULL << 32,
+    LLVMStackProtectStrongAttribute = 1ULL<<35,
+    LLVMColdAttribute = 1ULL << 40,
+    LLVMOptimizeNoneAttribute = 1ULL << 42,
+    LLVMInAllocaAttribute = 1ULL << 43,
+    LLVMNonNullAttribute = 1ULL << 44,
+    LLVMJumpTableAttribute = 1ULL << 45,
+    LLVMConvergentAttribute = 1ULL << 46,
+    LLVMSafeStackAttribute = 1ULL << 47,
+    LLVMSwiftSelfAttribute = 1ULL << 48,
+    LLVMSwiftErrorAttribute = 1ULL << 49,
     */
 } LLVMAttribute;
 
@@ -222,6 +150,7 @@ typedef enum {
   LLVMPtrToInt       = 39,
   LLVMIntToPtr       = 40,
   LLVMBitCast        = 41,
+  LLVMAddrSpaceCast  = 60,
 
   /* Other Operators */
   LLVMICmp           = 42,
@@ -245,8 +174,12 @@ typedef enum {
 
   /* Exception Handling Operators */
   LLVMResume         = 58,
-  LLVMLandingPad     = 59
-
+  LLVMLandingPad     = 59,
+  LLVMCleanupRet     = 61,
+  LLVMCatchRet       = 62,
+  LLVMCatchPad       = 63,
+  LLVMCleanupPad     = 64,
+  LLVMCatchSwitch    = 65
 } LLVMOpcode;
 
 typedef enum {
@@ -265,7 +198,8 @@ typedef enum {
   LLVMPointerTypeKind,     /**< Pointers */
   LLVMVectorTypeKind,      /**< SIMD 'packed' format, or other vector type */
   LLVMMetadataTypeKind,    /**< Metadata */
-  LLVMX86_MMXTypeKind      /**< X86 MMX */
+  LLVMX86_MMXTypeKind,     /**< X86 MMX */
+  LLVMTokenTypeKind        /**< Tokens */
 } LLVMTypeKind;
 
 typedef enum {
@@ -282,8 +216,8 @@ typedef enum {
   LLVMInternalLinkage,    /**< Rename collisions when linking (static
                                functions) */
   LLVMPrivateLinkage,     /**< Like Internal, but omit from symbol table */
-  LLVMDLLImportLinkage,   /**< Function to be imported from DLL */
-  LLVMDLLExportLinkage,   /**< Function to be accessible from DLL */
+  LLVMDLLImportLinkage,   /**< Obsolete */
+  LLVMDLLExportLinkage,   /**< Obsolete */
   LLVMExternalWeakLinkage,/**< ExternalWeak linkage description */
   LLVMGhostLinkage,       /**< Obsolete */
   LLVMCommonLinkage,      /**< Tentative definitions */
@@ -298,12 +232,52 @@ typedef enum {
 } LLVMVisibility;
 
 typedef enum {
+  LLVMDefaultStorageClass   = 0,
+  LLVMDLLImportStorageClass = 1, /**< Function to be imported from DLL. */
+  LLVMDLLExportStorageClass = 2  /**< Function to be accessible from DLL. */
+} LLVMDLLStorageClass;
+
+typedef enum {
   LLVMCCallConv           = 0,
   LLVMFastCallConv        = 8,
   LLVMColdCallConv        = 9,
+  LLVMWebKitJSCallConv    = 12,
+  LLVMAnyRegCallConv      = 13,
   LLVMX86StdcallCallConv  = 64,
   LLVMX86FastcallCallConv = 65
 } LLVMCallConv;
+
+typedef enum {
+  LLVMArgumentValueKind,
+  LLVMBasicBlockValueKind,
+  LLVMMemoryUseValueKind,
+  LLVMMemoryDefValueKind,
+  LLVMMemoryPhiValueKind,
+
+  LLVMFunctionValueKind,
+  LLVMGlobalAliasValueKind,
+  LLVMGlobalIFuncValueKind,
+  LLVMGlobalVariableValueKind,
+  LLVMBlockAddressValueKind,
+  LLVMConstantExprValueKind,
+  LLVMConstantArrayValueKind,
+  LLVMConstantStructValueKind,
+  LLVMConstantVectorValueKind,
+
+  LLVMUndefValueValueKind,
+  LLVMConstantAggregateZeroValueKind,
+  LLVMConstantDataArrayValueKind,
+  LLVMConstantDataVectorValueKind,
+  LLVMConstantIntValueKind,
+  LLVMConstantFPValueKind,
+  LLVMConstantPointerNullValueKind,
+  LLVMConstantTokenNoneValueKind,
+
+  LLVMMetadataAsValueValueKind,
+  LLVMInlineAsmValueKind,
+
+  LLVMInstructionValueKind,
+} LLVMValueKind;
 
 typedef enum {
   LLVMIntEQ = 32, /**< equal */
@@ -399,6 +373,27 @@ typedef enum {
                              the old one */
 } LLVMAtomicRMWBinOp;
 
+typedef enum {
+    LLVMDSError,
+    LLVMDSWarning,
+    LLVMDSRemark,
+    LLVMDSNote
+} LLVMDiagnosticSeverity;
+
+/**
+ * Attribute index are either LLVMAttributeReturnIndex,
+ * LLVMAttributeFunctionIndex or a parameter number from 1 to N.
+ */
+enum {
+  LLVMAttributeReturnIndex = 0U,
+  // ISO C restricts enumerator values to range of 'int'
+  // (4294967295 is too large)
+  // LLVMAttributeFunctionIndex = ~0U,
+  LLVMAttributeFunctionIndex = -1,
+};
+
+typedef unsigned LLVMAttributeIndex;
+
 /**
  * @}
  */
@@ -410,35 +405,10 @@ void LLVMInitializeCore(LLVMPassRegistryRef R);
     @see ManagedStatic */
 void LLVMShutdown(void);
 
-
 /*===-- Error handling ----------------------------------------------------===*/
 
 char *LLVMCreateMessage(const char *Message);
 void LLVMDisposeMessage(char *Message);
-
-typedef void (*LLVMFatalErrorHandler)(const char *Reason);
-
-/**
- * Install a fatal error handler. By default, if LLVM detects a fatal error, it
- * will call exit(1). This may not be appropriate in many contexts. For example,
- * doing exit(1) will bypass many crash reporting/tracing system tools. This
- * function allows you to install a callback that will be invoked prior to the
- * call to exit(1).
- */
-void LLVMInstallFatalErrorHandler(LLVMFatalErrorHandler Handler);
-
-/**
- * Reset the fatal error handler. This resets LLVM's fatal error handling
- * behavior to the default.
- */
-void LLVMResetFatalErrorHandler(void);
-
-/**
- * Enable LLVM's built-in stack trace code. This intercepts the OS's crash
- * signals and prints which component of LLVM you were in at the time if the
- * crash.
- */
-void LLVMEnablePrettyStackTrace(void);
 
 /**
  * @defgroup LLVMCCoreContext Contexts
@@ -451,6 +421,9 @@ void LLVMEnablePrettyStackTrace(void);
  *
  * @{
  */
+
+typedef void (*LLVMDiagnosticHandler)(LLVMDiagnosticInfoRef, void *);
+typedef void (*LLVMYieldCallback)(LLVMContextRef, void *);
 
 /**
  * Create a new context.
@@ -466,6 +439,31 @@ LLVMContextRef LLVMContextCreate(void);
 LLVMContextRef LLVMGetGlobalContext(void);
 
 /**
+ * Set the diagnostic handler for this context.
+ */
+void LLVMContextSetDiagnosticHandler(LLVMContextRef C,
+                                     LLVMDiagnosticHandler Handler,
+                                     void *DiagnosticContext);
+
+/**
+ * Get the diagnostic handler of this context.
+ */
+LLVMDiagnosticHandler LLVMContextGetDiagnosticHandler(LLVMContextRef C);
+
+/**
+ * Get the diagnostic context of this context.
+ */
+void *LLVMContextGetDiagnosticContext(LLVMContextRef C);
+
+/**
+ * Set the yield callback function for this context.
+ *
+ * @see LLVMContext::setYieldCallback()
+ */
+void LLVMContextSetYieldCallback(LLVMContextRef C, LLVMYieldCallback Callback,
+                                 void *OpaqueHandle);
+
+/**
  * Destroy a context instance.
  *
  * This should be called for every call to LLVMContextCreate() or memory
@@ -473,9 +471,78 @@ LLVMContextRef LLVMGetGlobalContext(void);
  */
 void LLVMContextDispose(LLVMContextRef C);
 
-unsigned LLVMGetMDKindIDInContext(LLVMContextRef C, const char* Name,
+/**
+ * Return a string representation of the DiagnosticInfo. Use
+ * LLVMDisposeMessage to free the string.
+ *
+ * @see DiagnosticInfo::print()
+ */
+char *LLVMGetDiagInfoDescription(LLVMDiagnosticInfoRef DI);
+
+/**
+ * Return an enum LLVMDiagnosticSeverity.
+ *
+ * @see DiagnosticInfo::getSeverity()
+ */
+LLVMDiagnosticSeverity LLVMGetDiagInfoSeverity(LLVMDiagnosticInfoRef DI);
+
+unsigned LLVMGetMDKindIDInContext(LLVMContextRef C, const char *Name,
                                   unsigned SLen);
-unsigned LLVMGetMDKindID(const char* Name, unsigned SLen);
+unsigned LLVMGetMDKindID(const char *Name, unsigned SLen);
+
+/**
+ * Return an unique id given the name of a enum attribute,
+ * or 0 if no attribute by that name exists.
+ *
+ * See http://llvm.org/docs/LangRef.html#parameter-attributes
+ * and http://llvm.org/docs/LangRef.html#function-attributes
+ * for the list of available attributes.
+ *
+ * NB: Attribute names and/or id are subject to change without
+ * going through the C API deprecation cycle.
+ */
+unsigned LLVMGetEnumAttributeKindForName(const char *Name, size_t SLen);
+unsigned LLVMGetLastEnumAttributeKind(void);
+
+/**
+ * Create an enum attribute.
+ */
+LLVMAttributeRef LLVMCreateEnumAttribute(LLVMContextRef C, unsigned KindID,
+                                         uint64_t Val);
+
+/**
+ * Get the unique id corresponding to the enum attribute
+ * passed as argument.
+ */
+unsigned LLVMGetEnumAttributeKind(LLVMAttributeRef A);
+
+/**
+ * Get the enum attribute's value. 0 is returned if none exists.
+ */
+uint64_t LLVMGetEnumAttributeValue(LLVMAttributeRef A);
+
+/**
+ * Create a string attribute.
+ */
+LLVMAttributeRef LLVMCreateStringAttribute(LLVMContextRef C,
+                                           const char *K, unsigned KLength,
+                                           const char *V, unsigned VLength);
+
+/**
+ * Get the string attribute's kind.
+ */
+const char *LLVMGetStringAttributeKind(LLVMAttributeRef A, unsigned *Length);
+
+/**
+ * Get the string attribute's value.
+ */
+const char *LLVMGetStringAttributeValue(LLVMAttributeRef A, unsigned *Length);
+
+/**
+ * Check for the different types of attributes.
+ */
+LLVMBool LLVMIsEnumAttribute(LLVMAttributeRef A);
+LLVMBool LLVMIsStringAttribute(LLVMAttributeRef A);
 
 /**
  * @}
@@ -510,6 +577,10 @@ LLVMModuleRef LLVMModuleCreateWithName(const char *ModuleID);
  */
 LLVMModuleRef LLVMModuleCreateWithNameInContext(const char *ModuleID,
                                                 LLVMContextRef C);
+/**
+ * Return an exact copy of the specified module.
+ */
+LLVMModuleRef LLVMCloneModule(LLVMModuleRef M);
 
 /**
  * Destroy a module instance.
@@ -520,10 +591,35 @@ LLVMModuleRef LLVMModuleCreateWithNameInContext(const char *ModuleID,
 void LLVMDisposeModule(LLVMModuleRef M);
 
 /**
+ * Obtain the identifier of a module.
+ *
+ * @param M Module to obtain identifier of
+ * @param Len Out parameter which holds the length of the returned string.
+ * @return The identifier of M.
+ * @see Module::getModuleIdentifier()
+ */
+const char *LLVMGetModuleIdentifier(LLVMModuleRef M, size_t *Len);
+
+/**
+ * Set the identifier of a module to a string Ident with length Len.
+ *
+ * @param M The module to set identifier
+ * @param Ident The string to set M's identifier to
+ * @param Len Length of Ident
+ * @see Module::setModuleIdentifier()
+ */
+void LLVMSetModuleIdentifier(LLVMModuleRef M, const char *Ident, size_t Len);
+
+/**
  * Obtain the data layout for a module.
  *
- * @see Module::getDataLayout()
+ * @see Module::getDataLayoutStr()
+ *
+ * LLVMGetDataLayout is DEPRECATED, as the name is not only incorrect,
+ * but match the name of another method on the module. Prefer the use
+ * of LLVMGetDataLayoutStr, which is not ambiguous.
  */
+const char *LLVMGetDataLayoutStr(LLVMModuleRef M);
 const char *LLVMGetDataLayout(LLVMModuleRef M);
 
 /**
@@ -531,7 +627,7 @@ const char *LLVMGetDataLayout(LLVMModuleRef M);
  *
  * @see Module::setDataLayout()
  */
-void LLVMSetDataLayout(LLVMModuleRef M, const char *Triple);
+void LLVMSetDataLayout(LLVMModuleRef M, const char *DataLayoutStr);
 
 /**
  * Obtain the target triple for a module.
@@ -595,7 +691,7 @@ LLVMTypeRef LLVMGetTypeByName(LLVMModuleRef M, const char *Name);
  *
  * @see llvm::Module::getNamedMetadata()
  */
-unsigned LLVMGetNamedMetadataNumOperands(LLVMModuleRef M, const char* name);
+unsigned LLVMGetNamedMetadataNumOperands(LLVMModuleRef M, const char *Name);
 
 /**
  * Obtain the named metadata operands for a module.
@@ -608,7 +704,8 @@ unsigned LLVMGetNamedMetadataNumOperands(LLVMModuleRef M, const char* name);
  * @see llvm::Module::getNamedMetadata()
  * @see llvm::MDNode::getOperand()
  */
-void LLVMGetNamedMetadataOperands(LLVMModuleRef M, const char* name, LLVMValueRef *Dest);
+void LLVMGetNamedMetadataOperands(LLVMModuleRef M, const char *Name,
+                                  LLVMValueRef *Dest);
 
 /**
  * Add an operand to named metadata.
@@ -616,7 +713,7 @@ void LLVMGetNamedMetadataOperands(LLVMModuleRef M, const char* name, LLVMValueRe
  * @see llvm::Module::getNamedMetadata()
  * @see llvm::MDNode::addOperand()
  */
-void LLVMAddNamedMetadataOperand(LLVMModuleRef M, const char* name,
+void LLVMAddNamedMetadataOperand(LLVMModuleRef M, const char *Name,
                                  LLVMValueRef Val);
 
 /**
@@ -753,6 +850,7 @@ LLVMTypeRef LLVMInt8TypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMInt16TypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMInt32TypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMInt64TypeInContext(LLVMContextRef C);
+LLVMTypeRef LLVMInt128TypeInContext(LLVMContextRef C);
 LLVMTypeRef LLVMIntTypeInContext(LLVMContextRef C, unsigned NumBits);
 
 /**
@@ -764,6 +862,7 @@ LLVMTypeRef LLVMInt8Type(void);
 LLVMTypeRef LLVMInt16Type(void);
 LLVMTypeRef LLVMInt32Type(void);
 LLVMTypeRef LLVMInt64Type(void);
+LLVMTypeRef LLVMInt128Type(void);
 LLVMTypeRef LLVMIntType(unsigned NumBits);
 unsigned LLVMGetIntTypeWidth(LLVMTypeRef IntegerTy);
 
@@ -943,6 +1042,13 @@ unsigned LLVMCountStructElementTypes(LLVMTypeRef StructTy);
 void LLVMGetStructElementTypes(LLVMTypeRef StructTy, LLVMTypeRef *Dest);
 
 /**
+ * Get the type of the element at a given index in the structure.
+ *
+ * @see llvm::StructType::getTypeAtIndex()
+ */
+LLVMTypeRef LLVMStructGetTypeAtIndex(LLVMTypeRef StructTy, unsigned i);
+
+/**
  * Determine whether a structure is packed.
  *
  * @see llvm::StructType::isPacked()
@@ -959,7 +1065,6 @@ LLVMBool LLVMIsOpaqueStruct(LLVMTypeRef StructTy);
 /**
  * @}
  */
-
 
 /**
  * @defgroup LLVMCCoreTypeSequential Sequential Types
@@ -1103,8 +1208,6 @@ LLVMTypeRef LLVMX86MMXType(void);
   macro(Argument)                           \
   macro(BasicBlock)                         \
   macro(InlineAsm)                          \
-  macro(MDNode)                             \
-  macro(MDString)                           \
   macro(User)                               \
     macro(Constant)                         \
       macro(BlockAddress)                   \
@@ -1118,11 +1221,13 @@ LLVMTypeRef LLVMX86MMXType(void);
       macro(ConstantInt)                    \
       macro(ConstantPointerNull)            \
       macro(ConstantStruct)                 \
+      macro(ConstantTokenNone)              \
       macro(ConstantVector)                 \
       macro(GlobalValue)                    \
-        macro(Function)                     \
         macro(GlobalAlias)                  \
-        macro(GlobalVariable)               \
+        macro(GlobalObject)                 \
+          macro(Function)                   \
+          macro(GlobalVariable)             \
       macro(UndefValue)                     \
     macro(Instruction)                      \
       macro(BinaryOperator)                 \
@@ -1154,9 +1259,15 @@ LLVMTypeRef LLVMX86MMXType(void);
         macro(SwitchInst)                   \
         macro(UnreachableInst)              \
         macro(ResumeInst)                   \
+        macro(CleanupReturnInst)            \
+        macro(CatchReturnInst)              \
+      macro(FuncletPadInst)                 \
+        macro(CatchPadInst)                 \
+        macro(CleanupPadInst)               \
       macro(UnaryInstruction)               \
         macro(AllocaInst)                   \
         macro(CastInst)                     \
+          macro(AddrSpaceCastInst)          \
           macro(BitCastInst)                \
           macro(FPExtInst)                  \
           macro(FPToSIInst)                 \
@@ -1189,6 +1300,13 @@ LLVMTypeRef LLVMX86MMXType(void);
  * @see llvm::Value::getType()
  */
 LLVMTypeRef LLVMTypeOf(LLVMValueRef Val);
+
+/**
+ * Obtain the enumerated type of a Value instance.
+ *
+ * @see llvm::Value::getValueID()
+ */
+LLVMValueKind LLVMGetValueKind(LLVMValueRef Val);
 
 /**
  * Obtain the string name of a value.
@@ -1227,7 +1345,7 @@ char *LLVMPrintValueToString(LLVMValueRef Val);
 void LLVMReplaceAllUsesWith(LLVMValueRef OldVal, LLVMValueRef NewVal);
 
 /**
- * Determine whether the specified constant instance is constant.
+ * Determine whether the specified value instance is constant.
  */
 LLVMBool LLVMIsConstant(LLVMValueRef Val);
 
@@ -1250,6 +1368,9 @@ LLVMBool LLVMIsUndef(LLVMValueRef Val);
 #define LLVM_DECLARE_VALUE_CAST(name) \
   LLVMValueRef LLVMIsA##name(LLVMValueRef Val);
 LLVM_FOR_EACH_VALUE_SUBCLASS(LLVM_DECLARE_VALUE_CAST)
+
+LLVMValueRef LLVMIsAMDNode(LLVMValueRef Val);
+LLVMValueRef LLVMIsAMDString(LLVMValueRef Val);
 
 /**
  * @}
@@ -1324,6 +1445,13 @@ LLVMValueRef LLVMGetUsedValue(LLVMUseRef U);
  * @see llvm::User::getOperand()
  */
 LLVMValueRef LLVMGetOperand(LLVMValueRef Val, unsigned Index);
+
+/**
+ * Obtain the use of an operand at a specific index in a llvm::User value.
+ *
+ * @see llvm::User::getOperandUse()
+ */
+LLVMUseRef LLVMGetOperandUse(LLVMValueRef Val, unsigned Index);
 
 /**
  * Set an operand at a specific index in a llvm::User value.
@@ -1486,6 +1614,14 @@ unsigned long long LLVMConstIntGetZExtValue(LLVMValueRef ConstantVal);
 long long LLVMConstIntGetSExtValue(LLVMValueRef ConstantVal);
 
 /**
+ * Obtain the double value for an floating point constant value.
+ * losesInfo indicates if some precision was lost in the conversion.
+ *
+ * @see llvm::ConstantFP::getDoubleValue
+ */
+double LLVMConstRealGetDouble(LLVMValueRef ConstantVal, LLVMBool *losesInfo);
+
+/**
  * @}
  */
 
@@ -1516,6 +1652,20 @@ LLVMValueRef LLVMConstStringInContext(LLVMContextRef C, const char *Str,
  */
 LLVMValueRef LLVMConstString(const char *Str, unsigned Length,
                              LLVMBool DontNullTerminate);
+
+/**
+ * Returns true if the specified constant is an array of i8.
+ *
+ * @see ConstantDataSequential::getAsString()
+ */
+LLVMBool LLVMIsConstantString(LLVMValueRef c);
+
+/**
+ * Get the given constant data sequential as a string.
+ *
+ * @see ConstantDataSequential::getAsString()
+ */
+const char *LLVMGetAsString(LLVMValueRef c, size_t *Length);
 
 /**
  * Create an anonymous ConstantStruct with the specified values.
@@ -1553,6 +1703,13 @@ LLVMValueRef LLVMConstArray(LLVMTypeRef ElementTy,
 LLVMValueRef LLVMConstNamedStruct(LLVMTypeRef StructTy,
                                   LLVMValueRef *ConstantVals,
                                   unsigned Count);
+
+/**
+ * Get an element at specified index as a constant.
+ *
+ * @see ConstantDataSequential::getElementAsConstant()
+ */
+LLVMValueRef LLVMGetElementAsConstant(LLVMValueRef C, unsigned idx);
 
 /**
  * Create a ConstantVector from values.
@@ -1628,6 +1785,7 @@ LLVMValueRef LLVMConstFPToSI(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstPtrToInt(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstIntToPtr(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstBitCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
+LLVMValueRef LLVMConstAddrSpaceCast(LLVMValueRef ConstantVal, LLVMTypeRef ToType);
 LLVMValueRef LLVMConstZExtOrBitCast(LLVMValueRef ConstantVal,
                                     LLVMTypeRef ToType);
 LLVMValueRef LLVMConstSExtOrBitCast(LLVMValueRef ConstantVal,
@@ -1683,6 +1841,10 @@ const char *LLVMGetSection(LLVMValueRef Global);
 void LLVMSetSection(LLVMValueRef Global, const char *Section);
 LLVMVisibility LLVMGetVisibility(LLVMValueRef Global);
 void LLVMSetVisibility(LLVMValueRef Global, LLVMVisibility Viz);
+LLVMDLLStorageClass LLVMGetDLLStorageClass(LLVMValueRef Global);
+void LLVMSetDLLStorageClass(LLVMValueRef Global, LLVMDLLStorageClass Class);
+LLVMBool LLVMHasUnnamedAddr(LLVMValueRef Global);
+void LLVMSetUnnamedAddr(LLVMValueRef Global, LLVMBool HasUnnamedAddr);
 
 /**
  * @defgroup LLVMCCoreValueWithAlignment Values with alignment
@@ -1693,6 +1855,7 @@ void LLVMSetVisibility(LLVMValueRef Global, LLVMVisibility Viz);
 
 /**
  * Obtain the preferred alignment of the value.
+ * @see llvm::AllocaInst::getAlignment()
  * @see llvm::LoadInst::getAlignment()
  * @see llvm::StoreInst::getAlignment()
  * @see llvm::GlobalValue::getAlignment()
@@ -1701,6 +1864,7 @@ unsigned LLVMGetAlignment(LLVMValueRef V);
 
 /**
  * Set the preferred alignment of the value.
+ * @see llvm::AllocaInst::setAlignment()
  * @see llvm::LoadInst::setAlignment()
  * @see llvm::StoreInst::setAlignment()
  * @see llvm::GlobalValue::setAlignment()
@@ -1708,8 +1872,8 @@ unsigned LLVMGetAlignment(LLVMValueRef V);
 void LLVMSetAlignment(LLVMValueRef V, unsigned Bytes);
 
 /**
-  * @}
-  */
+ * @}
+ */
 
 /**
  * @defgroup LLVMCoreValueConstantGlobalVariable Global Variables
@@ -1780,6 +1944,27 @@ LLVMValueRef LLVMAddAlias(LLVMModuleRef M, LLVMTypeRef Ty, LLVMValueRef Aliasee,
 void LLVMDeleteFunction(LLVMValueRef Fn);
 
 /**
+ * Check whether the given function has a personality function.
+ *
+ * @see llvm::Function::hasPersonalityFn()
+ */
+LLVMBool LLVMHasPersonalityFn(LLVMValueRef Fn);
+
+/**
+ * Obtain the personality function attached to the function.
+ *
+ * @see llvm::Function::getPersonalityFn()
+ */
+LLVMValueRef LLVMGetPersonalityFn(LLVMValueRef Fn);
+
+/**
+ * Set the personality function attached to the function.
+ *
+ * @see llvm::Function::setPersonalityFn()
+ */
+void LLVMSetPersonalityFn(LLVMValueRef Fn, LLVMValueRef PersonalityFn);
+
+/**
  * Obtain the ID number from a function instance.
  *
  * @see llvm::Function::getIntrinsicID()
@@ -1827,8 +2012,24 @@ void LLVMSetGC(LLVMValueRef Fn, const char *Name);
  */
 void LLVMAddFunctionAttr(LLVMValueRef Fn, LLVMAttribute PA);
 
+void LLVMAddAttributeAtIndex(LLVMValueRef F, LLVMAttributeIndex Idx,
+                             LLVMAttributeRef A);
+unsigned LLVMGetAttributeCountAtIndex(LLVMValueRef F, LLVMAttributeIndex Idx);
+void LLVMGetAttributesAtIndex(LLVMValueRef F, LLVMAttributeIndex Idx,
+                              LLVMAttributeRef *Attrs);
+LLVMAttributeRef LLVMGetEnumAttributeAtIndex(LLVMValueRef F,
+                                             LLVMAttributeIndex Idx,
+                                             unsigned KindID);
+LLVMAttributeRef LLVMGetStringAttributeAtIndex(LLVMValueRef F,
+                                               LLVMAttributeIndex Idx,
+                                               const char *K, unsigned KLen);
+void LLVMRemoveEnumAttributeAtIndex(LLVMValueRef F, LLVMAttributeIndex Idx,
+                                    unsigned KindID);
+void LLVMRemoveStringAttributeAtIndex(LLVMValueRef F, LLVMAttributeIndex Idx,
+                                      const char *K, unsigned KLen);
+
 /**
- * Add a target-dependent attribute to a fuction
+ * Add a target-dependent attribute to a function
  * @see llvm::AttrBuilder::addAttribute()
  */
 void LLVMAddTargetDependentFunctionAttr(LLVMValueRef Fn, const char *A,
@@ -1952,7 +2153,7 @@ LLVMAttribute LLVMGetAttribute(LLVMValueRef Arg);
  * @see llvm::Argument::addAttr()
  * @see llvm::AttrBuilder::addAlignmentAttr()
  */
-void LLVMSetParamAlignment(LLVMValueRef Arg, unsigned align);
+void LLVMSetParamAlignment(LLVMValueRef Arg, unsigned Align);
 
 /**
  * @}
@@ -2010,10 +2211,10 @@ LLVMValueRef LLVMMDNode(LLVMValueRef *Vals, unsigned Count);
  * Obtain the underlying string from a MDString value.
  *
  * @param V Instance to obtain string from.
- * @param Len Memory address which will hold length of returned string.
+ * @param Length Memory address which will hold length of returned string.
  * @return String data in MDString.
  */
-const char  *LLVMGetMDString(LLVMValueRef V, unsigned* Len);
+const char *LLVMGetMDString(LLVMValueRef V, unsigned *Length);
 
 /**
  * Obtain the number of operands from an MDNode value.
@@ -2071,6 +2272,11 @@ LLVMBool LLVMValueIsBasicBlock(LLVMValueRef Val);
  * Convert an LLVMValueRef to an LLVMBasicBlockRef instance.
  */
 LLVMBasicBlockRef LLVMValueAsBasicBlock(LLVMValueRef Val);
+
+/**
+ * Obtain the string name of a basic block.
+ */
+const char *LLVMGetBasicBlockName(LLVMBasicBlockRef BB);
 
 /**
  * Obtain the function to which a basic block belongs.
@@ -2294,6 +2500,16 @@ LLVMValueRef LLVMGetPreviousInstruction(LLVMValueRef Inst);
  * Remove and delete an instruction.
  *
  * The instruction specified is removed from its containing building
+ * block but is kept alive.
+ *
+ * @see llvm::Instruction::removeFromParent()
+ */
+void LLVMInstructionRemoveFromParent(LLVMValueRef Inst);
+
+/**
+ * Remove and delete an instruction.
+ *
+ * The instruction specified is removed from its containing building
  * block and then deleted.
  *
  * @see llvm::Instruction::eraseFromParent()
@@ -2305,7 +2521,7 @@ void LLVMInstructionEraseFromParent(LLVMValueRef Inst);
  *
  * @see llvm::Instruction::getOpCode()
  */
-LLVMOpcode   LLVMGetInstructionOpcode(LLVMValueRef Inst);
+LLVMOpcode LLVMGetInstructionOpcode(LLVMValueRef Inst);
 
 /**
  * Obtain the predicate of an instruction.
@@ -2318,6 +2534,26 @@ LLVMOpcode   LLVMGetInstructionOpcode(LLVMValueRef Inst);
 LLVMIntPredicate LLVMGetICmpPredicate(LLVMValueRef Inst);
 
 /**
+ * Obtain the float predicate of an instruction.
+ *
+ * This is only valid for instructions that correspond to llvm::FCmpInst
+ * or llvm::ConstantExpr whose opcode is llvm::Instruction::FCmp.
+ *
+ * @see llvm::FCmpInst::getPredicate()
+ */
+LLVMRealPredicate LLVMGetFCmpPredicate(LLVMValueRef Inst);
+
+/**
+ * Create a copy of 'this' instruction that is identical in all ways
+ * except the following:
+ *   * The instruction has no parent
+ *   * The instruction has no name
+ *
+ * @see llvm::Instruction::clone()
+ */
+LLVMValueRef LLVMInstructionClone(LLVMValueRef Inst);
+
+/**
  * @defgroup LLVMCCoreValueInstructionCall Call Sites and Invocations
  *
  * Functions in this group apply to instructions that refer to call
@@ -2326,6 +2562,17 @@ LLVMIntPredicate LLVMGetICmpPredicate(LLVMValueRef Inst);
  *
  * @{
  */
+
+/**
+ * Obtain the argument count for a call instruction.
+ *
+ * This expects an LLVMValueRef that corresponds to a llvm::CallInst or
+ * llvm::InvokeInst.
+ *
+ * @see llvm::CallInst::getNumArgOperands()
+ * @see llvm::InvokeInst::getNumArgOperands()
+ */
+unsigned LLVMGetNumArgOperands(LLVMValueRef Instr);
 
 /**
  * Set the calling convention for a call instruction.
@@ -2348,12 +2595,38 @@ void LLVMSetInstructionCallConv(LLVMValueRef Instr, unsigned CC);
  */
 unsigned LLVMGetInstructionCallConv(LLVMValueRef Instr);
 
-
 void LLVMAddInstrAttribute(LLVMValueRef Instr, unsigned index, LLVMAttribute);
 void LLVMRemoveInstrAttribute(LLVMValueRef Instr, unsigned index,
                               LLVMAttribute);
 void LLVMSetInstrParamAlignment(LLVMValueRef Instr, unsigned index,
-                                unsigned align);
+                                unsigned Align);
+
+void LLVMAddCallSiteAttribute(LLVMValueRef C, LLVMAttributeIndex Idx,
+                              LLVMAttributeRef A);
+unsigned LLVMGetCallSiteAttributeCount(LLVMValueRef C, LLVMAttributeIndex Idx);
+void LLVMGetCallSiteAttributes(LLVMValueRef C, LLVMAttributeIndex Idx,
+                               LLVMAttributeRef *Attrs);
+LLVMAttributeRef LLVMGetCallSiteEnumAttribute(LLVMValueRef C,
+                                              LLVMAttributeIndex Idx,
+                                              unsigned KindID);
+LLVMAttributeRef LLVMGetCallSiteStringAttribute(LLVMValueRef C,
+                                                LLVMAttributeIndex Idx,
+                                                const char *K, unsigned KLen);
+void LLVMRemoveCallSiteEnumAttribute(LLVMValueRef C, LLVMAttributeIndex Idx,
+                                     unsigned KindID);
+void LLVMRemoveCallSiteStringAttribute(LLVMValueRef C, LLVMAttributeIndex Idx,
+                                       const char *K, unsigned KLen);
+
+/**
+ * Obtain the pointer to the function invoked by this instruction.
+ *
+ * This expects an LLVMValueRef that corresponds to a llvm::CallInst or
+ * llvm::InvokeInst.
+ *
+ * @see llvm::CallInst::getCalledValue()
+ * @see llvm::InvokeInst::getCalledValue()
+ */
+LLVMValueRef LLVMGetCalledValue(LLVMValueRef Instr);
 
 /**
  * Obtain whether a call instruction is a tail call.
@@ -2374,8 +2647,101 @@ LLVMBool LLVMIsTailCall(LLVMValueRef CallInst);
 void LLVMSetTailCall(LLVMValueRef CallInst, LLVMBool IsTailCall);
 
 /**
+ * Return the normal destination basic block.
+ *
+ * This only works on llvm::InvokeInst instructions.
+ *
+ * @see llvm::InvokeInst::getNormalDest()
+ */
+LLVMBasicBlockRef LLVMGetNormalDest(LLVMValueRef InvokeInst);
+
+/**
+ * Return the unwind destination basic block.
+ *
+ * This only works on llvm::InvokeInst instructions.
+ *
+ * @see llvm::InvokeInst::getUnwindDest()
+ */
+LLVMBasicBlockRef LLVMGetUnwindDest(LLVMValueRef InvokeInst);
+
+/**
+ * Set the normal destination basic block.
+ *
+ * This only works on llvm::InvokeInst instructions.
+ *
+ * @see llvm::InvokeInst::setNormalDest()
+ */
+void LLVMSetNormalDest(LLVMValueRef InvokeInst, LLVMBasicBlockRef B);
+
+/**
+ * Set the unwind destination basic block.
+ *
+ * This only works on llvm::InvokeInst instructions.
+ *
+ * @see llvm::InvokeInst::setUnwindDest()
+ */
+void LLVMSetUnwindDest(LLVMValueRef InvokeInst, LLVMBasicBlockRef B);
+
+/**
  * @}
  */
+
+/**
+ * @defgroup LLVMCCoreValueInstructionTerminator Terminators
+ *
+ * Functions in this group only apply to instructions that map to
+ * llvm::TerminatorInst instances.
+ *
+ * @{
+ */
+
+/**
+ * Return the number of successors that this terminator has.
+ *
+ * @see llvm::TerminatorInst::getNumSuccessors
+ */
+unsigned LLVMGetNumSuccessors(LLVMValueRef Term);
+
+/**
+ * Return the specified successor.
+ *
+ * @see llvm::TerminatorInst::getSuccessor
+ */
+LLVMBasicBlockRef LLVMGetSuccessor(LLVMValueRef Term, unsigned i);
+
+/**
+ * Update the specified successor to point at the provided block.
+ *
+ * @see llvm::TerminatorInst::setSuccessor
+ */
+void LLVMSetSuccessor(LLVMValueRef Term, unsigned i, LLVMBasicBlockRef block);
+
+/**
+ * Return if a branch is conditional.
+ *
+ * This only works on llvm::BranchInst instructions.
+ *
+ * @see llvm::BranchInst::isConditional
+ */
+LLVMBool LLVMIsConditional(LLVMValueRef Branch);
+
+/**
+ * Return the condition of a branch instruction.
+ *
+ * This only works on llvm::BranchInst instructions.
+ *
+ * @see llvm::BranchInst::getCondition
+ */
+LLVMValueRef LLVMGetCondition(LLVMValueRef Branch);
+
+/**
+ * Set the condition of a branch instruction.
+ *
+ * This only works on llvm::BranchInst instructions.
+ *
+ * @see llvm::BranchInst::setCondition
+ */
+void LLVMSetCondition(LLVMValueRef Branch, LLVMValueRef Cond);
 
 /**
  * Obtain the default destination basic block of a switch instruction.
@@ -2385,6 +2751,51 @@ void LLVMSetTailCall(LLVMValueRef CallInst, LLVMBool IsTailCall);
  * @see llvm::SwitchInst::getDefaultDest()
  */
 LLVMBasicBlockRef LLVMGetSwitchDefaultDest(LLVMValueRef SwitchInstr);
+
+/**
+ * @}
+ */
+
+/**
+ * @defgroup LLVMCCoreValueInstructionAlloca Allocas
+ *
+ * Functions in this group only apply to instructions that map to
+ * llvm::AllocaInst instances.
+ *
+ * @{
+ */
+
+/**
+ * Obtain the type that is being allocated by the alloca instruction.
+ */
+LLVMTypeRef LLVMGetAllocatedType(LLVMValueRef Alloca);
+
+/**
+ * @}
+ */
+
+/**
+ * @defgroup LLVMCCoreValueInstructionGetElementPointer GEPs
+ *
+ * Functions in this group only apply to instructions that map to
+ * llvm::GetElementPtrInst instances.
+ *
+ * @{
+ */
+
+/**
+ * Check whether the given GEP instruction is inbounds.
+ */
+LLVMBool LLVMIsInBounds(LLVMValueRef GEP);
+
+/**
+ * Set the given GEP instruction to be inbounds or not.
+ */
+void LLVMSetIsInBounds(LLVMValueRef GEP, LLVMBool InBounds);
+
+/**
+ * @}
+ */
 
 /**
  * @defgroup LLVMCCoreValueInstructionPHINode PHI Nodes
@@ -2415,6 +2826,31 @@ LLVMValueRef LLVMGetIncomingValue(LLVMValueRef PhiNode, unsigned Index);
  * Obtain an incoming value to a PHI node as an LLVMBasicBlockRef.
  */
 LLVMBasicBlockRef LLVMGetIncomingBlock(LLVMValueRef PhiNode, unsigned Index);
+
+/**
+ * @}
+ */
+
+/**
+ * @defgroup LLVMCCoreValueInstructionExtractValue ExtractValue
+ * @defgroup LLVMCCoreValueInstructionInsertValue InsertValue
+ *
+ * Functions in this group only apply to instructions that map to
+ * llvm::ExtractValue and llvm::InsertValue instances.
+ *
+ * @{
+ */
+
+/**
+ * Obtain the number of indices.
+ * NB: This also works on GEP.
+ */
+unsigned LLVMGetNumIndices(LLVMValueRef Inst);
+
+/**
+ * Obtain the indices as an array.
+ */
+const unsigned *LLVMGetIndices(LLVMValueRef Inst);
 
 /**
  * @}
@@ -2484,8 +2920,17 @@ void LLVMAddCase(LLVMValueRef Switch, LLVMValueRef OnVal,
 /* Add a destination to the indirectbr instruction */
 void LLVMAddDestination(LLVMValueRef IndirectBr, LLVMBasicBlockRef Dest);
 
+/* Get the number of clauses on the landingpad instruction */
+unsigned LLVMGetNumClauses(LLVMValueRef LandingPad);
+
+/* Get the value of the clause at idnex Idx on the landingpad instruction */
+LLVMValueRef LLVMGetClause(LLVMValueRef LandingPad, unsigned Idx);
+
 /* Add a catch or filter clause to the landingpad instruction */
 void LLVMAddClause(LLVMValueRef LandingPad, LLVMValueRef ClauseVal);
+
+/* Get the 'cleanup' flag in the landingpad instruction */
+LLVMBool LLVMIsCleanup(LLVMValueRef LandingPad);
 
 /* Set the 'cleanup' flag in the landingpad instruction */
 void LLVMSetCleanup(LLVMValueRef LandingPad, LLVMBool Val);
@@ -2577,6 +3022,8 @@ LLVMValueRef LLVMBuildGlobalStringPtr(LLVMBuilderRef B, const char *Str,
                                       const char *Name);
 LLVMBool LLVMGetVolatile(LLVMValueRef MemoryAccessInst);
 void LLVMSetVolatile(LLVMValueRef MemoryAccessInst, LLVMBool IsVolatile);
+LLVMAtomicOrdering LLVMGetOrdering(LLVMValueRef MemoryAccessInst);
+void LLVMSetOrdering(LLVMValueRef MemoryAccessInst, LLVMAtomicOrdering Ordering);
 
 /* Casts */
 LLVMValueRef LLVMBuildTrunc(LLVMBuilderRef, LLVMValueRef Val,
@@ -2603,6 +3050,8 @@ LLVMValueRef LLVMBuildIntToPtr(LLVMBuilderRef, LLVMValueRef Val,
                                LLVMTypeRef DestTy, const char *Name);
 LLVMValueRef LLVMBuildBitCast(LLVMBuilderRef, LLVMValueRef Val,
                               LLVMTypeRef DestTy, const char *Name);
+LLVMValueRef LLVMBuildAddrSpaceCast(LLVMBuilderRef, LLVMValueRef Val,
+                                    LLVMTypeRef DestTy, const char *Name);
 LLVMValueRef LLVMBuildZExtOrBitCast(LLVMBuilderRef, LLVMValueRef Val,
                                     LLVMTypeRef DestTy, const char *Name);
 LLVMValueRef LLVMBuildSExtOrBitCast(LLVMBuilderRef, LLVMValueRef Val,
@@ -2656,10 +3105,27 @@ LLVMValueRef LLVMBuildIsNotNull(LLVMBuilderRef, LLVMValueRef Val,
                                 const char *Name);
 LLVMValueRef LLVMBuildPtrDiff(LLVMBuilderRef, LLVMValueRef LHS,
                               LLVMValueRef RHS, const char *Name);
-LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B,LLVMAtomicRMWBinOp op,
+LLVMValueRef LLVMBuildFence(LLVMBuilderRef B, LLVMAtomicOrdering ordering,
+                            LLVMBool singleThread, const char *Name);
+LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B, LLVMAtomicRMWBinOp op,
                                 LLVMValueRef PTR, LLVMValueRef Val,
                                 LLVMAtomicOrdering ordering,
                                 LLVMBool singleThread);
+LLVMValueRef LLVMBuildAtomicCmpXchg(LLVMBuilderRef B, LLVMValueRef Ptr,
+                                    LLVMValueRef Cmp, LLVMValueRef New,
+                                    LLVMAtomicOrdering SuccessOrdering,
+                                    LLVMAtomicOrdering FailureOrdering,
+                                    LLVMBool SingleThread);
+
+LLVMBool LLVMIsAtomicSingleThread(LLVMValueRef AtomicInst);
+void LLVMSetAtomicSingleThread(LLVMValueRef AtomicInst, LLVMBool SingleThread);
+
+LLVMAtomicOrdering LLVMGetCmpXchgSuccessOrdering(LLVMValueRef CmpXchgInst);
+void LLVMSetCmpXchgSuccessOrdering(LLVMValueRef CmpXchgInst,
+                                   LLVMAtomicOrdering Ordering);
+LLVMAtomicOrdering LLVMGetCmpXchgFailureOrdering(LLVMValueRef CmpXchgInst);
+void LLVMSetCmpXchgFailureOrdering(LLVMValueRef CmpXchgInst,
+                                   LLVMAtomicOrdering Ordering);
 
 /**
  * @}
@@ -2786,16 +3252,13 @@ void LLVMDisposePassManager(LLVMPassManagerRef PM);
  * @{
  */
 
-/** Allocate and initialize structures needed to make LLVM safe for
-    multithreading. The return value indicates whether multithreaded
-    initialization succeeded. Must be executed in isolation from all
-    other LLVM api calls.
-    @see llvm::llvm_start_multithreaded */
+/** Deprecated: Multi-threading can only be enabled/disabled with the compile
+    time define LLVM_ENABLE_THREADS.  This function always returns
+    LLVMIsMultithreaded(). */
 LLVMBool LLVMStartMultithreaded(void);
 
-/** Deallocate structures necessary to make LLVM safe for multithreading.
-    Must be executed in isolation from all other LLVM api calls.
-    @see llvm::llvm_stop_multithreaded */
+/** Deprecated: Multi-threading can only be enabled/disabled with the compile
+    time define LLVM_ENABLE_THREADS. */
 void LLVMStopMultithreaded(void);
 
 /** Check whether LLVM is executing in thread-safe mode or not.
@@ -2816,6 +3279,6 @@ LLVMBool LLVMIsMultithreaded(void);
 
 #ifdef __cplusplus
 }
-#endif /* !defined(__cplusplus) */
+#endif
 
-#endif /* !defined(LLVM_C_CORE_H) */
+#endif /* LLVM_C_CORE_H */

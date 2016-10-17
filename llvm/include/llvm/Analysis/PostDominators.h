@@ -14,76 +14,75 @@
 #ifndef LLVM_ANALYSIS_POSTDOMINATORS_H
 #define LLVM_ANALYSIS_POSTDOMINATORS_H
 
-#include "llvm/Analysis/Dominators.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/IR/PassManager.h"
 
 namespace llvm {
 
 /// PostDominatorTree Class - Concrete subclass of DominatorTree that is used to
-/// compute the a post-dominator tree.
+/// compute the post-dominator tree.
 ///
-struct PostDominatorTree : public FunctionPass {
-  static char ID; // Pass identification, replacement for typeid
-  DominatorTreeBase<BasicBlock>* DT;
+struct PostDominatorTree : public DominatorTreeBase<BasicBlock> {
+  typedef DominatorTreeBase<BasicBlock> Base;
 
-  PostDominatorTree() : FunctionPass(ID) {
-    initializePostDominatorTreePass(*PassRegistry::getPassRegistry());
-    DT = new DominatorTreeBase<BasicBlock>(true);
+  PostDominatorTree() : DominatorTreeBase<BasicBlock>(true) {}
+
+  PostDominatorTree(PostDominatorTree &&Arg)
+    : Base(std::move(static_cast<Base &>(Arg))) {}
+
+  PostDominatorTree &operator=(PostDominatorTree &&RHS) {
+    Base::operator=(std::move(static_cast<Base &>(RHS)));
+    return *this;
+  }
+};
+
+/// \brief Analysis pass which computes a \c PostDominatorTree.
+class PostDominatorTreeAnalysis
+    : public AnalysisInfoMixin<PostDominatorTreeAnalysis> {
+  friend AnalysisInfoMixin<PostDominatorTreeAnalysis>;
+  static char PassID;
+
+public:
+  /// \brief Provide the result typedef for this analysis pass.
+  typedef PostDominatorTree Result;
+
+  /// \brief Run the analysis pass over a function and produce a post dominator
+  ///        tree.
+  PostDominatorTree run(Function &F, FunctionAnalysisManager &);
+};
+
+/// \brief Printer pass for the \c PostDominatorTree.
+class PostDominatorTreePrinterPass
+    : public PassInfoMixin<PostDominatorTreePrinterPass> {
+  raw_ostream &OS;
+
+public:
+  explicit PostDominatorTreePrinterPass(raw_ostream &OS);
+  PreservedAnalyses run(Function &F, AnalysisManager<Function> &AM);
+};
+
+struct PostDominatorTreeWrapperPass : public FunctionPass {
+  static char ID; // Pass identification, replacement for typeid
+  PostDominatorTree DT;
+
+  PostDominatorTreeWrapperPass() : FunctionPass(ID) {
+    initializePostDominatorTreeWrapperPassPass(*PassRegistry::getPassRegistry());
   }
 
-  ~PostDominatorTree();
+  PostDominatorTree &getPostDomTree() { return DT; }
+  const PostDominatorTree &getPostDomTree() const { return DT; }
 
-  virtual bool runOnFunction(Function &F);
+  bool runOnFunction(Function &F) override;
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const {
+  void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesAll();
   }
 
-  inline const std::vector<BasicBlock*> &getRoots() const {
-    return DT->getRoots();
+  void releaseMemory() override {
+    DT.releaseMemory();
   }
 
-  inline DomTreeNode *getRootNode() const {
-    return DT->getRootNode();
-  }
-
-  inline DomTreeNode *operator[](BasicBlock *BB) const {
-    return DT->getNode(BB);
-  }
-
-  inline DomTreeNode *getNode(BasicBlock *BB) const {
-    return DT->getNode(BB);
-  }
-
-  inline bool dominates(DomTreeNode* A, DomTreeNode* B) const {
-    return DT->dominates(A, B);
-  }
-
-  inline bool dominates(const BasicBlock* A, const BasicBlock* B) const {
-    return DT->dominates(A, B);
-  }
-
-  inline bool properlyDominates(const DomTreeNode* A, DomTreeNode* B) const {
-    return DT->properlyDominates(A, B);
-  }
-
-  inline bool properlyDominates(BasicBlock* A, BasicBlock* B) const {
-    return DT->properlyDominates(A, B);
-  }
-
-  inline BasicBlock *findNearestCommonDominator(BasicBlock *A, BasicBlock *B) {
-    return DT->findNearestCommonDominator(A, B);
-  }
-
-  inline const BasicBlock *findNearestCommonDominator(const BasicBlock *A,
-                                                      const BasicBlock *B) {
-    return DT->findNearestCommonDominator(A, B);
-  }
-
-  virtual void releaseMemory() {
-    DT->releaseMemory();
-  }
-
-  virtual void print(raw_ostream &OS, const Module*) const;
+  void print(raw_ostream &OS, const Module*) const override;
 };
 
 FunctionPass* createPostDomTree();

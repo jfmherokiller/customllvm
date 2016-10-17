@@ -1,4 +1,4 @@
-; RUN: opt < %s  -loop-vectorize -force-vector-unroll=1 -force-vector-width=4 -dce -instcombine -S | FileCheck %s
+; RUN: opt < %s  -loop-vectorize -force-vector-interleave=1 -force-vector-width=4 -dce -instcombine -S | FileCheck %s
 
 ; rdar://problem/12848162
 
@@ -8,7 +8,7 @@ target triple = "x86_64-apple-macosx10.8.0"
 @a = common global [2048 x i32] zeroinitializer, align 16
 
 ;CHECK-LABEL: @example12(
-;CHECK: trunc i64
+;CHECK: %vec.ind1 = phi <4 x i32>
 ;CHECK: store <4 x i32>
 ;CHECK: ret void
 define void @example12() nounwind uwtable ssp {
@@ -16,7 +16,7 @@ define void @example12() nounwind uwtable ssp {
 
 ; <label>:1                                       ; preds = %1, %0
   %indvars.iv = phi i64 [ 0, %0 ], [ %indvars.iv.next, %1 ]
-  %2 = getelementptr inbounds [2048 x i32]* @a, i64 0, i64 %indvars.iv
+  %2 = getelementptr inbounds [2048 x i32], [2048 x i32]* @a, i64 0, i64 %indvars.iv
   %3 = trunc i64 %indvars.iv to i32
   store i32 %3, i32* %2, align 4
   %indvars.iv.next = add i64 %indvars.iv, 1

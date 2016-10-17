@@ -1,4 +1,4 @@
-//=- HexagonMachineFuctionInfo.h - Hexagon machine function info --*- C++ -*-=//
+//=- HexagonMachineFunctionInfo.h - Hexagon machine function info -*- C++ -*-=//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,10 +7,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef HexagonMACHINEFUNCTIONINFO_H
-#define HexagonMACHINEFUNCTIONINFO_H
+#ifndef LLVM_LIB_TARGET_HEXAGON_HEXAGONMACHINEFUNCTIONINFO_H
+#define LLVM_LIB_TARGET_HEXAGON_HEXAGONMACHINEFUNCTIONINFO_H
 
 #include "llvm/CodeGen/MachineFunction.h"
+#include <map>
 
 namespace llvm {
 
@@ -26,21 +27,22 @@ class HexagonMachineFunctionInfo : public MachineFunctionInfo {
   // returning the value of the returned struct in a register. This field
   // holds the virtual register into which the sret argument is passed.
   unsigned SRetReturnReg;
+  unsigned StackAlignBaseVReg;    // Aligned-stack base register (virtual)
+  unsigned StackAlignBasePhysReg; //                             (physical)
   std::vector<MachineInstr*> AllocaAdjustInsts;
   int VarArgsFrameIndex;
   bool HasClobberLR;
   bool HasEHReturn;
-
   std::map<const MachineInstr*, unsigned> PacketInfo;
-
+  virtual void anchor();
 
 public:
-  HexagonMachineFunctionInfo() : SRetReturnReg(0), HasClobberLR(0),
-    HasEHReturn(false) {}
+  HexagonMachineFunctionInfo() : SRetReturnReg(0), StackAlignBaseVReg(0),
+      StackAlignBasePhysReg(0), HasClobberLR(0), HasEHReturn(false) {}
 
   HexagonMachineFunctionInfo(MachineFunction &MF) : SRetReturnReg(0),
-                                                    HasClobberLR(0),
-                                                    HasEHReturn(false) {}
+      StackAlignBaseVReg(0), StackAlignBasePhysReg(0), HasClobberLR(0),
+      HasEHReturn(false) {}
 
   unsigned getSRetReturnReg() const { return SRetReturnReg; }
   void setSRetReturnReg(unsigned Reg) { SRetReturnReg = Reg; }
@@ -74,6 +76,12 @@ public:
 
   bool hasEHReturn() const { return HasEHReturn; };
   void setHasEHReturn(bool H = true) { HasEHReturn = H; };
+
+  void setStackAlignBaseVReg(unsigned R) { StackAlignBaseVReg = R; }
+  unsigned getStackAlignBaseVReg() const { return StackAlignBaseVReg; }
+
+  void setStackAlignBasePhysReg(unsigned R) { StackAlignBasePhysReg = R; }
+  unsigned getStackAlignBasePhysReg() const { return StackAlignBasePhysReg; }
 };
 } // End llvm namespace
 

@@ -13,8 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef TBLGEN_SEQUENCE_TO_OFFSET_TABLE_H
-#define TBLGEN_SEQUENCE_TO_OFFSET_TABLE_H
+#ifndef LLVM_UTILS_TABLEGEN_SEQUENCETOOFFSETTABLE_H
+#define LLVM_UTILS_TABLEGEN_SEQUENCETOOFFSETTABLE_H
 
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
@@ -22,7 +22,6 @@
 #include <cctype>
 #include <functional>
 #include <map>
-#include <vector>
 
 namespace llvm {
 
@@ -83,6 +82,11 @@ public:
   }
 
   bool empty() const { return Seqs.empty(); }
+
+  unsigned size() const {
+    assert(Entries && "Call layout() before size()");
+    return Entries;
+  }
 
   /// layout - Computes the final table layout.
   void layout() {

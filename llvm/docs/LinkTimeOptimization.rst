@@ -87,9 +87,9 @@ To compile, run:
 
 .. code-block:: console
 
-  % clang -emit-llvm -c a.c -o a.o   # <-- a.o is LLVM bitcode file
+  % clang -flto -c a.c -o a.o        # <-- a.o is LLVM bitcode file
   % clang -c main.c -o main.o        # <-- main.o is native object file
-  % clang a.o main.o -o main         # <-- standard link command without modifications
+  % clang -flto a.o main.o -o main   # <-- standard link command with -flto
 
 * In this example, the linker recognizes that ``foo2()`` is an externally
   visible symbol defined in LLVM bitcode file. The linker completes its usual
@@ -134,7 +134,7 @@ Alternative Approaches
 Multi-phase communication between ``libLTO`` and linker
 =======================================================
 
-The linker collects information about symbol defininitions and uses in various
+The linker collects information about symbol definitions and uses in various
 link objects which is more accurate than any information collected by other
 tools during typical build cycles.  The linker collects this information by
 looking at the definitions and uses of symbols in native .o files and using

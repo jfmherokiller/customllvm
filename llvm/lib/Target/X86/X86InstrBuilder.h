@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef X86INSTRBUILDER_H
-#define X86INSTRBUILDER_H
+#ifndef LLVM_LIB_TARGET_X86_X86INSTRBUILDER_H
+#define LLVM_LIB_TARGET_X86_X86INSTRBUILDER_H
 
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -52,7 +52,8 @@ struct X86AddressMode {
   unsigned GVOpFlags;
 
   X86AddressMode()
-    : BaseType(RegBase), Scale(1), IndexReg(0), Disp(0), GV(0), GVOpFlags(0) {
+    : BaseType(RegBase), Scale(1), IndexReg(0), Disp(0), GV(nullptr),
+      GVOpFlags(0) {
     Base.Reg = 0;
   }
 
@@ -81,6 +82,34 @@ struct X86AddressMode {
                                            false, false, false, 0, false));
   }
 };
+
+/// Compute the addressing mode from an machine instruction starting with the
+/// given operand.
+static inline X86AddressMode getAddressFromInstr(MachineInstr *MI,
+                                                 unsigned Operand) {
+  X86AddressMode AM;
+  MachineOperand &Op = MI->getOperand(Operand);
+  if (Op.isReg()) {
+    AM.BaseType = X86AddressMode::RegBase;
+    AM.Base.Reg = Op.getReg();
+  } else {
+    AM.BaseType = X86AddressMode::FrameIndexBase;
+    AM.Base.FrameIndex = Op.getIndex();
+  }
+  Op = MI->getOperand(Operand + 1);
+  if (Op.isImm())
+    AM.Scale = Op.getImm();
+  Op = MI->getOperand(Operand + 2);
+  if (Op.isImm())
+    AM.IndexReg = Op.getImm();
+  Op = MI->getOperand(Operand + 3);
+  if (Op.isGlobal()) {
+    AM.GV = Op.getGlobal();
+  } else {
+    AM.Disp = Op.getImm();
+  }
+  return AM;
+}
 
 /// addDirectMem - This function is used to add a direct memory reference to the
 /// current instruction -- that is, a dereference of an address in a register,
@@ -150,15 +179,14 @@ addFrameReference(const MachineInstrBuilder &MIB, int FI, int Offset = 0) {
   MachineFunction &MF = *MI->getParent()->getParent();
   MachineFrameInfo &MFI = *MF.getFrameInfo();
   const MCInstrDesc &MCID = MI->getDesc();
-  unsigned Flags = 0;
+  auto Flags = MachineMemOperand::MONone;
   if (MCID.mayLoad())
     Flags |= MachineMemOperand::MOLoad;
   if (MCID.mayStore())
     Flags |= MachineMemOperand::MOStore;
-  MachineMemOperand *MMO =
-    MF.getMachineMemOperand(MachinePointerInfo::getFixedStack(FI, Offset),
-                            Flags, MFI.getObjectSize(FI),
-                            MFI.getObjectAlignment(FI));
+  MachineMemOperand *MMO = MF.getMachineMemOperand(
+      MachinePointerInfo::getFixedStack(MF, FI, Offset), Flags,
+      MFI.getObjectSize(FI), MFI.getObjectAlignment(FI));
   return addOffset(MIB.addFrameIndex(FI), Offset)
             .addMemOperand(MMO);
 }

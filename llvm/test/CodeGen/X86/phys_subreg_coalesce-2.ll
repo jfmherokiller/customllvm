@@ -1,4 +1,5 @@
 ; RUN: llc < %s -march=x86 | FileCheck %s
+; RUN: llc -no-phi-elim-live-out-early-exit -terminal-rule < %s -march=x86 | FileCheck %s
 ; PR2659
 
 define i32 @binomial(i32 %n, i32 %k) nounwind {
@@ -12,7 +13,7 @@ forcond.preheader:		; preds = %entry
 
 ifthen:		; preds = %entry
 	ret i32 0
-; CHECK: forbody
+; CHECK: forbody{{$}}
 ; CHECK-NOT: mov
 forbody:		; preds = %forbody, %forcond.preheader
 	%indvar = phi i32 [ 0, %forcond.preheader ], [ %divisor.02, %forbody ]		; <i32> [#uses=3]

@@ -34,10 +34,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_CODEGEN_REGALLOCBASE
-#define LLVM_CODEGEN_REGALLOCBASE
+#ifndef LLVM_LIB_CODEGEN_REGALLOCBASE_H
+#define LLVM_LIB_CODEGEN_REGALLOCBASE_H
 
-#include "llvm/ADT/OwningPtr.h"
 #include "llvm/CodeGen/LiveInterval.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
 
@@ -57,6 +56,7 @@ class Spiller;
 /// live range splitting. They must also override enqueue/dequeue to provide an
 /// assignment order.
 class RegAllocBase {
+  virtual void anchor();
 protected:
   const TargetRegisterInfo *TRI;
   MachineRegisterInfo *MRI;
@@ -65,7 +65,14 @@ protected:
   LiveRegMatrix *Matrix;
   RegisterClassInfo RegClassInfo;
 
-  RegAllocBase(): TRI(0), MRI(0), VRM(0), LIS(0), Matrix(0) {}
+  /// Inst which is a def of an original reg and whose defs are already all
+  /// dead after remat is saved in DeadRemats. The deletion of such inst is
+  /// postponed till all the allocations are done, so its remat expr is
+  /// always available for the remat of all the siblings of the original reg.
+  SmallPtrSet<MachineInstr *, 32> DeadRemats;
+
+  RegAllocBase()
+    : TRI(nullptr), MRI(nullptr), VRM(nullptr), LIS(nullptr), Matrix(nullptr) {}
 
   virtual ~RegAllocBase() {}
 
@@ -75,6 +82,10 @@ protected:
   // The top-level driver. The output is a VirtRegMap that us updated with
   // physical register assignments.
   void allocatePhysRegs();
+
+  // Include spiller post optimization and removing dead defs left because of
+  // rematerialization.
+  virtual void postOptimization();
 
   // Get a temporary reference to a Spiller instance.
   virtual Spiller &spiller() = 0;
@@ -95,6 +106,9 @@ protected:
   // Use this group name for NamedRegionTimer.
   static const char TimerGroupName[];
 
+  /// Method called when the allocator is about to remove a LiveInterval.
+  virtual void aboutToRemoveInterval(LiveInterval &LI) {}
+
 public:
   /// VerifyEnabled - True when -verify-regalloc is given.
   static bool VerifyEnabled;
@@ -105,4 +119,4 @@ private:
 
 } // end namespace llvm
 
-#endif // !defined(LLVM_CODEGEN_REGALLOCBASE)
+#endif

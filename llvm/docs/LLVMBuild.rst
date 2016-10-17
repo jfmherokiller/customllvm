@@ -49,8 +49,7 @@ Build Integration
 
 The LLVMBuild files themselves are just a declarative way to describe
 the project structure. The actual building of the LLVM project is
-handled by another build system (currently we support both
-:doc:`Makefiles <MakefileGuide>` and :doc:`CMake <CMake>`).
+handled by another build system (See: :doc:`CMake <CMake>`).
 
 The build system implementation will load the relevant contents of the
 LLVMBuild files and use that to drive the actual project build.
@@ -86,8 +85,8 @@ LLVM primarily uses the following types of components:
   libraries that they build on top of.
 - *Build Tools* - Build tools are applications which are designed to be run
   as part of the build process (typically to generate other source files).
-  Currently, LLVM uses one main build tool called :doc:`TableGen
-  <TableGenFundamentals>` to generate a variety of source files.
+  Currently, LLVM uses one main build tool called :doc:`TableGen/index`
+  to generate a variety of source files.
 - *Tools* - Command line applications which are built using the LLVM
   component libraries. Most LLVM tools are small and are primarily
   frontends to the library interfaces.
@@ -315,7 +314,7 @@ the properties which are associated with that component.
 
    ``BuildTool`` components are like ``Tool`` components, except that the
    tool is supposed to be built for the platform where the build is running
-   (instead of that platform being targetted). Build systems are expected
+   (instead of that platform being targeted). Build systems are expected
    to handle the fact that required libraries may need to be built for
    multiple platforms in order to be able to link this tool.
 

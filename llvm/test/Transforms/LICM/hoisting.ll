@@ -1,4 +1,5 @@
 ; RUN: opt < %s -licm -S | FileCheck %s
+; RUN: opt -lcssa %s | opt -aa-pipeline=basic-aa -passes='require<aa>,require<targetir>,require<scalar-evolution>,loop(licm)' -S | FileCheck %s
 
 @X = global i32 0		; <i32*> [#uses=1]
 
@@ -8,7 +9,7 @@ declare void @foo()
 ; potentially trapping instructions when they are not guaranteed to execute.
 define i32 @test1(i1 %c) {
 ; CHECK-LABEL: @test1(
-	%A = load i32* @X		; <i32> [#uses=2]
+	%A = load i32, i32* @X		; <i32> [#uses=2]
 	br label %Loop
 Loop:		; preds = %LoopTail, %0
 	call void @foo( )
@@ -35,18 +36,23 @@ declare void @foo2(i32) nounwind
 ;; It is ok and desirable to hoist this potentially trapping instruction.
 define i32 @test2(i1 %c) {
 ; CHECK-LABEL: @test2(
-; CHECK-NEXT: load i32* @X
+; CHECK-NEXT: load i32, i32* @X
 ; CHECK-NEXT: %B = sdiv i32 4, %A
-	%A = load i32* @X		; <i32> [#uses=2]
-	br label %Loop
+  %A = load i32, i32* @X
+  br label %Loop
+
 Loop:
-        ;; Should have hoisted this div!
-	%B = sdiv i32 4, %A		; <i32> [#uses=2]
-	call void @foo2( i32 %B )
-	br i1 %c, label %Loop, label %Out
-Out:		; preds = %Loop
-	%C = sub i32 %A, %B		; <i32> [#uses=1]
-	ret i32 %C
+  ;; Should have hoisted this div!
+  %B = sdiv i32 4, %A
+  br label %loop2
+
+loop2:
+  call void @foo2( i32 %B )
+  br i1 %c, label %Loop, label %Out
+
+Out:
+  %C = sub i32 %A, %B
+  ret i32 %C
 }
 
 
@@ -54,7 +60,7 @@ Out:		; preds = %Loop
 define i32 @test3(i1 %c) {
 ; CHECK-LABEL: define i32 @test3(
 ; CHECK: call void @foo2(i32 6)
-	%A = load i32* @X		; <i32> [#uses=2]
+	%A = load i32, i32* @X		; <i32> [#uses=2]
 	br label %Loop
 Loop:
 	%B = add i32 4, 2		; <i32> [#uses=2]

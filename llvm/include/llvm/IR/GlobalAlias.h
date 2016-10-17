@@ -15,70 +15,67 @@
 #ifndef LLVM_IR_GLOBALALIAS_H
 #define LLVM_IR_GLOBALALIAS_H
 
-#include "llvm/ADT/Twine.h"
 #include "llvm/ADT/ilist_node.h"
-#include "llvm/IR/GlobalValue.h"
-#include "llvm/IR/OperandTraits.h"
+#include "llvm/IR/GlobalIndirectSymbol.h"
 
 namespace llvm {
 
+class Twine;
 class Module;
-template<typename ValueSubClass, typename ItemParentClass>
-  class SymbolTableListTraits;
+template <typename ValueSubClass> class SymbolTableListTraits;
 
-class GlobalAlias : public GlobalValue, public ilist_node<GlobalAlias> {
-  friend class SymbolTableListTraits<GlobalAlias, Module>;
-  void operator=(const GlobalAlias &) LLVM_DELETED_FUNCTION;
-  GlobalAlias(const GlobalAlias &) LLVM_DELETED_FUNCTION;
+class GlobalAlias : public GlobalIndirectSymbol,
+                    public ilist_node<GlobalAlias> {
+  friend class SymbolTableListTraits<GlobalAlias>;
+  void operator=(const GlobalAlias &) = delete;
+  GlobalAlias(const GlobalAlias &) = delete;
 
   void setParent(Module *parent);
 
-public:
-  // allocate space for exactly one operand
-  void *operator new(size_t s) {
-    return User::operator new(s, 1);
-  }
-  /// GlobalAlias ctor - If a parent module is specified, the alias is
-  /// automatically inserted into the end of the specified module's alias list.
-  GlobalAlias(Type *Ty, LinkageTypes Linkage, const Twine &Name = "",
-              Constant* Aliasee = 0, Module *Parent = 0);
+  GlobalAlias(Type *Ty, unsigned AddressSpace, LinkageTypes Linkage,
+              const Twine &Name, Constant *Aliasee, Module *Parent);
 
-  /// Provide fast operand accessors
-  DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Constant);
+public:
+  /// If a parent module is specified, the alias is automatically inserted into
+  /// the end of the specified module's alias list.
+  static GlobalAlias *create(Type *Ty, unsigned AddressSpace,
+                             LinkageTypes Linkage, const Twine &Name,
+                             Constant *Aliasee, Module *Parent);
+
+  // Without the Aliasee.
+  static GlobalAlias *create(Type *Ty, unsigned AddressSpace,
+                             LinkageTypes Linkage, const Twine &Name,
+                             Module *Parent);
+
+  // The module is taken from the Aliasee.
+  static GlobalAlias *create(Type *Ty, unsigned AddressSpace,
+                             LinkageTypes Linkage, const Twine &Name,
+                             GlobalValue *Aliasee);
+
+  // Type, Parent and AddressSpace taken from the Aliasee.
+  static GlobalAlias *create(LinkageTypes Linkage, const Twine &Name,
+                             GlobalValue *Aliasee);
+
+  // Linkage, Type, Parent and AddressSpace taken from the Aliasee.
+  static GlobalAlias *create(const Twine &Name, GlobalValue *Aliasee);
 
   /// removeFromParent - This method unlinks 'this' from the containing module,
   /// but does not delete it.
   ///
-  virtual void removeFromParent();
+  void removeFromParent() override;
 
   /// eraseFromParent - This method unlinks 'this' from the containing module
   /// and deletes it.
   ///
-  virtual void eraseFromParent();
+  void eraseFromParent() override;
 
-  /// set/getAliasee - These methods retrive and set alias target.
-  void setAliasee(Constant *GV);
+  /// These methods retrieve and set alias target.
+  void setAliasee(Constant *Aliasee);
   const Constant *getAliasee() const {
-    return getOperand(0);
+    return getIndirectSymbol();
   }
   Constant *getAliasee() {
-    return getOperand(0);
-  }
-  /// getAliasedGlobal() - Aliasee can be either global or bitcast of
-  /// global. This method retrives the global for both aliasee flavours.
-  GlobalValue *getAliasedGlobal();
-  const GlobalValue *getAliasedGlobal() const {
-    return const_cast<GlobalAlias *>(this)->getAliasedGlobal();
-  }
-
-  /// resolveAliasedGlobal() - This method tries to ultimately resolve the alias
-  /// by going through the aliasing chain and trying to find the very last
-  /// global. Returns NULL if a cycle was found. If stopOnWeak is false, then
-  /// the whole chain aliasing chain is traversed, otherwise - only strong
-  /// aliases.
-  GlobalValue *resolveAliasedGlobal(bool stopOnWeak = true);
-  const GlobalValue *resolveAliasedGlobal(bool stopOnWeak = true) const {
-    return const_cast<GlobalAlias *>(this)->resolveAliasedGlobal(stopOnWeak);
+    return getIndirectSymbol();
   }
 
   static bool isValidLinkage(LinkageTypes L) {
@@ -91,13 +88,6 @@ public:
     return V->getValueID() == Value::GlobalAliasVal;
   }
 };
-
-template <>
-struct OperandTraits<GlobalAlias> :
-  public FixedNumOperandTraits<GlobalAlias, 1> {
-};
-
-DEFINE_TRANSPARENT_OPERAND_ACCESSORS(GlobalAlias, Constant)
 
 } // End llvm namespace
 

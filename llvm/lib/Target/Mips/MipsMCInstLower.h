@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MIPSMCINSTLOWER_H
-#define MIPSMCINSTLOWER_H
-#include "llvm/ADT/SmallVector.h"
+#ifndef LLVM_LIB_TARGET_MIPS_MIPSMCINSTLOWER_H
+#define LLVM_LIB_TARGET_MIPS_MIPSMCINSTLOWER_H
+#include "MCTargetDesc/MipsMCExpr.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/Support/Compiler.h"
 
@@ -36,6 +36,12 @@ public:
 private:
   MCOperand LowerSymbolOperand(const MachineOperand &MO,
                                MachineOperandType MOTy, unsigned Offset) const;
+  MCOperand createSub(MachineBasicBlock *BB1, MachineBasicBlock *BB2,
+                      MipsMCExpr::MipsExprKind Kind) const;
+  void lowerLongBranchLUi(const MachineInstr *MI, MCInst &OutMI) const;
+  void lowerLongBranchADDiu(const MachineInstr *MI, MCInst &OutMI, int Opcode,
+                            MipsMCExpr::MipsExprKind Kind) const;
+  bool lowerLongBranch(const MachineInstr *MI, MCInst &OutMI) const;
 };
 }
 

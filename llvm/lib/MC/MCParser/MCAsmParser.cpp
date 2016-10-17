@@ -11,13 +11,13 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
-#include "llvm/MC/MCTargetAsmParser.h"
+#include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
-MCAsmParser::MCAsmParser() : TargetParser(0), ShowParsedOperands(0) {
+MCAsmParser::MCAsmParser() : TargetParser(nullptr), ShowParsedOperands(0) {
 }
 
 MCAsmParser::~MCAsmParser() {
@@ -29,7 +29,7 @@ void MCAsmParser::setTargetParser(MCTargetAsmParser &P) {
   TargetParser->Initialize(*this);
 }
 
-const AsmToken &MCAsmParser::getTok() {
+const AsmToken &MCAsmParser::getTok() const {
   return getLexer().getTok();
 }
 
@@ -43,7 +43,7 @@ bool MCAsmParser::parseExpression(const MCExpr *&Res) {
   return parseExpression(Res, L);
 }
 
-void MCParsedAsmOperand::dump() const {
+LLVM_DUMP_METHOD void MCParsedAsmOperand::dump() const {
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
   dbgs() << "  " << *this;
 #endif

@@ -11,11 +11,11 @@
 
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/Support/system_error.h"
+#include <system_error>
 #include <utility> // for std::pair
 
 namespace llvm {
+class StringRef;
 
 /// \brief Class that manages the creation of a lock file to aid
 /// implicit coordination between different processes.
@@ -40,16 +40,27 @@ public:
     LFS_Error
   };
 
+  /// \brief Describes the result of waiting for the owner to release the lock.
+  enum WaitForUnlockResult {
+    /// \brief The lock was released successfully.
+    Res_Success,
+    /// \brief Owner died while holding the lock.
+    Res_OwnerDied,
+    /// \brief Reached timeout while waiting for the owner to release the lock.
+    Res_Timeout
+  };
+
 private:
   SmallString<128> FileName;
   SmallString<128> LockFileName;
   SmallString<128> UniqueLockFileName;
 
   Optional<std::pair<std::string, int> > Owner;
-  Optional<error_code> Error;
+  Optional<std::error_code> Error;
+  std::string ErrorDiagMsg;
 
-  LockFileManager(const LockFileManager &) LLVM_DELETED_FUNCTION;
-  LockFileManager &operator=(const LockFileManager &) LLVM_DELETED_FUNCTION;
+  LockFileManager(const LockFileManager &) = delete;
+  LockFileManager &operator=(const LockFileManager &) = delete;
 
   static Optional<std::pair<std::string, int> >
   readLockFile(StringRef LockFileName);
@@ -67,7 +78,20 @@ public:
   operator LockFileState() const { return getState(); }
 
   /// \brief For a shared lock, wait until the owner releases the lock.
-  void waitForUnlock();
+  WaitForUnlockResult waitForUnlock();
+
+  /// \brief Remove the lock file.  This may delete a different lock file than
+  /// the one previously read if there is a race.
+  std::error_code unsafeRemoveLockFile();
+
+  /// \brief Get error message, or "" if there is no error.
+  std::string getErrorMessage() const;
+
+  /// \brief Set error and error message
+  void setError(std::error_code &EC, StringRef ErrorMsg = "") {
+    Error = EC;
+    ErrorDiagMsg = ErrorMsg.str();
+  }
 };
 
 } // end namespace llvm

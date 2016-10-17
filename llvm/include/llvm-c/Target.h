@@ -19,7 +19,7 @@
 #ifndef LLVM_C_TARGET_H
 #define LLVM_C_TARGET_H
 
-#include "llvm-c/Core.h"
+#include "llvm-c/Types.h"
 #include "llvm/Config/llvm-config.h"
 
 #if defined(_MSC_VER) && !defined(inline)
@@ -41,7 +41,6 @@ enum LLVMByteOrdering { LLVMBigEndian, LLVMLittleEndian };
 
 typedef struct LLVMOpaqueTargetData *LLVMTargetDataRef;
 typedef struct LLVMOpaqueTargetLibraryInfotData *LLVMTargetLibraryInfoRef;
-typedef struct LLVMStructLayout *LLVMStructLayoutRef;
 
 /* Declare all of the target-initialization functions that are available. */
 #define LLVM_TARGET(TargetName) \
@@ -184,14 +183,27 @@ static inline LLVMBool LLVMInitializeNativeDisassembler(void) {
 
 /*===-- Target Data -------------------------------------------------------===*/
 
+/**
+ * Obtain the data layout for a module.
+ *
+ * @see Module::getDataLayout()
+ */
+LLVMTargetDataRef LLVMGetModuleDataLayout(LLVMModuleRef M);
+
+/**
+ * Set the data layout for a module.
+ *
+ * @see Module::setDataLayout()
+ */
+void LLVMSetModuleDataLayout(LLVMModuleRef M, LLVMTargetDataRef DL);
+
 /** Creates target data from a target layout string.
     See the constructor llvm::DataLayout::DataLayout. */
 LLVMTargetDataRef LLVMCreateTargetData(const char *StringRep);
 
-/** Adds target data information to a pass manager. This does not take ownership
-    of the target data.
-    See the method llvm::PassManagerBase::add. */
-void LLVMAddTargetData(LLVMTargetDataRef TD, LLVMPassManagerRef PM);
+/** Deallocates a TargetData.
+    See the destructor llvm::DataLayout::~DataLayout. */
+void LLVMDisposeTargetData(LLVMTargetDataRef TD);
 
 /** Adds target library information to a pass manager. This does not take
     ownership of the target library info.
@@ -275,10 +287,6 @@ unsigned LLVMElementAtOffset(LLVMTargetDataRef TD, LLVMTypeRef StructTy,
     See the method llvm::StructLayout::getElementContainingOffset. */
 unsigned long long LLVMOffsetOfElement(LLVMTargetDataRef TD,
                                        LLVMTypeRef StructTy, unsigned Element);
-
-/** Deallocates a TargetData.
-    See the destructor llvm::DataLayout::~DataLayout. */
-void LLVMDisposeTargetData(LLVMTargetDataRef TD);
 
 /**
  * @}

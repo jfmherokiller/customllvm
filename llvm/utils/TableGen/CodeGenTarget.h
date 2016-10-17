@@ -14,8 +14,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef CODEGEN_TARGET_H
-#define CODEGEN_TARGET_H
+#ifndef LLVM_UTILS_TABLEGEN_CODEGENTARGET_H
+#define LLVM_UTILS_TABLEGEN_CODEGENTARGET_H
 
 #include "CodeGenInstruction.h"
 #include "CodeGenRegisters.h"
@@ -52,8 +52,8 @@ enum SDNP {
 /// record corresponds to.
 MVT::SimpleValueType getValueType(Record *Rec);
 
-std::string getName(MVT::SimpleValueType T);
-std::string getEnumName(MVT::SimpleValueType T);
+StringRef getName(MVT::SimpleValueType T);
+StringRef getEnumName(MVT::SimpleValueType T);
 
 /// getQualifiedName - Return the name of the specified record, with a
 /// namespace qualifier if the record contains one.
@@ -65,15 +65,16 @@ class CodeGenTarget {
   RecordKeeper &Records;
   Record *TargetRec;
 
-  mutable DenseMap<const Record*, CodeGenInstruction*> Instructions;
-  mutable CodeGenRegBank *RegBank;
+  mutable DenseMap<const Record*,
+                   std::unique_ptr<CodeGenInstruction>> Instructions;
+  mutable std::unique_ptr<CodeGenRegBank> RegBank;
   mutable std::vector<Record*> RegAltNameIndices;
   mutable SmallVector<MVT::SimpleValueType, 8> LegalValueTypes;
   void ReadRegAltNameIndices() const;
   void ReadInstructions() const;
   void ReadLegalValueTypes() const;
 
-  mutable CodeGenSchedModels *SchedModels;
+  mutable std::unique_ptr<CodeGenSchedModels> SchedModels;
 
   mutable std::vector<const CodeGenInstruction*> InstrsByEnum;
 public:
@@ -138,15 +139,14 @@ public:
   /// supported by the target (i.e. there are registers that directly hold it).
   bool isLegalValueType(MVT::SimpleValueType VT) const {
     ArrayRef<MVT::SimpleValueType> LegalVTs = getLegalValueTypes();
-    for (unsigned i = 0, e = LegalVTs.size(); i != e; ++i)
-      if (LegalVTs[i] == VT) return true;
-    return false;
+    return std::find(LegalVTs.begin(), LegalVTs.end(), VT) != LegalVTs.end();
   }
 
   CodeGenSchedModels &getSchedModels() const;
 
 private:
-  DenseMap<const Record*, CodeGenInstruction*> &getInstructions() const {
+  DenseMap<const Record*, std::unique_ptr<CodeGenInstruction>> &
+  getInstructions() const {
     if (Instructions.empty()) ReadInstructions();
     return Instructions;
   }
@@ -154,21 +154,20 @@ public:
 
   CodeGenInstruction &getInstruction(const Record *InstRec) const {
     if (Instructions.empty()) ReadInstructions();
-    DenseMap<const Record*, CodeGenInstruction*>::iterator I =
-      Instructions.find(InstRec);
+    auto I = Instructions.find(InstRec);
     assert(I != Instructions.end() && "Not an instruction");
     return *I->second;
   }
 
   /// getInstructionsByEnumValue - Return all of the instructions defined by the
   /// target, ordered by their enum value.
-  const std::vector<const CodeGenInstruction*> &
+  ArrayRef<const CodeGenInstruction *>
   getInstructionsByEnumValue() const {
     if (InstrsByEnum.empty()) ComputeInstrsByEnum();
     return InstrsByEnum;
   }
 
-  typedef std::vector<const CodeGenInstruction*>::const_iterator inst_iterator;
+  typedef ArrayRef<const CodeGenInstruction *>::const_iterator inst_iterator;
   inst_iterator inst_begin() const{return getInstructionsByEnumValue().begin();}
   inst_iterator inst_end() const { return getInstructionsByEnumValue().end(); }
 
@@ -176,6 +175,10 @@ public:
   /// isLittleEndianEncoding - are instruction bit patterns defined as  [0..n]?
   ///
   bool isLittleEndianEncoding() const;
+
+  /// reverseBitsForLittleEndianEncoding - For little-endian instruction bit
+  /// encodings, reverse the bit order of all instructions.
+  void reverseBitsForLittleEndianEncoding();
 
   /// guessInstructionProperties - should we just guess unset instruction
   /// properties?

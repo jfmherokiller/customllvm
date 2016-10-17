@@ -29,7 +29,6 @@
 #ifndef LLVM_PASS_H
 #define LLVM_PASS_H
 
-#include "llvm/Support/Compiler.h"
 #include <string>
 
 namespace llvm {
@@ -83,11 +82,12 @@ class Pass {
   AnalysisResolver *Resolver;  // Used to resolve analysis
   const void *PassID;
   PassKind Kind;
-  void operator=(const Pass&) LLVM_DELETED_FUNCTION;
-  Pass(const Pass &) LLVM_DELETED_FUNCTION;
+  void operator=(const Pass&) = delete;
+  Pass(const Pass &) = delete;
 
 public:
-  explicit Pass(PassKind K, char &pid) : Resolver(0), PassID(&pid), Kind(K) { }
+  explicit Pass(PassKind K, char &pid)
+    : Resolver(nullptr), PassID(&pid), Kind(K) { }
   virtual ~Pass();
 
 
@@ -235,21 +235,26 @@ public:
 class ModulePass : public Pass {
 public:
   /// createPrinterPass - Get a module printer pass.
-  Pass *createPrinterPass(raw_ostream &O, const std::string &Banner) const;
+  Pass *createPrinterPass(raw_ostream &O,
+                          const std::string &Banner) const override;
 
   /// runOnModule - Virtual method overriden by subclasses to process the module
   /// being operated on.
   virtual bool runOnModule(Module &M) = 0;
 
-  virtual void assignPassManager(PMStack &PMS,
-                                 PassManagerType T);
+  void assignPassManager(PMStack &PMS, PassManagerType T) override;
 
   ///  Return what kind of Pass Manager can manage this pass.
-  virtual PassManagerType getPotentialPassManagerType() const;
+  PassManagerType getPotentialPassManagerType() const override;
 
   explicit ModulePass(char &pid) : Pass(PT_Module, pid) {}
   // Force out-of-line virtual method.
-  virtual ~ModulePass();
+  ~ModulePass() override;
+
+protected:
+  /// Optional passes call this function to check whether the pass should be
+  /// skipped. This is the case when optimization bisect is over the limit.
+  bool skipModule(Module &M) const;
 };
 
 
@@ -268,17 +273,17 @@ public:
   ///
   virtual void initializePass();
 
-  virtual ImmutablePass *getAsImmutablePass() { return this; }
+  ImmutablePass *getAsImmutablePass() override { return this; }
 
   /// ImmutablePasses are never run.
   ///
-  bool runOnModule(Module &) { return false; }
+  bool runOnModule(Module &) override { return false; }
 
   explicit ImmutablePass(char &pid)
   : ModulePass(pid) {}
 
   // Force out-of-line virtual method.
-  virtual ~ImmutablePass();
+  ~ImmutablePass() override;
 };
 
 //===----------------------------------------------------------------------===//
@@ -295,18 +300,24 @@ public:
   explicit FunctionPass(char &pid) : Pass(PT_Function, pid) {}
 
   /// createPrinterPass - Get a function printer pass.
-  Pass *createPrinterPass(raw_ostream &O, const std::string &Banner) const;
+  Pass *createPrinterPass(raw_ostream &O,
+                          const std::string &Banner) const override;
 
   /// runOnFunction - Virtual method overriden by subclasses to do the
   /// per-function processing of the pass.
   ///
   virtual bool runOnFunction(Function &F) = 0;
 
-  virtual void assignPassManager(PMStack &PMS,
-                                 PassManagerType T);
+  void assignPassManager(PMStack &PMS, PassManagerType T) override;
 
   ///  Return what kind of Pass Manager can manage this pass.
-  virtual PassManagerType getPotentialPassManagerType() const;
+  PassManagerType getPotentialPassManagerType() const override;
+
+protected:
+  /// Optional passes call this function to check whether the pass should be
+  /// skipped. This is the case when Attribute::OptimizeNone is set or when
+  /// optimization bisect is over the limit.
+  bool skipFunction(const Function &F) const;
 };
 
 
@@ -326,7 +337,8 @@ public:
   explicit BasicBlockPass(char &pid) : Pass(PT_BasicBlock, pid) {}
 
   /// createPrinterPass - Get a basic block printer pass.
-  Pass *createPrinterPass(raw_ostream &O, const std::string &Banner) const;
+  Pass *createPrinterPass(raw_ostream &O,
+                          const std::string &Banner) const override;
 
   using llvm::Pass::doInitialization;
   using llvm::Pass::doFinalization;
@@ -346,11 +358,16 @@ public:
   ///
   virtual bool doFinalization(Function &);
 
-  virtual void assignPassManager(PMStack &PMS,
-                                 PassManagerType T);
+  void assignPassManager(PMStack &PMS, PassManagerType T) override;
 
   ///  Return what kind of Pass Manager can manage this pass.
-  virtual PassManagerType getPotentialPassManagerType() const;
+  PassManagerType getPotentialPassManagerType() const override;
+
+protected:
+  /// Optional passes call this function to check whether the pass should be
+  /// skipped. This is the case when Attribute::OptimizeNone is set or when
+  /// optimization bisect is over the limit.
+  bool skipBasicBlock(const BasicBlock &BB) const;
 };
 
 /// If the user specifies the -time-passes argument on an LLVM tool command line
@@ -358,6 +375,10 @@ public:
 /// @brief This is the storage for the -time-passes option.
 extern bool TimePassesIsEnabled;
 
+/// isFunctionInPrintList - returns true if a function should be printed via
+//  debugging options like -print-after-all/-print-before-all.
+//  @brief Tells if the function IR should be printed by PrinterPass.
+extern bool isFunctionInPrintList(StringRef FunctionName);
 } // End llvm namespace
 
 // Include support files that contain important APIs commonly used by Passes,

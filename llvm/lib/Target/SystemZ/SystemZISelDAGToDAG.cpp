@@ -19,6 +19,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "systemz-isel"
+
 namespace {
 // Used to build addressing modes.
 struct SystemZAddressingMode {
@@ -72,14 +74,14 @@ struct SystemZAddressingMode {
     errs() << "SystemZAddressingMode " << this << '\n';
 
     errs() << " Base ";
-    if (Base.getNode() != 0)
+    if (Base.getNode())
       Base.getNode()->dump();
     else
       errs() << "null\n";
 
     if (hasIndexField()) {
       errs() << " Index ";
-      if (Index.getNode() != 0)
+      if (Index.getNode())
         Index.getNode()->dump();
       else
         errs() << "null\n";
@@ -94,7 +96,10 @@ struct SystemZAddressingMode {
 
 // Return a mask with Count low bits set.
 static uint64_t allOnes(unsigned int Count) {
-  return Count == 0 ? 0 : (uint64_t(1) << (Count - 1) << 1) - 1;
+  assert(Count <= 64);
+  if (Count > 63)
+    return UINT64_MAX;
+  return (uint64_t(1) << Count) - 1;
 }
 
 // Represents operands 2 to 5 of the ROTATE AND ... SELECTED BITS operation
@@ -108,7 +113,8 @@ static uint64_t allOnes(unsigned int Count) {
 //   (and (rotl Input, Rotate), Mask)
 //
 // otherwise.  The output value has BitSize bits, although Input may be
-// narrower (in which case the upper bits are don't care).
+// narrower (in which case the upper bits are don't care), or wider (in which
+// case the result will be truncated as part of the operation).
 struct RxSBGOperands {
   RxSBGOperands(unsigned Op, SDValue N)
     : Opcode(Op), BitSize(N.getValueType().getSizeInBits()),
@@ -125,12 +131,11 @@ struct RxSBGOperands {
 };
 
 class SystemZDAGToDAGISel : public SelectionDAGISel {
-  const SystemZTargetLowering &Lowering;
-  const SystemZSubtarget &Subtarget;
+  const SystemZSubtarget *Subtarget;
 
   // Used by SystemZOperands.td to create integer constants.
   inline SDValue getImm(const SDNode *Node, uint64_t Imm) const {
-    return CurDAG->getTargetConstant(Imm, Node->getValueType(0));
+    return CurDAG->getTargetConstant(Imm, SDLoc(Node), Node->getValueType(0));
   }
 
   const SystemZTargetMachine &getTargetMachine() const {
@@ -138,7 +143,7 @@ class SystemZDAGToDAGISel : public SelectionDAGISel {
   }
 
   const SystemZInstrInfo *getInstrInfo() const {
-    return getTargetMachine().getInstrInfo();
+    return Subtarget->getInstrInfo();
   }
 
   // Try to fold more of the base or index of AM into AM, where IsBase
@@ -254,6 +259,13 @@ class SystemZDAGToDAGISel : public SelectionDAGISel {
                          Addr, Base, Disp, Index);
   }
 
+  // Try to match Addr as an address with a base, 12-bit displacement
+  // and index, where the index is element Elem of a vector.
+  // Return true on success, storing the base, displacement and vector
+  // in Base, Disp and Index respectively.
+  bool selectBDVAddr12Only(SDValue Addr, SDValue Elem, SDValue &Base,
+                           SDValue &Disp, SDValue &Index) const;
+
   // Check whether (or Op (and X InsertMask)) is effectively an insertion
   // of X into bits InsertMask of some Y != Op.  Return true if so and
   // set Op to that Y.
@@ -268,18 +280,18 @@ class SystemZDAGToDAGISel : public SelectionDAGISel {
   bool expandRxSBG(RxSBGOperands &RxSBG) const;
 
   // Return an undefined value of type VT.
-  SDValue getUNDEF(SDLoc DL, EVT VT) const;
+  SDValue getUNDEF(const SDLoc &DL, EVT VT) const;
 
   // Convert N to VT, if it isn't already.
-  SDValue convertTo(SDLoc DL, EVT VT, SDValue N) const;
+  SDValue convertTo(const SDLoc &DL, EVT VT, SDValue N) const;
 
   // Try to implement AND or shift node N using RISBG with the zero flag set.
   // Return the selected node on success, otherwise return null.
-  SDNode *tryRISBGZero(SDNode *N);
+  bool tryRISBGZero(SDNode *N);
 
   // Try to use RISBG or Opcode to implement OR or XOR node N.
   // Return the selected node on success, otherwise return null.
-  SDNode *tryRxSBG(SDNode *N, unsigned Opcode);
+  bool tryRxSBG(SDNode *N, unsigned Opcode);
 
   // If Op0 is null, then Node is a constant that can be loaded using:
   //
@@ -288,8 +300,14 @@ class SystemZDAGToDAGISel : public SelectionDAGISel {
   // If Op0 is nonnull, then Node can be implemented using:
   //
   //   (Opcode (Opcode Op0 UpperVal) LowerVal)
-  SDNode *splitLargeImmediate(unsigned Opcode, SDNode *Node, SDValue Op0,
-                              uint64_t UpperVal, uint64_t LowerVal);
+  void splitLargeImmediate(unsigned Opcode, SDNode *Node, SDValue Op0,
+                           uint64_t UpperVal, uint64_t LowerVal);
+
+  // Try to use gather instruction Opcode to implement vector insertion N.
+  bool tryGather(SDNode *N, unsigned Opcode);
+
+  // Try to use scatter instruction Opcode to implement store Store.
+  bool tryScatter(StoreSDNode *Store, unsigned Opcode);
 
   // Return true if Load and Store are loads and stores of the same size
   // and are guaranteed not to overlap.  Such operations can be implemented
@@ -313,21 +331,22 @@ class SystemZDAGToDAGISel : public SelectionDAGISel {
 
 public:
   SystemZDAGToDAGISel(SystemZTargetMachine &TM, CodeGenOpt::Level OptLevel)
-    : SelectionDAGISel(TM, OptLevel),
-      Lowering(*TM.getTargetLowering()),
-      Subtarget(*TM.getSubtargetImpl()) { }
+      : SelectionDAGISel(TM, OptLevel) {}
+
+  bool runOnMachineFunction(MachineFunction &MF) override {
+    Subtarget = &MF.getSubtarget<SystemZSubtarget>();
+    return SelectionDAGISel::runOnMachineFunction(MF);
+  }
 
   // Override MachineFunctionPass.
-  virtual const char *getPassName() const LLVM_OVERRIDE {
+  const char *getPassName() const override {
     return "SystemZ DAG->DAG Pattern Instruction Selection";
   }
 
   // Override SelectionDAGISel.
-  virtual SDNode *Select(SDNode *Node) LLVM_OVERRIDE;
-  virtual bool SelectInlineAsmMemoryOperand(const SDValue &Op,
-                                            char ConstraintCode,
-                                            std::vector<SDValue> &OutOps)
-    LLVM_OVERRIDE;
+  void Select(SDNode *Node) override;
+  bool SelectInlineAsmMemoryOperand(const SDValue &Op, unsigned ConstraintID,
+                                    std::vector<SDValue> &OutOps) override;
 
   // Include the pieces autogenerated from the target description.
   #include "SystemZGenDAGISel.inc"
@@ -536,6 +555,10 @@ bool SystemZDAGToDAGISel::selectAddress(SDValue Addr,
       expandDisp(AM, true, SDValue(),
                  cast<ConstantSDNode>(Addr)->getSExtValue()))
     ;
+  // Also see if it's a bare ADJDYNALLOC.
+  else if (Addr.getOpcode() == SystemZISD::ADJDYNALLOC &&
+           expandAdjDynAlloc(AM, true, SDValue()))
+    ;
   else
     // Otherwise try expanding each component.
     while (expandAddress(AM, true) ||
@@ -567,7 +590,7 @@ bool SystemZDAGToDAGISel::selectAddress(SDValue Addr,
 static void insertDAGNode(SelectionDAG *DAG, SDNode *Pos, SDValue N) {
   if (N.getNode()->getNodeId() == -1 ||
       N.getNode()->getNodeId() > Pos->getNodeId()) {
-    DAG->RepositionNode(Pos, N.getNode());
+    DAG->RepositionNode(Pos->getIterator(), N.getNode());
     N.getNode()->setNodeId(Pos->getNodeId());
   }
 }
@@ -594,7 +617,7 @@ void SystemZDAGToDAGISel::getAddressOperands(const SystemZAddressingMode &AM,
   }
 
   // Lower the displacement to a TargetConstant.
-  Disp = CurDAG->getTargetConstant(AM.Disp, VT);
+  Disp = CurDAG->getTargetConstant(AM.Disp, SDLoc(Base), VT);
 }
 
 void SystemZDAGToDAGISel::getAddressOperands(const SystemZAddressingMode &AM,
@@ -643,6 +666,30 @@ bool SystemZDAGToDAGISel::selectBDXAddr(SystemZAddressingMode::AddrForm Form,
   return true;
 }
 
+bool SystemZDAGToDAGISel::selectBDVAddr12Only(SDValue Addr, SDValue Elem,
+                                              SDValue &Base,
+                                              SDValue &Disp,
+                                              SDValue &Index) const {
+  SDValue Regs[2];
+  if (selectBDXAddr12Only(Addr, Regs[0], Disp, Regs[1]) &&
+      Regs[0].getNode() && Regs[1].getNode()) {
+    for (unsigned int I = 0; I < 2; ++I) {
+      Base = Regs[I];
+      Index = Regs[1 - I];
+      // We can't tell here whether the index vector has the right type
+      // for the access; the caller needs to do that instead.
+      if (Index.getOpcode() == ISD::ZERO_EXTEND)
+        Index = Index.getOperand(0);
+      if (Index.getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
+          Index.getOperand(1) == Elem) {
+        Index = Index.getOperand(0);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 bool SystemZDAGToDAGISel::detectOrAndInsertion(SDValue &Op,
                                                uint64_t InsertMask) const {
   // We're only interested in cases where the insertion is into some operand
@@ -651,8 +698,7 @@ bool SystemZDAGToDAGISel::detectOrAndInsertion(SDValue &Op,
     return false;
 
   // We need a constant mask.
-  ConstantSDNode *MaskNode =
-    dyn_cast<ConstantSDNode>(Op.getOperand(1).getNode());
+  auto *MaskNode = dyn_cast<ConstantSDNode>(Op.getOperand(1).getNode());
   if (!MaskNode)
     return false;
 
@@ -666,7 +712,7 @@ bool SystemZDAGToDAGISel::detectOrAndInsertion(SDValue &Op,
   uint64_t Used = allOnes(Op.getValueType().getSizeInBits());
   if (Used != (AndMask | InsertMask)) {
     APInt KnownZero, KnownOne;
-    CurDAG->ComputeMaskedBits(Op.getOperand(0), KnownZero, KnownOne);
+    CurDAG->computeKnownBits(Op.getOperand(0), KnownZero, KnownOne);
     if (Used != (AndMask | InsertMask | KnownZero.getZExtValue()))
       return false;
   }
@@ -688,35 +734,33 @@ bool SystemZDAGToDAGISel::refineRxSBGMask(RxSBGOperands &RxSBG,
   return false;
 }
 
-// RxSBG.Input is a shift of Count bits in the direction given by IsLeft.
-// Return true if the result depends on the signs or zeros that are
-// shifted in.
-static bool shiftedInBitsMatter(RxSBGOperands &RxSBG, uint64_t Count,
-                                bool IsLeft) {
-  // Work out which bits of the shift result are zeros or sign copies.
-  uint64_t ShiftedIn = allOnes(Count);
-  if (!IsLeft)
-    ShiftedIn <<= RxSBG.BitSize - Count;
-
-  // Rotate that mask in the same way as RxSBG.Input is rotated.
+// Return true if any bits of (RxSBG.Input & Mask) are significant.
+static bool maskMatters(RxSBGOperands &RxSBG, uint64_t Mask) {
+  // Rotate the mask in the same way as RxSBG.Input is rotated.
   if (RxSBG.Rotate != 0)
-    ShiftedIn = ((ShiftedIn << RxSBG.Rotate) |
-                 (ShiftedIn >> (64 - RxSBG.Rotate)));
-
-  // Fail if any of the zero or sign bits are used.
-  return (ShiftedIn & RxSBG.Mask) != 0;
+    Mask = ((Mask << RxSBG.Rotate) | (Mask >> (64 - RxSBG.Rotate)));
+  return (Mask & RxSBG.Mask) != 0;
 }
 
 bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
   SDValue N = RxSBG.Input;
   unsigned Opcode = N.getOpcode();
   switch (Opcode) {
+  case ISD::TRUNCATE: {
+    if (RxSBG.Opcode == SystemZ::RNSBG)
+      return false;
+    uint64_t BitSize = N.getValueType().getSizeInBits();
+    uint64_t Mask = allOnes(BitSize);
+    if (!refineRxSBGMask(RxSBG, Mask))
+      return false;
+    RxSBG.Input = N.getOperand(0);
+    return true;
+  }
   case ISD::AND: {
     if (RxSBG.Opcode == SystemZ::RNSBG)
       return false;
 
-    ConstantSDNode *MaskNode =
-      dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
+    auto *MaskNode = dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
     if (!MaskNode)
       return false;
 
@@ -727,7 +771,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
       // been removed from the mask.  See if adding them back in makes the
       // mask suitable.
       APInt KnownZero, KnownOne;
-      CurDAG->ComputeMaskedBits(Input, KnownZero, KnownOne);
+      CurDAG->computeKnownBits(Input, KnownZero, KnownOne);
       Mask |= KnownZero.getZExtValue();
       if (!refineRxSBGMask(RxSBG, Mask))
         return false;
@@ -740,8 +784,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
     if (RxSBG.Opcode != SystemZ::RNSBG)
       return false;
 
-    ConstantSDNode *MaskNode =
-      dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
+    auto *MaskNode = dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
     if (!MaskNode)
       return false;
 
@@ -752,7 +795,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
       // been removed from the mask.  See if adding them back in makes the
       // mask suitable.
       APInt KnownZero, KnownOne;
-      CurDAG->ComputeMaskedBits(Input, KnownZero, KnownOne);
+      CurDAG->computeKnownBits(Input, KnownZero, KnownOne);
       Mask &= ~KnownOne.getZExtValue();
       if (!refineRxSBGMask(RxSBG, Mask))
         return false;
@@ -765,8 +808,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
     // Any 64-bit rotate left can be merged into the RxSBG.
     if (RxSBG.BitSize != 64 || N.getValueType() != MVT::i64)
       return false;
-    ConstantSDNode *CountNode
-      = dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
+    auto *CountNode = dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
     if (!CountNode)
       return false;
 
@@ -774,14 +816,29 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
     RxSBG.Input = N.getOperand(0);
     return true;
   }
-      
-  case ISD::SIGN_EXTEND:
+
+  case ISD::ANY_EXTEND:
+    // Bits above the extended operand are don't-care.
+    RxSBG.Input = N.getOperand(0);
+    return true;
+
   case ISD::ZERO_EXTEND:
-  case ISD::ANY_EXTEND: {
+    if (RxSBG.Opcode != SystemZ::RNSBG) {
+      // Restrict the mask to the extended operand.
+      unsigned InnerBitSize = N.getOperand(0).getValueType().getSizeInBits();
+      if (!refineRxSBGMask(RxSBG, allOnes(InnerBitSize)))
+        return false;
+
+      RxSBG.Input = N.getOperand(0);
+      return true;
+    }
+    // Fall through.
+
+  case ISD::SIGN_EXTEND: {
     // Check that the extension bits are don't-care (i.e. are masked out
     // by the final mask).
     unsigned InnerBitSize = N.getOperand(0).getValueType().getSizeInBits();
-    if (shiftedInBitsMatter(RxSBG, RxSBG.BitSize - InnerBitSize, false))
+    if (maskMatters(RxSBG, allOnes(RxSBG.BitSize) - allOnes(InnerBitSize)))
       return false;
 
     RxSBG.Input = N.getOperand(0);
@@ -789,8 +846,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
   }
 
   case ISD::SHL: {
-    ConstantSDNode *CountNode =
-      dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
+    auto *CountNode = dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
     if (!CountNode)
       return false;
 
@@ -802,7 +858,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
     if (RxSBG.Opcode == SystemZ::RNSBG) {
       // Treat (shl X, count) as (rotl X, size-count) as long as the bottom
       // count bits from RxSBG.Input are ignored.
-      if (shiftedInBitsMatter(RxSBG, Count, true))
+      if (maskMatters(RxSBG, allOnes(Count)))
         return false;
     } else {
       // Treat (shl X, count) as (and (rotl X, count), ~0<<count).
@@ -817,8 +873,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
 
   case ISD::SRL:
   case ISD::SRA: {
-    ConstantSDNode *CountNode =
-      dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
+    auto *CountNode = dyn_cast<ConstantSDNode>(N.getOperand(1).getNode());
     if (!CountNode)
       return false;
 
@@ -830,7 +885,7 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
     if (RxSBG.Opcode == SystemZ::RNSBG || Opcode == ISD::SRA) {
       // Treat (srl|sra X, count) as (rotl X, size-count) as long as the top
       // count bits from RxSBG.Input are ignored.
-      if (shiftedInBitsMatter(RxSBG, Count, false))
+      if (maskMatters(RxSBG, allOnes(Count) << (BitSize - Count)))
         return false;
     } else {
       // Treat (srl X, count), mask) as (and (rotl X, size-count), ~0>>count),
@@ -848,12 +903,13 @@ bool SystemZDAGToDAGISel::expandRxSBG(RxSBGOperands &RxSBG) const {
   }
 }
 
-SDValue SystemZDAGToDAGISel::getUNDEF(SDLoc DL, EVT VT) const {
+SDValue SystemZDAGToDAGISel::getUNDEF(const SDLoc &DL, EVT VT) const {
   SDNode *N = CurDAG->getMachineNode(TargetOpcode::IMPLICIT_DEF, DL, VT);
   return SDValue(N, 0);
 }
 
-SDValue SystemZDAGToDAGISel::convertTo(SDLoc DL, EVT VT, SDValue N) const {
+SDValue SystemZDAGToDAGISel::convertTo(const SDLoc &DL, EVT VT,
+                                       SDValue N) const {
   if (N.getValueType() == MVT::i32 && VT == MVT::i64)
     return CurDAG->getTargetInsertSubreg(SystemZ::subreg_l32,
                                          DL, VT, getUNDEF(DL, MVT::i64), N);
@@ -863,20 +919,27 @@ SDValue SystemZDAGToDAGISel::convertTo(SDLoc DL, EVT VT, SDValue N) const {
   return N;
 }
 
-SDNode *SystemZDAGToDAGISel::tryRISBGZero(SDNode *N) {
+bool SystemZDAGToDAGISel::tryRISBGZero(SDNode *N) {
+  SDLoc DL(N);
   EVT VT = N->getValueType(0);
+  if (!VT.isInteger() || VT.getSizeInBits() > 64)
+    return false;
   RxSBGOperands RISBG(SystemZ::RISBG, SDValue(N, 0));
   unsigned Count = 0;
   while (expandRxSBG(RISBG))
-    if (RISBG.Input.getOpcode() != ISD::ANY_EXTEND)
+    // The widening or narrowing is expected to be free.
+    // Counting widening or narrowing as a saved operation will result in
+    // preferring an R*SBG over a simple shift/logical instruction.
+    if (RISBG.Input.getOpcode() != ISD::ANY_EXTEND &&
+        RISBG.Input.getOpcode() != ISD::TRUNCATE)
       Count += 1;
   if (Count == 0)
-    return 0;
+    return false;
   if (Count == 1) {
     // Prefer to use normal shift instructions over RISBG, since they can handle
     // all cases and are sometimes shorter.
     if (N->getOpcode() != ISD::AND)
-      return 0;
+      return false;
 
     // Prefer register extensions like LLC over RISBG.  Also prefer to start
     // out with normal ANDs if one instruction would be enough.  We can convert
@@ -887,36 +950,66 @@ SDNode *SystemZDAGToDAGISel::tryRISBGZero(SDNode *N) {
         SystemZ::isImmLF(~RISBG.Mask) ||
         SystemZ::isImmHF(~RISBG.Mask)) {
       // Force the new mask into the DAG, since it may include known-one bits.
-      ConstantSDNode *MaskN = cast<ConstantSDNode>(N->getOperand(1).getNode());
+      auto *MaskN = cast<ConstantSDNode>(N->getOperand(1).getNode());
       if (MaskN->getZExtValue() != RISBG.Mask) {
-        SDValue NewMask = CurDAG->getConstant(RISBG.Mask, VT);
+        SDValue NewMask = CurDAG->getConstant(RISBG.Mask, DL, VT);
         N = CurDAG->UpdateNodeOperands(N, N->getOperand(0), NewMask);
-        return SelectCode(N);
+        SelectCode(N);
+        return true;
       }
-      return 0;
+      return false;
     }
-  }  
+  }
+
+  // If the RISBG operands require no rotation and just masks the bottom
+  // 8/16 bits, attempt to convert this to a LLC zero extension.
+  if (RISBG.Rotate == 0 && (RISBG.Mask == 0xff || RISBG.Mask == 0xffff)) {
+    unsigned OpCode = (RISBG.Mask == 0xff ? SystemZ::LLGCR : SystemZ::LLGHR);
+    if (VT == MVT::i32) {
+      if (Subtarget->hasHighWord())
+        OpCode = (RISBG.Mask == 0xff ? SystemZ::LLCRMux : SystemZ::LLHRMux);
+      else
+        OpCode = (RISBG.Mask == 0xff ? SystemZ::LLCR : SystemZ::LLHR);
+    }
+
+    SDValue In = convertTo(DL, VT, RISBG.Input);
+    SDValue New = convertTo(
+        DL, VT, SDValue(CurDAG->getMachineNode(OpCode, DL, VT, In), 0));
+    ReplaceUses(N, New.getNode());
+    CurDAG->RemoveDeadNode(N);
+    return true;
+  }
 
   unsigned Opcode = SystemZ::RISBG;
+  // Prefer RISBGN if available, since it does not clobber CC.
+  if (Subtarget->hasMiscellaneousExtensions())
+    Opcode = SystemZ::RISBGN;
   EVT OpcodeVT = MVT::i64;
-  if (VT == MVT::i32 && Subtarget.hasHighWord()) {
+  if (VT == MVT::i32 && Subtarget->hasHighWord()) {
     Opcode = SystemZ::RISBMux;
     OpcodeVT = MVT::i32;
     RISBG.Start &= 31;
     RISBG.End &= 31;
   }
   SDValue Ops[5] = {
-    getUNDEF(SDLoc(N), OpcodeVT),
-    convertTo(SDLoc(N), OpcodeVT, RISBG.Input),
-    CurDAG->getTargetConstant(RISBG.Start, MVT::i32),
-    CurDAG->getTargetConstant(RISBG.End | 128, MVT::i32),
-    CurDAG->getTargetConstant(RISBG.Rotate, MVT::i32)
+    getUNDEF(DL, OpcodeVT),
+    convertTo(DL, OpcodeVT, RISBG.Input),
+    CurDAG->getTargetConstant(RISBG.Start, DL, MVT::i32),
+    CurDAG->getTargetConstant(RISBG.End | 128, DL, MVT::i32),
+    CurDAG->getTargetConstant(RISBG.Rotate, DL, MVT::i32)
   };
-  N = CurDAG->getMachineNode(Opcode, SDLoc(N), OpcodeVT, Ops);
-  return convertTo(SDLoc(N), VT, SDValue(N, 0)).getNode();
+  SDValue New = convertTo(
+      DL, VT, SDValue(CurDAG->getMachineNode(Opcode, DL, OpcodeVT, Ops), 0));
+  ReplaceUses(N, New.getNode());
+  CurDAG->RemoveDeadNode(N);
+  return true;
 }
 
-SDNode *SystemZDAGToDAGISel::tryRxSBG(SDNode *N, unsigned Opcode) {
+bool SystemZDAGToDAGISel::tryRxSBG(SDNode *N, unsigned Opcode) {
+  SDLoc DL(N);
+  EVT VT = N->getValueType(0);
+  if (!VT.isInteger() || VT.getSizeInBits() > 64)
+    return false;
   // Try treating each operand of N as the second operand of the RxSBG
   // and see which goes deepest.
   RxSBGOperands RxSBG[] = {
@@ -926,12 +1019,16 @@ SDNode *SystemZDAGToDAGISel::tryRxSBG(SDNode *N, unsigned Opcode) {
   unsigned Count[] = { 0, 0 };
   for (unsigned I = 0; I < 2; ++I)
     while (expandRxSBG(RxSBG[I]))
-      if (RxSBG[I].Input.getOpcode() != ISD::ANY_EXTEND)
+      // The widening or narrowing is expected to be free.
+      // Counting widening or narrowing as a saved operation will result in
+      // preferring an R*SBG over a simple shift/logical instruction.
+      if (RxSBG[I].Input.getOpcode() != ISD::ANY_EXTEND &&
+          RxSBG[I].Input.getOpcode() != ISD::TRUNCATE)
         Count[I] += 1;
 
   // Do nothing if neither operand is suitable.
   if (Count[0] == 0 && Count[1] == 0)
-    return 0;
+    return false;
 
   // Pick the deepest second operand.
   unsigned I = Count[0] > Count[1] ? 0 : 1;
@@ -939,40 +1036,133 @@ SDNode *SystemZDAGToDAGISel::tryRxSBG(SDNode *N, unsigned Opcode) {
 
   // Prefer IC for character insertions from memory.
   if (Opcode == SystemZ::ROSBG && (RxSBG[I].Mask & 0xff) == 0)
-    if (LoadSDNode *Load = dyn_cast<LoadSDNode>(Op0.getNode()))
+    if (auto *Load = dyn_cast<LoadSDNode>(Op0.getNode()))
       if (Load->getMemoryVT() == MVT::i8)
-        return 0;
+        return false;
 
   // See whether we can avoid an AND in the first operand by converting
   // ROSBG to RISBG.
-  if (Opcode == SystemZ::ROSBG && detectOrAndInsertion(Op0, RxSBG[I].Mask))
+  if (Opcode == SystemZ::ROSBG && detectOrAndInsertion(Op0, RxSBG[I].Mask)) {
     Opcode = SystemZ::RISBG;
-           
-  EVT VT = N->getValueType(0);
+    // Prefer RISBGN if available, since it does not clobber CC.
+    if (Subtarget->hasMiscellaneousExtensions())
+      Opcode = SystemZ::RISBGN;
+  }
+
   SDValue Ops[5] = {
-    convertTo(SDLoc(N), MVT::i64, Op0),
-    convertTo(SDLoc(N), MVT::i64, RxSBG[I].Input),
-    CurDAG->getTargetConstant(RxSBG[I].Start, MVT::i32),
-    CurDAG->getTargetConstant(RxSBG[I].End, MVT::i32),
-    CurDAG->getTargetConstant(RxSBG[I].Rotate, MVT::i32)
+    convertTo(DL, MVT::i64, Op0),
+    convertTo(DL, MVT::i64, RxSBG[I].Input),
+    CurDAG->getTargetConstant(RxSBG[I].Start, DL, MVT::i32),
+    CurDAG->getTargetConstant(RxSBG[I].End, DL, MVT::i32),
+    CurDAG->getTargetConstant(RxSBG[I].Rotate, DL, MVT::i32)
   };
-  N = CurDAG->getMachineNode(Opcode, SDLoc(N), MVT::i64, Ops);
-  return convertTo(SDLoc(N), VT, SDValue(N, 0)).getNode();
+  SDValue New = convertTo(
+      DL, VT, SDValue(CurDAG->getMachineNode(Opcode, DL, MVT::i64, Ops), 0));
+  ReplaceNode(N, New.getNode());
+  return true;
 }
 
-SDNode *SystemZDAGToDAGISel::splitLargeImmediate(unsigned Opcode, SDNode *Node,
-                                                 SDValue Op0, uint64_t UpperVal,
-                                                 uint64_t LowerVal) {
+void SystemZDAGToDAGISel::splitLargeImmediate(unsigned Opcode, SDNode *Node,
+                                              SDValue Op0, uint64_t UpperVal,
+                                              uint64_t LowerVal) {
   EVT VT = Node->getValueType(0);
   SDLoc DL(Node);
-  SDValue Upper = CurDAG->getConstant(UpperVal, VT);
+  SDValue Upper = CurDAG->getConstant(UpperVal, DL, VT);
   if (Op0.getNode())
     Upper = CurDAG->getNode(Opcode, DL, VT, Op0, Upper);
-  Upper = SDValue(Select(Upper.getNode()), 0);
 
-  SDValue Lower = CurDAG->getConstant(LowerVal, VT);
+  {
+    // When we haven't passed in Op0, Upper will be a constant. In order to
+    // prevent folding back to the large immediate in `Or = getNode(...)` we run
+    // SelectCode first and end up with an opaque machine node. This means that
+    // we need to use a handle to keep track of Upper in case it gets CSE'd by
+    // SelectCode.
+    //
+    // Note that in the case where Op0 is passed in we could just call
+    // SelectCode(Upper) later, along with the SelectCode(Or), and avoid needing
+    // the handle at all, but it's fine to do it here.
+    //
+    // TODO: This is a pretty hacky way to do this. Can we do something that
+    // doesn't require a two paragraph explanation?
+    HandleSDNode Handle(Upper);
+    SelectCode(Upper.getNode());
+    Upper = Handle.getValue();
+  }
+
+  SDValue Lower = CurDAG->getConstant(LowerVal, DL, VT);
   SDValue Or = CurDAG->getNode(Opcode, DL, VT, Upper, Lower);
-  return Or.getNode();
+
+  ReplaceUses(Node, Or.getNode());
+  CurDAG->RemoveDeadNode(Node);
+
+  SelectCode(Or.getNode());
+}
+
+bool SystemZDAGToDAGISel::tryGather(SDNode *N, unsigned Opcode) {
+  SDValue ElemV = N->getOperand(2);
+  auto *ElemN = dyn_cast<ConstantSDNode>(ElemV);
+  if (!ElemN)
+    return false;
+
+  unsigned Elem = ElemN->getZExtValue();
+  EVT VT = N->getValueType(0);
+  if (Elem >= VT.getVectorNumElements())
+    return false;
+
+  auto *Load = dyn_cast<LoadSDNode>(N->getOperand(1));
+  if (!Load || !Load->hasOneUse())
+    return false;
+  if (Load->getMemoryVT().getSizeInBits() !=
+      Load->getValueType(0).getSizeInBits())
+    return false;
+
+  SDValue Base, Disp, Index;
+  if (!selectBDVAddr12Only(Load->getBasePtr(), ElemV, Base, Disp, Index) ||
+      Index.getValueType() != VT.changeVectorElementTypeToInteger())
+    return false;
+
+  SDLoc DL(Load);
+  SDValue Ops[] = {
+    N->getOperand(0), Base, Disp, Index,
+    CurDAG->getTargetConstant(Elem, DL, MVT::i32), Load->getChain()
+  };
+  SDNode *Res = CurDAG->getMachineNode(Opcode, DL, VT, MVT::Other, Ops);
+  ReplaceUses(SDValue(Load, 1), SDValue(Res, 1));
+  ReplaceNode(N, Res);
+  return true;
+}
+
+bool SystemZDAGToDAGISel::tryScatter(StoreSDNode *Store, unsigned Opcode) {
+  SDValue Value = Store->getValue();
+  if (Value.getOpcode() != ISD::EXTRACT_VECTOR_ELT)
+    return false;
+  if (Store->getMemoryVT().getSizeInBits() !=
+      Value.getValueType().getSizeInBits())
+    return false;
+
+  SDValue ElemV = Value.getOperand(1);
+  auto *ElemN = dyn_cast<ConstantSDNode>(ElemV);
+  if (!ElemN)
+    return false;
+
+  SDValue Vec = Value.getOperand(0);
+  EVT VT = Vec.getValueType();
+  unsigned Elem = ElemN->getZExtValue();
+  if (Elem >= VT.getVectorNumElements())
+    return false;
+
+  SDValue Base, Disp, Index;
+  if (!selectBDVAddr12Only(Store->getBasePtr(), ElemV, Base, Disp, Index) ||
+      Index.getValueType() != VT.changeVectorElementTypeToInteger())
+    return false;
+
+  SDLoc DL(Store);
+  SDValue Ops[] = {
+    Vec, Base, Disp, Index, CurDAG->getTargetConstant(Elem, DL, MVT::i32),
+    Store->getChain()
+  };
+  ReplaceNode(Store, CurDAG->getMachineNode(Opcode, DL, MVT::Other, Ops));
+  return true;
 }
 
 bool SystemZDAGToDAGISel::canUseBlockOperation(StoreSDNode *Store,
@@ -990,8 +1180,8 @@ bool SystemZDAGToDAGISel::canUseBlockOperation(StoreSDNode *Store,
     return true;
 
   // Otherwise we need to check whether there's an alias.
-  const Value *V1 = Load->getSrcValue();
-  const Value *V2 = Store->getSrcValue();
+  const Value *V1 = Load->getMemOperand()->getValue();
+  const Value *V2 = Store->getMemOperand()->getValue();
   if (!V1 || !V2)
     return false;
 
@@ -1002,13 +1192,13 @@ bool SystemZDAGToDAGISel::canUseBlockOperation(StoreSDNode *Store,
   if (V1 == V2 && End1 == End2)
     return false;
 
-  return !AA->alias(AliasAnalysis::Location(V1, End1, Load->getTBAAInfo()),
-                    AliasAnalysis::Location(V2, End2, Store->getTBAAInfo()));
+  return !AA->alias(MemoryLocation(V1, End1, Load->getAAInfo()),
+                    MemoryLocation(V2, End2, Store->getAAInfo()));
 }
 
 bool SystemZDAGToDAGISel::storeLoadCanUseMVC(SDNode *N) const {
-  StoreSDNode *Store = cast<StoreSDNode>(N);
-  LoadSDNode *Load = cast<LoadSDNode>(Store->getValue());
+  auto *Store = cast<StoreSDNode>(N);
+  auto *Load = cast<LoadSDNode>(Store->getValue());
 
   // Prefer not to use MVC if either address can use ... RELATIVE LONG
   // instructions.
@@ -1027,13 +1217,13 @@ bool SystemZDAGToDAGISel::storeLoadCanUseMVC(SDNode *N) const {
 
 bool SystemZDAGToDAGISel::storeLoadCanUseBlockBinary(SDNode *N,
                                                      unsigned I) const {
-  StoreSDNode *StoreA = cast<StoreSDNode>(N);
-  LoadSDNode *LoadA = cast<LoadSDNode>(StoreA->getValue().getOperand(1 - I));
-  LoadSDNode *LoadB = cast<LoadSDNode>(StoreA->getValue().getOperand(I));
+  auto *StoreA = cast<StoreSDNode>(N);
+  auto *LoadA = cast<LoadSDNode>(StoreA->getValue().getOperand(1 - I));
+  auto *LoadB = cast<LoadSDNode>(StoreA->getValue().getOperand(I));
   return !LoadA->isVolatile() && canUseBlockOperation(StoreA, LoadB);
 }
 
-SDNode *SystemZDAGToDAGISel::Select(SDNode *Node) {
+void SystemZDAGToDAGISel::Select(SDNode *Node) {
   // Dump information about the Node being selected
   DEBUG(errs() << "Selecting: "; Node->dump(CurDAG); errs() << "\n");
 
@@ -1041,42 +1231,47 @@ SDNode *SystemZDAGToDAGISel::Select(SDNode *Node) {
   if (Node->isMachineOpcode()) {
     DEBUG(errs() << "== "; Node->dump(CurDAG); errs() << "\n");
     Node->setNodeId(-1);
-    return 0;
+    return;
   }
 
   unsigned Opcode = Node->getOpcode();
-  SDNode *ResNode = 0;
   switch (Opcode) {
   case ISD::OR:
     if (Node->getOperand(1).getOpcode() != ISD::Constant)
-      ResNode = tryRxSBG(Node, SystemZ::ROSBG);
+      if (tryRxSBG(Node, SystemZ::ROSBG))
+        return;
     goto or_xor;
 
   case ISD::XOR:
     if (Node->getOperand(1).getOpcode() != ISD::Constant)
-      ResNode = tryRxSBG(Node, SystemZ::RXSBG);
+      if (tryRxSBG(Node, SystemZ::RXSBG))
+        return;
     // Fall through.
   or_xor:
     // If this is a 64-bit operation in which both 32-bit halves are nonzero,
     // split the operation into two.
-    if (!ResNode && Node->getValueType(0) == MVT::i64)
-      if (ConstantSDNode *Op1 = dyn_cast<ConstantSDNode>(Node->getOperand(1))) {
+    if (Node->getValueType(0) == MVT::i64)
+      if (auto *Op1 = dyn_cast<ConstantSDNode>(Node->getOperand(1))) {
         uint64_t Val = Op1->getZExtValue();
-        if (!SystemZ::isImmLF(Val) && !SystemZ::isImmHF(Val))
-          Node = splitLargeImmediate(Opcode, Node, Node->getOperand(0),
-                                     Val - uint32_t(Val), uint32_t(Val));
+        if (!SystemZ::isImmLF(Val) && !SystemZ::isImmHF(Val)) {
+          splitLargeImmediate(Opcode, Node, Node->getOperand(0),
+                              Val - uint32_t(Val), uint32_t(Val));
+          return;
+        }
       }
     break;
 
   case ISD::AND:
     if (Node->getOperand(1).getOpcode() != ISD::Constant)
-      ResNode = tryRxSBG(Node, SystemZ::RNSBG);
+      if (tryRxSBG(Node, SystemZ::RNSBG))
+        return;
     // Fall through.
   case ISD::ROTL:
   case ISD::SHL:
   case ISD::SRL:
-    if (!ResNode)
-      ResNode = tryRISBGZero(Node);
+  case ISD::ZERO_EXTEND:
+    if (tryRISBGZero(Node))
+      return;
     break;
 
   case ISD::Constant:
@@ -1084,22 +1279,10 @@ SDNode *SystemZDAGToDAGISel::Select(SDNode *Node) {
     // LLIHF and LGFI, split it into two 32-bit pieces.
     if (Node->getValueType(0) == MVT::i64) {
       uint64_t Val = cast<ConstantSDNode>(Node)->getZExtValue();
-      if (!SystemZ::isImmLF(Val) && !SystemZ::isImmHF(Val) && !isInt<32>(Val))
-        Node = splitLargeImmediate(ISD::OR, Node, SDValue(),
-                                   Val - uint32_t(Val), uint32_t(Val));
-    }
-    break;
-
-  case ISD::ATOMIC_LOAD_SUB:
-    // Try to convert subtractions of constants to additions.
-    if (ConstantSDNode *Op2 = dyn_cast<ConstantSDNode>(Node->getOperand(2))) {
-      uint64_t Value = -Op2->getZExtValue();
-      EVT VT = Node->getValueType(0);
-      if (VT == MVT::i32 || isInt<32>(Value)) {
-        SDValue Ops[] = { Node->getOperand(0), Node->getOperand(1),
-                          CurDAG->getConstant(int32_t(Value), VT) };
-        Node = CurDAG->MorphNodeTo(Node, ISD::ATOMIC_LOAD_ADD,
-                                   Node->getVTList(), Ops, array_lengthof(Ops));
+      if (!SystemZ::isImmLF(Val) && !SystemZ::isImmHF(Val) && !isInt<32>(Val)) {
+        splitLargeImmediate(ISD::OR, Node, SDValue(), Val - uint32_t(Val),
+                            uint32_t(Val));
+        return;
       }
     }
     break;
@@ -1117,43 +1300,86 @@ SDNode *SystemZDAGToDAGISel::Select(SDNode *Node) {
       uint64_t ConstCCMask =
         cast<ConstantSDNode>(CCMask.getNode())->getZExtValue();
       // Invert the condition.
-      CCMask = CurDAG->getConstant(ConstCCValid ^ ConstCCMask,
+      CCMask = CurDAG->getConstant(ConstCCValid ^ ConstCCMask, SDLoc(Node),
                                    CCMask.getValueType());
       SDValue Op4 = Node->getOperand(4);
       Node = CurDAG->UpdateNodeOperands(Node, Op1, Op0, CCValid, CCMask, Op4);
     }
     break;
   }
+
+  case ISD::INSERT_VECTOR_ELT: {
+    EVT VT = Node->getValueType(0);
+    unsigned ElemBitSize = VT.getVectorElementType().getSizeInBits();
+    if (ElemBitSize == 32) {
+      if (tryGather(Node, SystemZ::VGEF))
+        return;
+    } else if (ElemBitSize == 64) {
+      if (tryGather(Node, SystemZ::VGEG))
+        return;
+    }
+    break;
   }
 
-  // Select the default instruction
-  if (!ResNode)
-    ResNode = SelectCode(Node);
+  case ISD::STORE: {
+    auto *Store = cast<StoreSDNode>(Node);
+    unsigned ElemBitSize = Store->getValue().getValueType().getSizeInBits();
+    if (ElemBitSize == 32) {
+      if (tryScatter(Store, SystemZ::VSCEF))
+        return;
+    } else if (ElemBitSize == 64) {
+      if (tryScatter(Store, SystemZ::VSCEG))
+        return;
+    }
+    break;
+  }
+  }
 
-  DEBUG(errs() << "=> ";
-        if (ResNode == NULL || ResNode == Node)
-          Node->dump(CurDAG);
-        else
-          ResNode->dump(CurDAG);
-        errs() << "\n";
-        );
-  return ResNode;
+  SelectCode(Node);
 }
 
 bool SystemZDAGToDAGISel::
 SelectInlineAsmMemoryOperand(const SDValue &Op,
-                             char ConstraintCode,
+                             unsigned ConstraintID,
                              std::vector<SDValue> &OutOps) {
-  assert(ConstraintCode == 'm' && "Unexpected constraint code");
-  // Accept addresses with short displacements, which are compatible
-  // with Q, R, S and T.  But keep the index operand for future expansion.
+  SystemZAddressingMode::AddrForm Form;
+  SystemZAddressingMode::DispRange DispRange;
   SDValue Base, Disp, Index;
-  if (!selectBDXAddr(SystemZAddressingMode::FormBD,
-                     SystemZAddressingMode::Disp12Only,
-                     Op, Base, Disp, Index))
-    return true;
-  OutOps.push_back(Base);
-  OutOps.push_back(Disp);
-  OutOps.push_back(Index);
-  return false;
+
+  switch(ConstraintID) {
+  default:
+    llvm_unreachable("Unexpected asm memory constraint");
+  case InlineAsm::Constraint_i:
+  case InlineAsm::Constraint_Q:
+    // Accept an address with a short displacement, but no index.
+    Form = SystemZAddressingMode::FormBD;
+    DispRange = SystemZAddressingMode::Disp12Only;
+    break;
+  case InlineAsm::Constraint_R:
+    // Accept an address with a short displacement and an index.
+    Form = SystemZAddressingMode::FormBDXNormal;
+    DispRange = SystemZAddressingMode::Disp12Only;
+    break;
+  case InlineAsm::Constraint_S:
+    // Accept an address with a long displacement, but no index.
+    Form = SystemZAddressingMode::FormBD;
+    DispRange = SystemZAddressingMode::Disp20Only;
+    break;
+  case InlineAsm::Constraint_T:
+  case InlineAsm::Constraint_m:
+    // Accept an address with a long displacement and an index.
+    // m works the same as T, as this is the most general case.
+    Form = SystemZAddressingMode::FormBDXNormal;
+    DispRange = SystemZAddressingMode::Disp20Only;
+    break;
+  }
+
+  if (selectBDXAddr(Form, DispRange, Op, Base, Disp, Index)) {
+    OutOps.push_back(Base);
+    OutOps.push_back(Disp);
+    OutOps.push_back(Index);
+    return false;
+  }
+
+  return true;
 }

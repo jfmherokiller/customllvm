@@ -1,6 +1,10 @@
 ; RUN: opt < %s -instsimplify -S | FileCheck %s
+; RUN: opt < %s -passes=instsimplify -S | FileCheck %s
 
 declare {i8, i1} @llvm.uadd.with.overflow.i8(i8 %a, i8 %b)
+declare {i8, i1} @llvm.usub.with.overflow.i8(i8 %a, i8 %b)
+declare {i8, i1} @llvm.ssub.with.overflow.i8(i8 %a, i8 %b)
+declare {i8, i1} @llvm.umul.with.overflow.i8(i8 %a, i8 %b)
 
 define i1 @test_uadd1() {
 ; CHECK-LABEL: @test_uadd1(
@@ -16,6 +20,27 @@ define i8 @test_uadd2() {
   %result = extractvalue {i8, i1} %x, 0
   ret i8 %result
 ; CHECK-NEXT: ret i8 42
+}
+
+define {i8, i1} @test_usub1(i8 %V) {
+; CHECK-LABEL: @test_usub1(
+  %x = call {i8, i1} @llvm.usub.with.overflow.i8(i8 %V, i8 %V)
+  ret {i8, i1} %x
+; CHECK-NEXT: ret { i8, i1 } zeroinitializer
+}
+
+define {i8, i1} @test_ssub1(i8 %V) {
+; CHECK-LABEL: @test_ssub1(
+  %x = call {i8, i1} @llvm.ssub.with.overflow.i8(i8 %V, i8 %V)
+  ret {i8, i1} %x
+; CHECK-NEXT: ret { i8, i1 } zeroinitializer
+}
+
+define {i8, i1} @test_umul1(i8 %V) {
+; CHECK-LABEL: @test_umul1(
+  %x = call {i8, i1} @llvm.umul.with.overflow.i8(i8 %V, i8 0)
+  ret {i8, i1} %x
+; CHECK-NEXT: ret { i8, i1 } zeroinitializer
 }
 
 declare i256 @llvm.cttz.i256(i256 %src, i1 %is_zero_undef)
@@ -109,7 +134,7 @@ entry:
   br i1 %cmp, label %cast.end, label %cast.notnull
 
 cast.notnull:                                     ; preds = %entry
-  %add.ptr = getelementptr inbounds i8* %call, i64 4
+  %add.ptr = getelementptr inbounds i8, i8* %call, i64 4
   br label %cast.end
 
 cast.end:                                         ; preds = %cast.notnull, %entry
@@ -120,7 +145,7 @@ cast.end:                                         ; preds = %cast.notnull, %entr
 ; CHECK: br i1 false, label %cast.end, label %cast.notnull
 }
 
-declare noalias i8* @_Znwm(i64)
+declare nonnull noalias i8* @_Znwm(i64)
 
 %"struct.std::nothrow_t" = type { i8 }
 @_ZSt7nothrow = external global %"struct.std::nothrow_t"
@@ -132,7 +157,7 @@ entry:
   br i1 %cmp, label %cast.end, label %cast.notnull
 
 cast.notnull:                                     ; preds = %entry
-  %add.ptr = getelementptr inbounds i8* %call, i64 4
+  %add.ptr = getelementptr inbounds i8, i8* %call, i64 4
   br label %cast.end
 
 cast.end:                                         ; preds = %cast.notnull, %entry
@@ -152,7 +177,7 @@ entry:
   br i1 %cmp, label %cast.end, label %cast.notnull
 
 cast.notnull:                                     ; preds = %entry
-  %add.ptr = getelementptr inbounds i8* %call, i64 4
+  %add.ptr = getelementptr inbounds i8, i8* %call, i64 4
   br label %cast.end
 
 cast.end:                                         ; preds = %cast.notnull, %entry
@@ -163,4 +188,38 @@ cast.end:                                         ; preds = %cast.notnull, %entr
 ; CHECK: br i1 %cmp, label %cast.end, label %cast.notnull
 }
 
+define i32 @call_null() {
+entry:
+  %call = call i32 null()
+  ret i32 %call
+}
+; CHECK-LABEL: define i32 @call_null(
+; CHECK: ret i32 undef
+
+define i32 @call_undef() {
+entry:
+  %call = call i32 undef()
+  ret i32 %call
+}
+; CHECK-LABEL: define i32 @call_undef(
+; CHECK: ret i32 undef
+
+@GV = private constant [8 x i32] [i32 42, i32 43, i32 44, i32 45, i32 46, i32 47, i32 48, i32 49]
+
+define <8 x i32> @partial_masked_load() {
+; CHECK-LABEL: @partial_masked_load(
+; CHECK:         ret <8 x i32> <i32 undef, i32 undef, i32 42, i32 43, i32 44, i32 45, i32 46, i32 47>
+  %masked.load = call <8 x i32> @llvm.masked.load.v8i32.p0v8i32(<8 x i32>* bitcast (i32* getelementptr ([8 x i32], [8 x i32]* @GV, i64 0, i64 -2) to <8 x i32>*), i32 4, <8 x i1> <i1 false, i1 false, i1 true, i1 true, i1 true, i1 true, i1 true, i1 true>, <8 x i32> undef)
+  ret <8 x i32> %masked.load
+}
+
+define <8 x i32> @masked_load_undef_mask(<8 x i32>* %V) {
+; CHECK-LABEL: @masked_load_undef_mask(
+; CHECK:         ret <8 x i32> <i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0>
+  %masked.load = call <8 x i32> @llvm.masked.load.v8i32.p0v8i32(<8 x i32>* %V, i32 4, <8 x i1> undef, <8 x i32> <i32 1, i32 0, i32 1, i32 0, i32 1, i32 0, i32 1, i32 0>)
+  ret <8 x i32> %masked.load
+}
+
 declare noalias i8* @malloc(i64)
+
+declare <8 x i32> @llvm.masked.load.v8i32.p0v8i32(<8 x i32>*, i32, <8 x i1>, <8 x i32>)

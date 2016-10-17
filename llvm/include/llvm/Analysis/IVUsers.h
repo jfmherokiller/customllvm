@@ -17,10 +17,11 @@
 
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/Analysis/ScalarEvolutionNormalization.h"
-#include "llvm/Support/ValueHandle.h"
+#include "llvm/IR/ValueHandle.h"
 
 namespace llvm {
 
+class AssumptionCache;
 class DominatorTree;
 class Instruction;
 class Value;
@@ -33,7 +34,7 @@ class DataLayout;
 /// The Expr member keeps track of the expression, User is the actual user
 /// instruction of the operand, and 'OperandValToReplace' is the operand of
 /// the User that is the use.
-class IVStrideUse : public CallbackVH, public ilist_node<IVStrideUse> {
+class IVStrideUse final : public CallbackVH, public ilist_node<IVStrideUse> {
   friend class IVUsers;
 public:
   IVStrideUse(IVUsers *P, Instruction* U, Value *O)
@@ -86,7 +87,7 @@ private:
 
   /// Deleted - Implementation of CallbackVH virtual function to
   /// receive notification when the User is deleted.
-  virtual void deleted();
+  void deleted() override;
 };
 
 template<> struct ilist_traits<IVStrideUse>
@@ -116,28 +117,25 @@ private:
   mutable ilist_node<IVStrideUse> Sentinel;
 };
 
-class IVUsers : public LoopPass {
+class IVUsers {
   friend class IVStrideUse;
   Loop *L;
+  AssumptionCache *AC;
   LoopInfo *LI;
   DominatorTree *DT;
   ScalarEvolution *SE;
-  DataLayout *TD;
-  SmallPtrSet<Instruction*,16> Processed;
+  SmallPtrSet<Instruction*, 16> Processed;
 
   /// IVUses - A list of all tracked IV uses of induction variable expressions
   /// we are interested in.
   ilist<IVStrideUse> IVUses;
 
-  virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-
-  virtual bool runOnLoop(Loop *L, LPPassManager &LPM);
-
-  virtual void releaseMemory();
+  // Ephemeral values used by @llvm.assume in this function.
+  SmallPtrSet<const Value *, 32> EphValues;
 
 public:
-  static char ID; // Pass ID, replacement for typeid
-  IVUsers();
+  IVUsers(Loop *L, AssumptionCache *AC, LoopInfo *LI, DominatorTree *DT,
+          ScalarEvolution *SE);
 
   Loop *getLoop() const { return L; }
 
@@ -169,16 +167,58 @@ public:
     return Processed.count(Inst);
   }
 
-  void print(raw_ostream &OS, const Module* = 0) const;
+  void releaseMemory();
+
+  void print(raw_ostream &OS, const Module * = nullptr) const;
 
   /// dump - This method is used for debugging.
   void dump() const;
+
 protected:
-  bool AddUsersImpl(Instruction *I, SmallPtrSet<Loop*,16> &SimpleLoopNests);
+  bool AddUsersImpl(Instruction *I, SmallPtrSetImpl<Loop*> &SimpleLoopNests);
 };
 
 Pass *createIVUsersPass();
 
+class IVUsersWrapperPass : public LoopPass {
+  std::unique_ptr<IVUsers> IU;
+
+public:
+  static char ID;
+
+  IVUsersWrapperPass();
+
+  IVUsers &getIU() { return *IU; }
+  const IVUsers &getIU() const { return *IU; }
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+
+  bool runOnLoop(Loop *L, LPPassManager &LPM) override;
+
+  void releaseMemory() override;
+
+  void print(raw_ostream &OS, const Module * = nullptr) const override;
+};
+
+/// Analysis pass that exposes the \c IVUsers for a loop.
+class IVUsersAnalysis : public AnalysisInfoMixin<IVUsersAnalysis> {
+  friend AnalysisInfoMixin<IVUsersAnalysis>;
+  static char PassID;
+
+public:
+  typedef IVUsers Result;
+
+  IVUsers run(Loop &L, AnalysisManager<Loop> &AM);
+};
+
+/// Printer pass for the \c IVUsers for a loop.
+class IVUsersPrinterPass : public PassInfoMixin<IVUsersPrinterPass> {
+  raw_ostream &OS;
+
+public:
+  explicit IVUsersPrinterPass(raw_ostream &OS) : OS(OS) {}
+  PreservedAnalyses run(Loop &L, AnalysisManager<Loop> &AM);
+};
 }
 
 #endif

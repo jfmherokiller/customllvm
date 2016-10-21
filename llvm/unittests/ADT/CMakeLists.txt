@@ -15,7 +15,7 @@ set(ADTSources
   FoldingSet.cpp
   FunctionRefTest.cpp
   HashingTest.cpp
-  IlistTest.cpp
+  IListTest.cpp
   ImmutableMapTest.cpp
   ImmutableSetTest.cpp
   IntEqClassesTest.cpp

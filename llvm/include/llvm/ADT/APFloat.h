@@ -134,6 +134,7 @@ public:
   static const fltSemantics IEEEquad;
   static const fltSemantics PPCDoubleDouble;
   static const fltSemantics x87DoubleExtended;
+  static const fltSemantics ZCPUfloat;
 
   /// A Pseudo fltsemantic used to construct APFloats that cannot conflict with
   /// anything real.

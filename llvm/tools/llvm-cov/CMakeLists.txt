@@ -1,4 +1,4 @@
-set(LLVM_LINK_COMPONENTS core support object coverage profiledata)
+set(LLVM_LINK_COMPONENTS core support object profiledata)
 
 add_llvm_tool(llvm-cov
   llvm-cov.cpp
@@ -8,7 +8,5 @@ add_llvm_tool(llvm-cov
   CoverageReport.cpp
   CoverageSummaryInfo.cpp
   SourceCoverageView.cpp
-  SourceCoverageViewHTML.cpp
-  SourceCoverageViewText.cpp
   TestingSupport.cpp
   )

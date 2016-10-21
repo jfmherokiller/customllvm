@@ -16,61 +16,41 @@
 #define LLVM_IR_IRBUILDER_H
 
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/None.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Constant.h"
 #include "llvm/IR/ConstantFolder.h"
-#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/DebugLoc.h"
-#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
-#include "llvm/IR/InstrTypes.h"
-#include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Operator.h"
-#include "llvm/IR/Type.h"
-#include "llvm/IR/Value.h"
 #include "llvm/IR/ValueHandle.h"
-#include "llvm/Support/AtomicOrdering.h"
 #include "llvm/Support/CBindingWrapping.h"
-#include "llvm/Support/Casting.h"
-#include "llvm-c/Types.h"
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
 
 namespace llvm {
-
-class APInt;
 class MDNode;
-class Module;
-class Use;
 
 /// \brief This provides the default implementation of the IRBuilder
 /// 'InsertHelper' method that is called whenever an instruction is created by
 /// IRBuilder and needs to be inserted.
 ///
 /// By default, this inserts the instruction at the insertion point.
+template <bool preserveNames = true>
 class IRBuilderDefaultInserter {
 protected:
   void InsertHelper(Instruction *I, const Twine &Name,
                     BasicBlock *BB, BasicBlock::iterator InsertPt) const {
     if (BB) BB->getInstList().insert(InsertPt, I);
-    I->setName(Name);
+    if (preserveNames)
+      I->setName(Name);
   }
 };
 
 /// \brief Common base class shared among various IRBuilders.
 class IRBuilderBase {
   DebugLoc CurDbgLocation;
-
 protected:
   BasicBlock *BB;
   BasicBlock::iterator InsertPt;
@@ -78,14 +58,10 @@ protected:
 
   MDNode *DefaultFPMathTag;
   FastMathFlags FMF;
-
-  ArrayRef<OperandBundleDef> DefaultOperandBundles;
-
 public:
-  IRBuilderBase(LLVMContext &context, MDNode *FPMathTag = nullptr,
-                ArrayRef<OperandBundleDef> OpBundles = None)
-      : Context(context), DefaultFPMathTag(FPMathTag), FMF(),
-        DefaultOperandBundles(OpBundles) {
+
+  IRBuilderBase(LLVMContext &context, MDNode *FPMathTag = nullptr)
+    : Context(context), DefaultFPMathTag(FPMathTag), FMF() {
     ClearInsertionPoint();
   }
 
@@ -97,7 +73,7 @@ public:
   /// inserted into a block.
   void ClearInsertionPoint() {
     BB = nullptr;
-    InsertPt.reset(nullptr);
+    InsertPt = nullptr;
   }
 
   BasicBlock *GetInsertBlock() const { return BB; }
@@ -115,8 +91,8 @@ public:
   /// the specified instruction.
   void SetInsertPoint(Instruction *I) {
     BB = I->getParent();
-    InsertPt = I->getIterator();
-    assert(InsertPt != BB->end() && "Can't read debug loc from end()");
+    InsertPt = I;
+    assert(I != BB->end() && "Can't read debug loc from end()");
     SetCurrentDebugLocation(I->getDebugLoc());
   }
 
@@ -196,10 +172,10 @@ public:
   void clearFastMathFlags() { FMF.clear(); }
 
   /// \brief Set the floating point math metadata to be used.
-  void setDefaultFPMathTag(MDNode *FPMathTag) { DefaultFPMathTag = FPMathTag; }
+  void SetDefaultFPMathTag(MDNode *FPMathTag) { DefaultFPMathTag = FPMathTag; }
 
   /// \brief Set the fast-math flags to be used with generated fp-math operators
-  void setFastMathFlags(FastMathFlags NewFMF) { FMF = NewFMF; }
+  void SetFastMathFlags(FastMathFlags NewFMF) { FMF = NewFMF; }
 
   //===--------------------------------------------------------------------===//
   // RAII helpers.
@@ -337,8 +313,10 @@ public:
   }
 
   /// \brief Fetch the type representing a 128-bit integer.
-  IntegerType *getInt128Ty() { return Type::getInt128Ty(Context); }
-
+  IntegerType *getInt128Ty() {
+    return Type::getInt128Ty(Context);
+  }
+  
   /// \brief Fetch the type representing an N-bit integer.
   IntegerType *getIntNTy(unsigned N) {
     return Type::getIntNTy(Context, N);
@@ -448,21 +426,11 @@ public:
 
   /// \brief Create a call to Masked Load intrinsic
   CallInst *CreateMaskedLoad(Value *Ptr, unsigned Align, Value *Mask,
-                             Value *PassThru = nullptr, const Twine &Name = "");
+                             Value *PassThru = 0, const Twine &Name = "");
 
   /// \brief Create a call to Masked Store intrinsic
   CallInst *CreateMaskedStore(Value *Val, Value *Ptr, unsigned Align,
                               Value *Mask);
-
-  /// \brief Create a call to Masked Gather intrinsic
-  CallInst *CreateMaskedGather(Value *Ptrs, unsigned Align,
-                               Value *Mask = nullptr,
-                               Value *PassThru = nullptr,
-                               const Twine& Name = "");
-
-  /// \brief Create a call to Masked Scatter intrinsic
-  CallInst *CreateMaskedScatter(Value *Val, Value *Ptrs, unsigned Align,
-                                Value *Mask = nullptr);
 
   /// \brief Create an assume intrinsic call that allows the optimizer to
   /// assume that the provided condition will be true.
@@ -474,16 +442,6 @@ public:
                                    Value *ActualCallee,
                                    ArrayRef<Value *> CallArgs,
                                    ArrayRef<Value *> DeoptArgs,
-                                   ArrayRef<Value *> GCArgs,
-                                   const Twine &Name = "");
-
-  /// \brief Create a call to the experimental.gc.statepoint intrinsic to
-  /// start a new statepoint sequence.
-  CallInst *CreateGCStatepointCall(uint64_t ID, uint32_t NumPatchBytes,
-                                   Value *ActualCallee, uint32_t Flags,
-                                   ArrayRef<Use> CallArgs,
-                                   ArrayRef<Use> TransitionArgs,
-                                   ArrayRef<Use> DeoptArgs,
                                    ArrayRef<Value *> GCArgs,
                                    const Twine &Name = "");
 
@@ -504,15 +462,6 @@ public:
                            BasicBlock *UnwindDest, ArrayRef<Value *> InvokeArgs,
                            ArrayRef<Value *> DeoptArgs,
                            ArrayRef<Value *> GCArgs, const Twine &Name = "");
-
-  /// brief Create an invoke to the experimental.gc.statepoint intrinsic to
-  /// start a new statepoint sequence.
-  InvokeInst *CreateGCStatepointInvoke(
-      uint64_t ID, uint32_t NumPatchBytes, Value *ActualInvokee,
-      BasicBlock *NormalDest, BasicBlock *UnwindDest, uint32_t Flags,
-      ArrayRef<Use> InvokeArgs, ArrayRef<Use> TransitionArgs,
-      ArrayRef<Use> DeoptArgs, ArrayRef<Value *> GCArgs,
-      const Twine &Name = "");
 
   // Conveninence function for the common case when CallArgs are filled in using
   // makeArrayRef(CS.arg_begin(), CS.arg_end()); Use needs to be .get()'ed to
@@ -540,9 +489,9 @@ public:
 
 private:
   /// \brief Create a call to a masked intrinsic with given Id.
+  /// Masked intrinsic has only one overloaded type - data type.
   CallInst *CreateMaskedIntrinsic(Intrinsic::ID Id, ArrayRef<Value *> Ops,
-                                  ArrayRef<Type *> OverloadedTypes,
-                                  const Twine &Name = "");
+                                  Type *DataTy, const Twine &Name = "");
 
   Value *getCastedInt8PtrValue(Value *Ptr);
 };
@@ -557,60 +506,59 @@ private:
 /// created. Convenience state exists to specify fast-math flags and fp-math
 /// tags.
 ///
-/// The first template argument specifies a class to use for creating constants.
-/// This defaults to creating minimally folded constants.  The second template
-/// argument allows clients to specify custom insertion hooks that are called on
-/// every newly created insertion.
-template <typename T = ConstantFolder,
-          typename Inserter = IRBuilderDefaultInserter>
+/// The first template argument handles whether or not to preserve names in the
+/// final instruction output. This defaults to on.  The second template argument
+/// specifies a class to use for creating constants.  This defaults to creating
+/// minimally folded constants.  The third template argument allows clients to
+/// specify custom insertion hooks that are called on every newly created
+/// insertion.
+template<bool preserveNames = true, typename T = ConstantFolder,
+         typename Inserter = IRBuilderDefaultInserter<preserveNames> >
 class IRBuilder : public IRBuilderBase, public Inserter {
   T Folder;
-
 public:
-  IRBuilder(LLVMContext &C, const T &F, Inserter I = Inserter(),
-            MDNode *FPMathTag = nullptr,
-            ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(C, FPMathTag, OpBundles), Inserter(std::move(I)),
-        Folder(F) {}
+  IRBuilder(LLVMContext &C, const T &F, const Inserter &I = Inserter(),
+            MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(C, FPMathTag), Inserter(I), Folder(F) {
+  }
 
-  explicit IRBuilder(LLVMContext &C, MDNode *FPMathTag = nullptr,
-                     ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(C, FPMathTag, OpBundles), Folder() {}
+  explicit IRBuilder(LLVMContext &C, MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(C, FPMathTag), Folder() {
+  }
 
-  explicit IRBuilder(BasicBlock *TheBB, const T &F, MDNode *FPMathTag = nullptr,
-                     ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(TheBB->getContext(), FPMathTag, OpBundles), Folder(F) {
+  explicit IRBuilder(BasicBlock *TheBB, const T &F, MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(TheBB->getContext(), FPMathTag), Folder(F) {
     SetInsertPoint(TheBB);
   }
 
-  explicit IRBuilder(BasicBlock *TheBB, MDNode *FPMathTag = nullptr,
-                     ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(TheBB->getContext(), FPMathTag, OpBundles), Folder() {
+  explicit IRBuilder(BasicBlock *TheBB, MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(TheBB->getContext(), FPMathTag), Folder() {
     SetInsertPoint(TheBB);
   }
 
-  explicit IRBuilder(Instruction *IP, MDNode *FPMathTag = nullptr,
-                     ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(IP->getContext(), FPMathTag, OpBundles), Folder() {
+  explicit IRBuilder(Instruction *IP, MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(IP->getContext(), FPMathTag), Folder() {
     SetInsertPoint(IP);
   }
 
-  IRBuilder(BasicBlock *TheBB, BasicBlock::iterator IP, const T &F,
-            MDNode *FPMathTag = nullptr,
-            ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(TheBB->getContext(), FPMathTag, OpBundles), Folder(F) {
+  IRBuilder(BasicBlock *TheBB, BasicBlock::iterator IP, const T& F,
+            MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(TheBB->getContext(), FPMathTag), Folder(F) {
     SetInsertPoint(TheBB, IP);
   }
 
   IRBuilder(BasicBlock *TheBB, BasicBlock::iterator IP,
-            MDNode *FPMathTag = nullptr,
-            ArrayRef<OperandBundleDef> OpBundles = None)
-      : IRBuilderBase(TheBB->getContext(), FPMathTag, OpBundles), Folder() {
+            MDNode *FPMathTag = nullptr)
+    : IRBuilderBase(TheBB->getContext(), FPMathTag), Folder() {
     SetInsertPoint(TheBB, IP);
   }
 
   /// \brief Get the constant folder being used.
   const T &getFolder() { return Folder; }
+
+  /// \brief Return true if this builder is configured to actually add the
+  /// requested names to IR created through it.
+  bool isNamePreserving() const { return preserveNames; }
 
   /// \brief Insert and return the specified instruction.
   template<typename InstTy>
@@ -630,15 +578,12 @@ public:
   //===--------------------------------------------------------------------===//
 
 private:
-  /// \brief Helper to add branch weight and unpredictable metadata onto an
-  /// instruction.
+  /// \brief Helper to add branch weight metadata onto an instruction.
   /// \returns The annotated instruction.
   template <typename InstTy>
-  InstTy *addBranchMetadata(InstTy *I, MDNode *Weights, MDNode *Unpredictable) {
+  InstTy *addBranchWeights(InstTy *I, MDNode *Weights) {
     if (Weights)
       I->setMetadata(LLVMContext::MD_prof, Weights);
-    if (Unpredictable)
-      I->setMetadata(LLVMContext::MD_unpredictable, Unpredictable);
     return I;
   }
 
@@ -675,20 +620,18 @@ public:
   /// \brief Create a conditional 'br Cond, TrueDest, FalseDest'
   /// instruction.
   BranchInst *CreateCondBr(Value *Cond, BasicBlock *True, BasicBlock *False,
-                           MDNode *BranchWeights = nullptr,
-                           MDNode *Unpredictable = nullptr) {
-    return Insert(addBranchMetadata(BranchInst::Create(True, False, Cond),
-                                    BranchWeights, Unpredictable));
+                           MDNode *BranchWeights = nullptr) {
+    return Insert(addBranchWeights(BranchInst::Create(True, False, Cond),
+                                   BranchWeights));
   }
 
   /// \brief Create a switch instruction with the specified value, default dest,
   /// and with a hint for the number of cases that will be added (for efficient
   /// allocation).
   SwitchInst *CreateSwitch(Value *V, BasicBlock *Dest, unsigned NumCases = 10,
-                           MDNode *BranchWeights = nullptr,
-                           MDNode *Unpredictable = nullptr) {
-    return Insert(addBranchMetadata(SwitchInst::Create(V, Dest, NumCases),
-                                    BranchWeights, Unpredictable));
+                           MDNode *BranchWeights = nullptr) {
+    return Insert(addBranchWeights(SwitchInst::Create(V, Dest, NumCases),
+                                   BranchWeights));
   }
 
   /// \brief Create an indirect branch instruction with the specified address
@@ -698,51 +641,35 @@ public:
     return Insert(IndirectBrInst::Create(Addr, NumDests));
   }
 
+  InvokeInst *CreateInvoke(Value *Callee, BasicBlock *NormalDest,
+                           BasicBlock *UnwindDest, const Twine &Name = "") {
+    return Insert(InvokeInst::Create(Callee, NormalDest, UnwindDest, None),
+                  Name);
+  }
+  InvokeInst *CreateInvoke(Value *Callee, BasicBlock *NormalDest,
+                           BasicBlock *UnwindDest, Value *Arg1,
+                           const Twine &Name = "") {
+    return Insert(InvokeInst::Create(Callee, NormalDest, UnwindDest, Arg1),
+                  Name);
+  }
+  InvokeInst *CreateInvoke3(Value *Callee, BasicBlock *NormalDest,
+                            BasicBlock *UnwindDest, Value *Arg1,
+                            Value *Arg2, Value *Arg3,
+                            const Twine &Name = "") {
+    Value *Args[] = { Arg1, Arg2, Arg3 };
+    return Insert(InvokeInst::Create(Callee, NormalDest, UnwindDest, Args),
+                  Name);
+  }
   /// \brief Create an invoke instruction.
   InvokeInst *CreateInvoke(Value *Callee, BasicBlock *NormalDest,
-                           BasicBlock *UnwindDest,
-                           ArrayRef<Value *> Args = None,
+                           BasicBlock *UnwindDest, ArrayRef<Value *> Args,
                            const Twine &Name = "") {
     return Insert(InvokeInst::Create(Callee, NormalDest, UnwindDest, Args),
                   Name);
   }
-  InvokeInst *CreateInvoke(Value *Callee, BasicBlock *NormalDest,
-                           BasicBlock *UnwindDest, ArrayRef<Value *> Args,
-                           ArrayRef<OperandBundleDef> OpBundles,
-                           const Twine &Name = "") {
-    return Insert(InvokeInst::Create(Callee, NormalDest, UnwindDest, Args,
-                                     OpBundles), Name);
-  }
 
   ResumeInst *CreateResume(Value *Exn) {
     return Insert(ResumeInst::Create(Exn));
-  }
-
-  CleanupReturnInst *CreateCleanupRet(CleanupPadInst *CleanupPad,
-                                      BasicBlock *UnwindBB = nullptr) {
-    return Insert(CleanupReturnInst::Create(CleanupPad, UnwindBB));
-  }
-
-  CatchSwitchInst *CreateCatchSwitch(Value *ParentPad, BasicBlock *UnwindBB,
-                                     unsigned NumHandlers,
-                                     const Twine &Name = "") {
-    return Insert(CatchSwitchInst::Create(ParentPad, UnwindBB, NumHandlers),
-                  Name);
-  }
-
-  CatchPadInst *CreateCatchPad(Value *ParentPad, ArrayRef<Value *> Args,
-                               const Twine &Name = "") {
-    return Insert(CatchPadInst::Create(ParentPad, Args), Name);
-  }
-
-  CleanupPadInst *CreateCleanupPad(Value *ParentPad,
-                                   ArrayRef<Value *> Args = None,
-                                   const Twine &Name = "") {
-    return Insert(CleanupPadInst::Create(ParentPad, Args), Name);
-  }
-
-  CatchReturnInst *CreateCatchRet(CatchPadInst *CatchPad, BasicBlock *BB) {
-    return Insert(CatchReturnInst::Create(CatchPad, BB));
   }
 
   UnreachableInst *CreateUnreachable() {
@@ -773,7 +700,6 @@ private:
     I->setFastMathFlags(FMF);
     return I;
   }
-
 public:
   Value *CreateAdd(Value *LHS, Value *RHS, const Twine &Name = "",
                    bool HasNUW = false, bool HasNSW = false) {
@@ -1400,22 +1326,18 @@ public:
                                 const Twine &Name = "") {
     if (V->getType() == DestTy)
       return V;
-    if (V->getType()->getScalarType()->isPointerTy() &&
-        DestTy->getScalarType()->isIntegerTy())
+    if (V->getType()->isPointerTy() && DestTy->isIntegerTy())
       return CreatePtrToInt(V, DestTy, Name);
-    if (V->getType()->getScalarType()->isIntegerTy() &&
-        DestTy->getScalarType()->isPointerTy())
+    if (V->getType()->isIntegerTy() && DestTy->isPointerTy())
       return CreateIntToPtr(V, DestTy, Name);
 
     return CreateBitCast(V, DestTy, Name);
   }
-
 private:
   // \brief Provided to resolve 'CreateIntCast(Ptr, Ptr, "...")', giving a
   // compile time error, instead of converting the string to bool for the
   // isSigned parameter.
   Value *CreateIntCast(Value *, Type *, const char *) = delete;
-
 public:
   Value *CreateFPCast(Value *V, Type *DestTy, const Twine &Name = "") {
     if (V->getType() == DestTy)
@@ -1543,49 +1465,27 @@ public:
   }
 
   CallInst *CreateCall(Value *Callee, ArrayRef<Value *> Args = None,
-                       const Twine &Name = "", MDNode *FPMathTag = nullptr) {
-    PointerType *PTy = cast<PointerType>(Callee->getType());
-    FunctionType *FTy = cast<FunctionType>(PTy->getElementType());
-    return CreateCall(FTy, Callee, Args, Name, FPMathTag);
+                       const Twine &Name = "") {
+    return Insert(CallInst::Create(Callee, Args), Name);
   }
 
   CallInst *CreateCall(llvm::FunctionType *FTy, Value *Callee,
-                       ArrayRef<Value *> Args, const Twine &Name = "",
-                       MDNode *FPMathTag = nullptr) {
-    CallInst *CI = CallInst::Create(FTy, Callee, Args, DefaultOperandBundles);
-    if (isa<FPMathOperator>(CI))
-      CI = cast<CallInst>(AddFPMathAttributes(CI, FPMathTag, FMF));
-    return Insert(CI, Name);
-  }
-
-  CallInst *CreateCall(Value *Callee, ArrayRef<Value *> Args,
-                       ArrayRef<OperandBundleDef> OpBundles,
-                       const Twine &Name = "", MDNode *FPMathTag = nullptr) {
-    CallInst *CI = CallInst::Create(Callee, Args, OpBundles);
-    if (isa<FPMathOperator>(CI))
-      CI = cast<CallInst>(AddFPMathAttributes(CI, FPMathTag, FMF));
-    return Insert(CI, Name);
+                       ArrayRef<Value *> Args, const Twine &Name = "") {
+    return Insert(CallInst::Create(FTy, Callee, Args), Name);
   }
 
   CallInst *CreateCall(Function *Callee, ArrayRef<Value *> Args,
-                       const Twine &Name = "", MDNode *FPMathTag = nullptr) {
-    return CreateCall(Callee->getFunctionType(), Callee, Args, Name, FPMathTag);
+                       const Twine &Name = "") {
+    return CreateCall(Callee->getFunctionType(), Callee, Args, Name);
   }
 
   Value *CreateSelect(Value *C, Value *True, Value *False,
-                      const Twine &Name = "", Instruction *MDFrom = nullptr) {
+                      const Twine &Name = "") {
     if (Constant *CC = dyn_cast<Constant>(C))
       if (Constant *TC = dyn_cast<Constant>(True))
         if (Constant *FC = dyn_cast<Constant>(False))
           return Insert(Folder.CreateSelect(CC, TC, FC), Name);
-
-    SelectInst *Sel = SelectInst::Create(C, True, False);
-    if (MDFrom) {
-      MDNode *Prof = MDFrom->getMetadata(LLVMContext::MD_prof);
-      MDNode *Unpred = MDFrom->getMetadata(LLVMContext::MD_unpredictable);
-      Sel = addBranchMetadata(Sel, Prof, Unpred);
-    }
-    return Insert(Sel, Name);
+    return Insert(SelectInst::Create(C, True, False), Name);
   }
 
   VAArgInst *CreateVAArg(Value *List, Type *Ty, const Twine &Name = "") {
@@ -1628,9 +1528,13 @@ public:
     return Insert(new ShuffleVectorInst(V1, V2, Mask), Name);
   }
 
-  Value *CreateShuffleVector(Value *V1, Value *V2, ArrayRef<uint32_t> IntMask,
+  Value *CreateShuffleVector(Value *V1, Value *V2, ArrayRef<int> IntMask,
                              const Twine &Name = "") {
-    Value *Mask = ConstantDataVector::get(Context, IntMask);
+    size_t MaskSize = IntMask.size();
+    SmallVector<Constant*, 8> MaskVec(MaskSize);
+    for (size_t i = 0; i != MaskSize; ++i)
+      MaskVec[i] = getInt32(IntMask[i]);
+    Value *Mask = ConstantVector::get(MaskVec);
     return CreateShuffleVector(V1, V2, Mask, Name);
   }
 
@@ -1688,32 +1592,6 @@ public:
     return CreateExactSDiv(Difference,
                            ConstantExpr::getSizeOf(ArgType->getElementType()),
                            Name);
-  }
-
-  /// \brief Create an invariant.group.barrier intrinsic call, that stops
-  /// optimizer to propagate equality using invariant.group metadata.
-  /// If Ptr type is different from i8*, it's casted to i8* before call
-  /// and casted back to Ptr type after call.
-  Value *CreateInvariantGroupBarrier(Value *Ptr) {
-    Module *M = BB->getParent()->getParent();
-    Function *FnInvariantGroupBarrier = Intrinsic::getDeclaration(M,
-            Intrinsic::invariant_group_barrier);
-
-    Type *ArgumentAndReturnType = FnInvariantGroupBarrier->getReturnType();
-    assert(ArgumentAndReturnType ==
-        FnInvariantGroupBarrier->getFunctionType()->getParamType(0) &&
-        "InvariantGroupBarrier should take and return the same type");
-    Type *PtrType = Ptr->getType();
-
-    bool PtrTypeConversionNeeded = PtrType != ArgumentAndReturnType;
-    if (PtrTypeConversionNeeded)
-      Ptr = CreateBitCast(Ptr, ArgumentAndReturnType);
-
-    CallInst *Fn = CreateCall(FnInvariantGroupBarrier, {Ptr});
-
-    if (PtrTypeConversionNeeded)
-      return CreateBitCast(Fn, PtrType);
-    return Fn;
   }
 
   /// \brief Return a vector value that contains \arg V broadcasted to \p
@@ -1798,6 +1676,6 @@ public:
 // Create wrappers for C Binding types (see CBindingWrapping.h).
 DEFINE_SIMPLE_CONVERSION_FUNCTIONS(IRBuilder<>, LLVMBuilderRef)
 
-} // end namespace llvm
+}
 
-#endif // LLVM_IR_IRBUILDER_H
+#endif

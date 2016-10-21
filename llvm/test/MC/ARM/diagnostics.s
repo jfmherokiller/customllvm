@@ -1,7 +1,7 @@
 @ RUN: not llvm-mc -triple=armv7-apple-darwin < %s 2> %t
-@ RUN: FileCheck --check-prefix=CHECK-ERRORS --check-prefix=CHECK-ERRORS-V7 < %t %s
+@ RUN: FileCheck --check-prefix=CHECK-ERRORS < %t %s
 @ RUN: not llvm-mc -triple=armv8 < %s 2> %t
-@ RUN: FileCheck --check-prefix=CHECK-ERRORS --check-prefix=CHECK-ERRORS-V8 < %t %s
+@ RUN: FileCheck --check-prefix=CHECK-ERRORS-V8 < %t %s
 
 @ Check for various assembly diagnostic messages on invalid input.
 
@@ -98,22 +98,22 @@
         @ Out of range immediates for v8 HLT instruction.
         hlt #65536
         hlt #-1
-@CHECK-ERRORS: error: invalid operand for instruction
-@CHECK-ERRORS:         hlt #65536
-@CHECK-ERRORS:              ^
-@CHECK-ERRORS: error: invalid operand for instruction
-@CHECK-ERRORS:         hlt #-1
-@CHECK-ERRORS:              ^
+@CHECK-ERRORS-V8: error: invalid operand for instruction
+@CHECK-ERRORS-V8:         hlt #65536
+@CHECK-ERRORS-V8:              ^
+@CHECK-ERRORS-V8: error: invalid operand for instruction
+@CHECK-ERRORS-V8:         hlt #-1
+@CHECK-ERRORS-V8:              ^
 
         @ Illegal condition code for v8 HLT instruction.
         hlteq #2
         hltlt #23
-@CHECK-ERRORS: error: instruction 'hlt' is not predicable, but condition code specified
-@CHECK-ERRORS:        hlteq #2
-@CHECK-ERRORS:        ^
-@CHECK-ERRORS: error: instruction 'hlt' is not predicable, but condition code specified
-@CHECK-ERRORS:        hltlt #23
-@CHECK-ERRORS:        ^
+@CHECK-ERRORS-V8: error: instruction 'hlt' is not predicable, but condition code specified
+@CHECK-ERRORS-V8:        hlteq #2
+@CHECK-ERRORS-V8:        ^
+@CHECK-ERRORS-V8: error: instruction 'hlt' is not predicable, but condition code specified
+@CHECK-ERRORS-V8:        hltlt #23
+@CHECK-ERRORS-V8:        ^
 
         @ Out of range 4 and 3 bit immediates on CDP[2]
 
@@ -149,8 +149,7 @@
 @ CHECK-ERRORS: error: invalid operand for instruction
 @ CHECK-ERRORS: error: invalid operand for instruction
 @ CHECK-ERRORS: error: immediate operand must be in the range [0,15]
-@ CHECK-ERRORS-V7: error: immediate operand must be in the range [0,15]
-@ CHECK-ERRORS-V8: error: invalid operand for instruction
+@ CHECK-ERRORS: error: immediate operand must be in the range [0,15]
 
         @ p10 and p11 are reserved for NEON
         mcr p10, #2, r5, c1, c1, #4
@@ -184,8 +183,7 @@
 @ CHECK-ERRORS: error: invalid operand for instruction
 @ CHECK-ERRORS: error: invalid operand for instruction
 @ CHECK-ERRORS: error: immediate operand must be in the range [0,15]
-@ CHECK-ERRORS-V7: error: immediate operand must be in the range [0,15]
-@ CHECK-ERRORS-V8: error: invalid operand for instruction
+@ CHECK-ERRORS: error: immediate operand must be in the range [0,15]
 
         @ Shifter operand validation for PKH instructions.
         pkhbt r2, r2, r3, lsl #-1
@@ -396,14 +394,12 @@
         ldc2 p2, c8, [r1], { 256 }
         ldc2 p2, c8, [r1], { -1 }
 
-@ CHECK-ERRORS-V7: error: coprocessor option must be an immediate in range [0, 255]
-@ CHECK-ERRORS-V7:         ldc2 p2, c8, [r1], { 256 }
-@ CHECK-ERRORS-V7:                              ^
-@ CHECK-ERRORS-V8: error: register expected
-@ CHECK-ERRORS-V7: error: coprocessor option must be an immediate in range [0, 255]
-@ CHECK-ERRORS-V7:         ldc2 p2, c8, [r1], { -1 }
-@ CHECK-ERRORS-V7:                              ^
-@ CHECK-ERRORS-V8: error: register expected
+@ CHECK-ERRORS: error: coprocessor option must be an immediate in range [0, 255]
+@ CHECK-ERRORS:         ldc2 p2, c8, [r1], { 256 }
+@ CHECK-ERRORS:                              ^
+@ CHECK-ERRORS: error: coprocessor option must be an immediate in range [0, 255]
+@ CHECK-ERRORS:         ldc2 p2, c8, [r1], { -1 }
+@ CHECK-ERRORS:                              ^
 
         @ Bad CPS instruction format.
         cps f,#1
@@ -474,14 +470,14 @@
         vrintn.f32 s8, s9
         vrintp.f64.f64 d10, d11
         vrintm.f64 d12, d13
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
-@ CHECK-ERRORS-V7: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
+@ CHECK-ERRORS: error: instruction requires: FPARMv8
 
         stm sp!, {r0, pc}^
         ldm sp!, {r0}^

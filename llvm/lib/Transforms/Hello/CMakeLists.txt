@@ -15,6 +15,4 @@ add_llvm_loadable_module( LLVMHello
 
   DEPENDS
   intrinsics_gen
-  PLUGIN_TOOL
-  opt
   )

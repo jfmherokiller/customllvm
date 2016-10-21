@@ -45,7 +45,6 @@ protected:
   bool HasTransactionalExecution;
   bool HasProcessorAssist;
   bool HasVector;
-  bool HasLoadStoreOnCond2;
 
 private:
   Triple TargetTriple;
@@ -70,7 +69,7 @@ public:
   const SystemZTargetLowering *getTargetLowering() const override {
     return &TLInfo;
   }
-  const SelectionDAGTargetInfo *getSelectionDAGInfo() const override {
+  const TargetSelectionDAGInfo *getSelectionDAGInfo() const override {
     return &TSInfo;
   }
 
@@ -85,9 +84,6 @@ public:
 
   // Return true if the target has the load/store-on-condition facility.
   bool hasLoadStoreOnCond() const { return HasLoadStoreOnCond; }
-
-  // Return true if the target has the load/store-on-condition facility 2.
-  bool hasLoadStoreOnCond2() const { return HasLoadStoreOnCond2; }
 
   // Return true if the target has the high-word facility.
   bool hasHighWord() const { return HasHighWord; }
@@ -120,7 +116,8 @@ public:
 
   // Return true if GV can be accessed using LARL for reloc model RM
   // and code model CM.
-  bool isPC32DBLSymbol(const GlobalValue *GV, CodeModel::Model CM) const;
+  bool isPC32DBLSymbol(const GlobalValue *GV, Reloc::Model RM,
+                       CodeModel::Model CM) const;
 
   bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
 };

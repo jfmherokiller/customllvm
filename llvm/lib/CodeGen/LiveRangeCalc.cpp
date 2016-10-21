@@ -42,12 +42,12 @@ void LiveRangeCalc::reset(const MachineFunction *mf,
 
 static void createDeadDef(SlotIndexes &Indexes, VNInfo::Allocator &Alloc,
                           LiveRange &LR, const MachineOperand &MO) {
-  const MachineInstr &MI = *MO.getParent();
-  SlotIndex DefIdx =
-      Indexes.getInstructionIndex(MI).getRegSlot(MO.isEarlyClobber());
+    const MachineInstr *MI = MO.getParent();
+    SlotIndex DefIdx =
+        Indexes.getInstructionIndex(MI).getRegSlot(MO.isEarlyClobber());
 
-  // Create the def in LR. This may find an existing def.
-  LR.createDeadDef(DefIdx, Alloc);
+    // Create the def in LR. This may find an existing def.
+    LR.createDeadDef(DefIdx, Alloc);
 }
 
 void LiveRangeCalc::calculate(LiveInterval &LI, bool TrackSubRegs) {
@@ -64,23 +64,23 @@ void LiveRangeCalc::calculate(LiveInterval &LI, bool TrackSubRegs) {
 
     unsigned SubReg = MO.getSubReg();
     if (LI.hasSubRanges() || (SubReg != 0 && TrackSubRegs)) {
-      LaneBitmask Mask = SubReg != 0 ? TRI.getSubRegIndexLaneMask(SubReg)
-                                     : MRI->getMaxLaneMaskForVReg(Reg);
+      unsigned Mask = SubReg != 0 ? TRI.getSubRegIndexLaneMask(SubReg)
+                                  : MRI->getMaxLaneMaskForVReg(Reg);
 
       // If this is the first time we see a subregister def, initialize
       // subranges by creating a copy of the main range.
       if (!LI.hasSubRanges() && !LI.empty()) {
-        LaneBitmask ClassMask = MRI->getMaxLaneMaskForVReg(Reg);
+        unsigned ClassMask = MRI->getMaxLaneMaskForVReg(Reg);
         LI.createSubRangeFrom(*Alloc, ClassMask, LI);
       }
 
       for (LiveInterval::SubRange &S : LI.subranges()) {
         // A Mask for subregs common to the existing subrange and current def.
-        LaneBitmask Common = S.LaneMask & Mask;
+        unsigned Common = S.LaneMask & Mask;
         if (Common == 0)
           continue;
         // A Mask for subregs covered by the subrange but not the current def.
-        LaneBitmask LRest = S.LaneMask & ~Mask;
+        unsigned LRest = S.LaneMask & ~Mask;
         LiveInterval::SubRange *CommonRange;
         if (LRest != 0) {
           // Split current subrange into Common and LRest ranges.
@@ -120,29 +120,13 @@ void LiveRangeCalc::calculate(LiveInterval &LI, bool TrackSubRegs) {
       extendToUses(S, Reg, S.LaneMask);
     }
     LI.clear();
-    constructMainRangeFromSubranges(LI);
+    LI.constructMainRangeFromSubranges(*Indexes, *Alloc);
   } else {
     resetLiveOutMap();
     extendToUses(LI, Reg, ~0u);
   }
 }
 
-void LiveRangeCalc::constructMainRangeFromSubranges(LiveInterval &LI) {
-  // First create dead defs at all defs found in subranges.
-  LiveRange &MainRange = LI;
-  assert(MainRange.segments.empty() && MainRange.valnos.empty() &&
-         "Expect empty main liverange");
-
-  for (const LiveInterval::SubRange &SR : LI.subranges()) {
-    for (const VNInfo *VNI : SR.valnos) {
-      if (!VNI->isUnused() && !VNI->isPHIDef())
-        MainRange.createDeadDef(VNI->def, *Alloc);
-    }
-  }
-
-  resetLiveOutMap();
-  extendToUses(MainRange, LI.reg);
-}
 
 void LiveRangeCalc::createDeadDefs(LiveRange &LR, unsigned Reg) {
   assert(MRI && Indexes && "call reset() first");
@@ -154,8 +138,7 @@ void LiveRangeCalc::createDeadDefs(LiveRange &LR, unsigned Reg) {
 }
 
 
-void LiveRangeCalc::extendToUses(LiveRange &LR, unsigned Reg,
-                                 LaneBitmask Mask) {
+void LiveRangeCalc::extendToUses(LiveRange &LR, unsigned Reg, unsigned Mask) {
   // Visit all operands that read Reg. This may include partial defs.
   const TargetRegisterInfo &TRI = *MRI->getTargetRegisterInfo();
   for (MachineOperand &MO : MRI->reg_nodbg_operands(Reg)) {
@@ -174,7 +157,7 @@ void LiveRangeCalc::extendToUses(LiveRange &LR, unsigned Reg,
       continue;
     unsigned SubReg = MO.getSubReg();
     if (SubReg != 0) {
-      LaneBitmask SubRegMask = TRI.getSubRegIndexLaneMask(SubReg);
+      unsigned SubRegMask = TRI.getSubRegIndexLaneMask(SubReg);
       // Ignore uses not covering the current subrange.
       if ((SubRegMask & Mask) == 0)
         continue;
@@ -200,7 +183,7 @@ void LiveRangeCalc::extendToUses(LiveRange &LR, unsigned Reg,
         // had an early-clobber flag.
         isEarlyClobber = MI->getOperand(DefIdx).isEarlyClobber();
       }
-      UseIdx = Indexes->getInstructionIndex(*MI).getRegSlot(isEarlyClobber);
+      UseIdx = Indexes->getInstructionIndex(MI).getRegSlot(isEarlyClobber);
     }
 
     // MI is reading Reg. We may have visited MI before if it happens to be

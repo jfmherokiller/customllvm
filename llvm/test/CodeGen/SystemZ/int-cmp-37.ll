@@ -21,8 +21,7 @@ mulb:
   %mul = mul i32 %src1, %src1
   br label %exit
 exit:
-  %tmp = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
-  %res = add i32 %tmp, 1
+  %res = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
   ret i32 %res
 }
 
@@ -40,8 +39,7 @@ mulb:
   %mul = mul i32 %src1, %src1
   br label %exit
 exit:
-  %tmp = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
-  %res = add i32 %tmp, 1
+  %res = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
   ret i32 %res
 }
 
@@ -60,8 +58,7 @@ mulb:
   %mul = mul i32 %src1, %src1
   br label %exit
 exit:
-  %tmp = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
-  %res = add i32 %tmp, 1
+  %res = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
   ret i32 %res
 }
 
@@ -80,8 +77,7 @@ mulb:
   %mul = mul i32 %src1, %src1
   br label %exit
 exit:
-  %tmp = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
-  %res = add i32 %tmp, 1
+  %res = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
   ret i32 %res
 }
 
@@ -101,8 +97,7 @@ mulb:
   %mul = mul i32 %src1, %src1
   br label %exit
 exit:
-  %tmp = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
-  %res = add i32 %tmp, 1
+  %res = phi i32 [ %src1, %entry ], [ %mul, %mulb ]
   ret i32 %res
 }
 
@@ -121,7 +116,6 @@ mulb:
   %mul = mul i32 %src2, %src2
   br label %exit
 exit:
-  %tmp = phi i32 [ %src2, %entry ], [ %mul, %mulb ]
-  %res = add i32 %tmp, 1
+  %res = phi i32 [ %src2, %entry ], [ %mul, %mulb ]
   ret i32 %res
 }

@@ -18,8 +18,8 @@ entry:
 ; CHECK: @Rand
 ; CHECK: adrp [[REG1:x[0-9]+]], _seed@GOTPAGE
 ; CHECK: ldr  [[REG2:x[0-9]+]], {{\[}}[[REG1]], _seed@GOTPAGEOFF{{\]}}
-; CHECK: mov  [[REG3:x[0-9]+]], #13849
-; CHECK: mov  [[REG4:x[0-9]+]], #1309
+; CHECK: movz [[REG3:x[0-9]+]], #0x3619
+; CHECK: movz [[REG4:x[0-9]+]], #0x51d
 ; CHECK: ldr  [[REG5:x[0-9]+]], {{\[}}[[REG2]]{{\]}}
 ; CHECK: mul  [[REG6:x[0-9]+]], [[REG5]], [[REG4]]
 ; CHECK: add  [[REG7:x[0-9]+]], [[REG6]], [[REG3]]

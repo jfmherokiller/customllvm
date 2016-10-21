@@ -50,18 +50,12 @@ const char *ARMConstantPoolValue::getModifierText() const {
   switch (Modifier) {
     // FIXME: Are these case sensitive? It'd be nice to lower-case all the
     // strings if that's legal.
-  case ARMCP::no_modifier:
-    return "none";
-  case ARMCP::TLSGD:
-    return "tlsgd";
-  case ARMCP::GOT_PREL:
-    return "GOT_PREL";
-  case ARMCP::GOTTPOFF:
-    return "gottpoff";
-  case ARMCP::TPOFF:
-    return "tpoff";
-  case ARMCP::SECREL:
-    return "secrel32";
+  case ARMCP::no_modifier: return "none";
+  case ARMCP::TLSGD:       return "tlsgd";
+  case ARMCP::GOT:         return "GOT";
+  case ARMCP::GOTOFF:      return "GOTOFF";
+  case ARMCP::GOTTPOFF:    return "gottpoff";
+  case ARMCP::TPOFF:       return "tpoff";
   }
   llvm_unreachable("Unknown modifier!");
 }
@@ -81,9 +75,9 @@ bool
 ARMConstantPoolValue::hasSameValue(ARMConstantPoolValue *ACPV) {
   if (ACPV->Kind == Kind &&
       ACPV->PCAdjust == PCAdjust &&
-      ACPV->Modifier == Modifier &&
-      ACPV->LabelId == LabelId &&
-      ACPV->AddCurrentAddress == AddCurrentAddress) {
+      ACPV->Modifier == Modifier) {
+    if (ACPV->LabelId == LabelId)
+      return true;
     // Two PC relative constpool entries containing the same GV address or
     // external symbols. FIXME: What about blockaddress?
     if (Kind == ARMCP::CPValue || Kind == ARMCP::CPExtSymbol)
@@ -92,7 +86,7 @@ ARMConstantPoolValue::hasSameValue(ARMConstantPoolValue *ACPV) {
   return false;
 }
 
-LLVM_DUMP_METHOD void ARMConstantPoolValue::dump() const {
+void ARMConstantPoolValue::dump() const {
   errs() << "  " << *this;
 }
 

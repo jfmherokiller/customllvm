@@ -52,11 +52,7 @@ public:
 
   bool isSourceOfDivergence(const Value *V);
 
-  // Increase the inlining cost threshold by a factor of 5, reflecting that
-  // calls are particularly expensive in NVPTX.
-  unsigned getInliningThresholdMultiplier() { return 5; }
-
-  int getArithmeticInstrCost(
+  unsigned getArithmeticInstrCost(
       unsigned Opcode, Type *Ty,
       TTI::OperandValueKind Opd1Info = TTI::OK_AnyValue,
       TTI::OperandValueKind Opd2Info = TTI::OK_AnyValue,

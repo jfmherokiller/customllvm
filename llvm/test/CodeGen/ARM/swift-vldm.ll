@@ -1,5 +1,4 @@
 ; RUN: llc < %s -mcpu=swift -mtriple=armv7s-apple-ios | FileCheck %s
-; RUN: llc < %s -arm-assume-misaligned-load-store -mcpu=swift -mtriple=armv7s-apple-ios | FileCheck %s
 
 ; Check that we avoid producing vldm instructions using d registers that
 ; begin in the most-significant half of a q register. These require more

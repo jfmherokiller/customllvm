@@ -63,5 +63,5 @@ entry:
 }
 
 ; CHECK-LABEL: hint_undefined
-; CHECK: hint #8
+; CHECK: hint #0x8
 

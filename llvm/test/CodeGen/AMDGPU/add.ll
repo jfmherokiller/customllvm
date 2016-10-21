@@ -1,11 +1,11 @@
-; RUN: llc -march=amdgcn -mcpu=verde -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=FUNC %s
-; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck -check-prefix=EG -check-prefix=FUNC %s
+; RUN: llc < %s -march=r600 -mcpu=redwood | FileCheck --check-prefix=EG --check-prefix=FUNC %s
+; RUN: llc < %s -march=amdgcn -mcpu=verde -verify-machineinstrs | FileCheck --check-prefix=SI --check-prefix=FUNC %s
+; RUN: llc < %s -march=amdgcn -mcpu=tonga -verify-machineinstrs | FileCheck --check-prefix=SI --check-prefix=FUNC %s
 
 ;FUNC-LABEL: {{^}}test1:
 ;EG: ADD_INT {{[* ]*}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 
-;SI: v_add_i32_e32 [[REG:v[0-9]+]], vcc, {{v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 [[REG:v[0-9]+]], {{v[0-9]+, v[0-9]+}}
 ;SI-NOT: [[REG]]
 ;SI: buffer_store_dword [[REG]],
 define void @test1(i32 addrspace(1)* %out, i32 addrspace(1)* %in) {
@@ -21,8 +21,8 @@ define void @test1(i32 addrspace(1)* %out, i32 addrspace(1)* %in) {
 ;EG: ADD_INT {{[* ]*}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 ;EG: ADD_INT {{[* ]*}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 
-;SI: v_add_i32_e32 v{{[0-9]+, vcc, v[0-9]+, v[0-9]+}}
-;SI: v_add_i32_e32 v{{[0-9]+, vcc, v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
 
 define void @test2(<2 x i32> addrspace(1)* %out, <2 x i32> addrspace(1)* %in) {
   %b_ptr = getelementptr <2 x i32>, <2 x i32> addrspace(1)* %in, i32 1
@@ -39,10 +39,10 @@ define void @test2(<2 x i32> addrspace(1)* %out, <2 x i32> addrspace(1)* %in) {
 ;EG: ADD_INT {{[* ]*}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 ;EG: ADD_INT {{[* ]*}}T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 
-;SI: v_add_i32_e32 v{{[0-9]+, vcc, v[0-9]+, v[0-9]+}}
-;SI: v_add_i32_e32 v{{[0-9]+, vcc, v[0-9]+, v[0-9]+}}
-;SI: v_add_i32_e32 v{{[0-9]+, vcc, v[0-9]+, v[0-9]+}}
-;SI: v_add_i32_e32 v{{[0-9]+, vcc, v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
+;SI: v_add_i32_e32 v{{[0-9]+, v[0-9]+, v[0-9]+}}
 
 define void @test4(<4 x i32> addrspace(1)* %out, <4 x i32> addrspace(1)* %in) {
   %b_ptr = getelementptr <4 x i32>, <4 x i32> addrspace(1)* %in, i32 1
@@ -123,11 +123,12 @@ entry:
 ; SI: s_add_u32
 ; SI: s_addc_u32
 
-; EG: MEM_RAT_CACHELESS STORE_RAW [[LO:T[0-9]+\.XY]]
-; EG-DAG: ADD_INT {{[* ]*}}
+; EG: MEM_RAT_CACHELESS STORE_RAW [[LO:T[0-9]+\.[XYZW]]]
+; EG: MEM_RAT_CACHELESS STORE_RAW [[HI:T[0-9]+\.[XYZW]]]
+; EG-DAG: ADD_INT {{[* ]*}}[[LO]]
 ; EG-DAG: ADDC_UINT
 ; EG-DAG: ADD_INT
-; EG-DAG: ADD_INT {{[* ]*}}
+; EG-DAG: ADD_INT {{[* ]*}}[[HI]]
 ; EG-NOT: SUB
 define void @add64(i64 addrspace(1)* %out, i64 %a, i64 %b) {
 entry:
@@ -144,11 +145,12 @@ entry:
 ; FUNC-LABEL: {{^}}add64_sgpr_vgpr:
 ; SI-NOT: v_addc_u32_e32 s
 
-; EG: MEM_RAT_CACHELESS STORE_RAW [[LO:T[0-9]+\.XY]]
-; EG-DAG: ADD_INT {{[* ]*}}
+; EG: MEM_RAT_CACHELESS STORE_RAW [[LO:T[0-9]+\.[XYZW]]]
+; EG: MEM_RAT_CACHELESS STORE_RAW [[HI:T[0-9]+\.[XYZW]]]
+; EG-DAG: ADD_INT {{[* ]*}}[[LO]]
 ; EG-DAG: ADDC_UINT
 ; EG-DAG: ADD_INT
-; EG-DAG: ADD_INT {{[* ]*}}
+; EG-DAG: ADD_INT {{[* ]*}}[[HI]]
 ; EG-NOT: SUB
 define void @add64_sgpr_vgpr(i64 addrspace(1)* %out, i64 %a, i64 addrspace(1)* %in) {
 entry:
@@ -163,11 +165,12 @@ entry:
 ; SI: s_add_u32
 ; SI: s_addc_u32
 
-; EG: MEM_RAT_CACHELESS STORE_RAW [[LO:T[0-9]+\.XY]]
-; EG-DAG: ADD_INT {{[* ]*}}
+; EG: MEM_RAT_CACHELESS STORE_RAW [[LO:T[0-9]+\.[XYZW]]]
+; EG: MEM_RAT_CACHELESS STORE_RAW [[HI:T[0-9]+\.[XYZW]]]
+; EG-DAG: ADD_INT {{[* ]*}}[[LO]]
 ; EG-DAG: ADDC_UINT
 ; EG-DAG: ADD_INT
-; EG-DAG: ADD_INT {{[* ]*}}
+; EG-DAG: ADD_INT {{[* ]*}}[[HI]]
 ; EG-NOT: SUB
 define void @add64_in_branch(i64 addrspace(1)* %out, i64 addrspace(1)* %in, i64 %a, i64 %b, i64 %c) {
 entry:

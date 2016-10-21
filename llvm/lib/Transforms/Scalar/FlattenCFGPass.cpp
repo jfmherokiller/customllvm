@@ -30,7 +30,7 @@ public:
   bool runOnFunction(Function &F) override;
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.addRequired<AAResultsWrapperPass>();
+    AU.addRequired<AliasAnalysis>();
   }
 
 private:
@@ -41,7 +41,7 @@ private:
 char FlattenCFGPass::ID = 0;
 INITIALIZE_PASS_BEGIN(FlattenCFGPass, "flattencfg", "Flatten the CFG", false,
                       false)
-INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
+INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(FlattenCFGPass, "flattencfg", "Flatten the CFG", false,
                     false)
 
@@ -59,7 +59,7 @@ static bool iterativelyFlattenCFG(Function &F, AliasAnalysis *AA) {
     // Loop over all of the basic blocks and remove them if they are unneeded...
     //
     for (Function::iterator BBIt = F.begin(); BBIt != F.end();) {
-      if (FlattenCFG(&*BBIt++, AA)) {
+      if (FlattenCFG(BBIt++, AA)) {
         LocalChange = true;
       }
     }
@@ -69,7 +69,7 @@ static bool iterativelyFlattenCFG(Function &F, AliasAnalysis *AA) {
 }
 
 bool FlattenCFGPass::runOnFunction(Function &F) {
-  AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
+  AA = &getAnalysis<AliasAnalysis>();
   bool EverChanged = false;
   // iterativelyFlattenCFG can make some blocks dead.
   while (iterativelyFlattenCFG(F, AA)) {

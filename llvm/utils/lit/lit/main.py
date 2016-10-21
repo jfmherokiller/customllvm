@@ -43,7 +43,6 @@ class TestingProgressDisplay(object):
                                     test.getFullName())
 
         shouldShow = test.result.code.isFailure or \
-            self.opts.showAllOutput or \
             (not self.opts.quiet and not self.opts.succinct)
         if not shouldShow:
             return
@@ -57,11 +56,9 @@ class TestingProgressDisplay(object):
                                      self.completed, self.numTests))
 
         # Show the test failure output, if requested.
-        if (test.result.code.isFailure and self.opts.showOutput) or \
-           self.opts.showAllOutput:
-            if test.result.code.isFailure:
-                print("%s TEST '%s' FAILED %s" % ('*'*20, test.getFullName(),
-                                                  '*'*20))
+        if test.result.code.isFailure and self.opts.showOutput:
+            print("%s TEST '%s' FAILED %s" % ('*'*20, test.getFullName(),
+                                              '*'*20))
             print(test.result.output)
             print("*" * 20)
 
@@ -164,10 +161,7 @@ def main(builtinParameters = {}):
                      help="Reduce amount of output",
                      action="store_true", default=False)
     group.add_option("-v", "--verbose", dest="showOutput",
-                     help="Show test output for failures",
-                     action="store_true", default=False)
-    group.add_option("-a", "--show-all", dest="showAllOutput",
-                     help="Display all commandlines and output",
+                     help="Show all test output",
                      action="store_true", default=False)
     group.add_option("-o", "--output", dest="output_path",
                      help="Write test results to the provided path",
@@ -205,10 +199,6 @@ def main(builtinParameters = {}):
     group.add_option("", "--xunit-xml-output", dest="xunit_output_file",
                       help=("Write XUnit-compatible XML test reports to the"
                             " specified file"), default=None)
-    group.add_option("", "--timeout", dest="maxIndividualTestTime",
-                     help="Maximum time to spend running a single test (in seconds)."
-                     "0 means no time limit. [Default: 0]",
-                    type=int, default=None)
     parser.add_option_group(group)
 
     group = OptionGroup(parser, "Test Selection")
@@ -279,14 +269,6 @@ def main(builtinParameters = {}):
             name,val = entry.split('=', 1)
         userParams[name] = val
 
-    # Decide what the requested maximum indvidual test time should be
-    if opts.maxIndividualTestTime != None:
-        maxIndividualTestTime = opts.maxIndividualTestTime
-    else:
-        # Default is zero
-        maxIndividualTestTime = 0
-
-
     # Create the global config object.
     litConfig = lit.LitConfig.LitConfig(
         progname = os.path.basename(sys.argv[0]),
@@ -299,25 +281,11 @@ def main(builtinParameters = {}):
         debug = opts.debug,
         isWindows = isWindows,
         params = userParams,
-        config_prefix = opts.configPrefix,
-        maxIndividualTestTime = maxIndividualTestTime)
+        config_prefix = opts.configPrefix)
 
     # Perform test discovery.
     run = lit.run.Run(litConfig,
                       lit.discovery.find_tests_for_inputs(litConfig, inputs))
-
-    # After test discovery the configuration might have changed
-    # the maxIndividualTestTime. If we explicitly set this on the
-    # command line then override what was set in the test configuration
-    if opts.maxIndividualTestTime != None:
-        if opts.maxIndividualTestTime != litConfig.maxIndividualTestTime:
-            litConfig.note(('The test suite configuration requested an individual'
-                ' test timeout of {0} seconds but a timeout of {1} seconds was'
-                ' requested on the command line. Forcing timeout to be {1}'
-                ' seconds')
-                .format(litConfig.maxIndividualTestTime,
-                        opts.maxIndividualTestTime))
-            litConfig.maxIndividualTestTime = opts.maxIndividualTestTime
 
     if opts.showSuites or opts.showTests:
         # Aggregate the tests by suite.
@@ -336,9 +304,6 @@ def main(builtinParameters = {}):
                 print('  %s - %d tests' %(ts.name, len(ts_tests)))
                 print('    Source Root: %s' % ts.source_root)
                 print('    Exec Root  : %s' % ts.exec_root)
-                if ts.config.available_features:
-                    print('    Available Features : %s' % ' '.join(
-                        sorted(ts.config.available_features)))
 
         # Show the tests, if requested.
         if opts.showTests:
@@ -370,7 +335,7 @@ def main(builtinParameters = {}):
     elif opts.incremental:
         sort_by_incremental_cache(run)
     else:
-        run.tests.sort(key = lambda t: (not t.isEarlyTest(), t.getFullName()))
+        run.tests.sort(key = lambda result_test: result_test.getFullName())
 
     # Finally limit the number of tests, if desired.
     if opts.maxTests is not None:
@@ -379,33 +344,12 @@ def main(builtinParameters = {}):
     # Don't create more threads than tests.
     opts.numThreads = min(len(run.tests), opts.numThreads)
 
-    # Because some tests use threads internally, and at least on Linux each
-    # of these threads counts toward the current process limit, try to
-    # raise the (soft) process limit so that tests don't fail due to
-    # resource exhaustion.
-    try:
-        cpus = lit.util.detectCPUs()
-        desired_limit = opts.numThreads * cpus * 2 # the 2 is a safety factor
-
-        # Import the resource module here inside this try block because it
-        # will likely fail on Windows.
-        import resource
-
-        max_procs_soft, max_procs_hard = resource.getrlimit(resource.RLIMIT_NPROC)
-        desired_limit = min(desired_limit, max_procs_hard)
-
-        if max_procs_soft < desired_limit:
-            resource.setrlimit(resource.RLIMIT_NPROC, (desired_limit, max_procs_hard))
-            litConfig.note('raised the process limit from %d to %d' % \
-                               (max_procs_soft, desired_limit))
-    except:
-        pass
-
     extra = ''
     if len(run.tests) != numTotalTests:
         extra = ' of %d' % numTotalTests
     header = '-- Testing: %d%s tests, %d threads --'%(len(run.tests), extra,
                                                       opts.numThreads)
+
     progressBar = None
     if not opts.quiet:
         if opts.succinct and opts.useProgressBar:
@@ -450,8 +394,7 @@ def main(builtinParameters = {}):
                        ('Failing Tests', lit.Test.FAIL),
                        ('Unresolved Tests', lit.Test.UNRESOLVED),
                        ('Unsupported Tests', lit.Test.UNSUPPORTED),
-                       ('Expected Failing Tests', lit.Test.XFAIL),
-                       ('Timed Out Tests', lit.Test.TIMEOUT)):
+                       ('Expected Failing Tests', lit.Test.XFAIL)):
         if (lit.Test.XFAIL == code and not opts.show_xfail) or \
            (lit.Test.UNSUPPORTED == code and not opts.show_unsupported):
             continue
@@ -471,13 +414,11 @@ def main(builtinParameters = {}):
         lit.util.printHistogram(test_times, title='Tests')
 
     for name,code in (('Expected Passes    ', lit.Test.PASS),
-                      ('Passes With Retry  ', lit.Test.FLAKYPASS),
                       ('Expected Failures  ', lit.Test.XFAIL),
                       ('Unsupported Tests  ', lit.Test.UNSUPPORTED),
                       ('Unresolved Tests   ', lit.Test.UNRESOLVED),
                       ('Unexpected Passes  ', lit.Test.XPASS),
-                      ('Unexpected Failures', lit.Test.FAIL),
-                      ('Individual Timeouts', lit.Test.TIMEOUT)):
+                      ('Unexpected Failures', lit.Test.FAIL)):
         if opts.quiet and not code.isFailure:
             continue
         N = len(byCode.get(code,[]))

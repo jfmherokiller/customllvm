@@ -11,6 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/Support/CommandLine.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 using namespace llvm;
 

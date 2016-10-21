@@ -1,4 +1,4 @@
-//===- ScalarEvolutionNormalization.cpp - See below -----------------------===//
+//===- ScalarEvolutionNormalization.cpp - See below -------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -109,7 +109,7 @@ TransformImpl(const SCEV *S, Instruction *User, Value *OperandValToReplace) {
     SmallVector<const SCEV *, 8> Operands;
     const Loop *L = AR->getLoop();
     // The addrec conceptually uses its operands at loop entry.
-    Instruction *LUser = &L->getHeader()->front();
+    Instruction *LUser = L->getHeader()->begin();
     // Transform each operand.
     for (SCEVNAryExpr::op_iterator I = AR->op_begin(), E = AR->op_end();
          I != E; ++I) {

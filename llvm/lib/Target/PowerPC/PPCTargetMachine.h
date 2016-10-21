@@ -21,7 +21,7 @@
 
 namespace llvm {
 
-/// Common code between 32-bit and 64-bit PowerPC targets.
+/// PPCTargetMachine - Common code between 32-bit and 64-bit PowerPC targets.
 ///
 class PPCTargetMachine : public LLVMTargetMachine {
 public:
@@ -35,9 +35,8 @@ private:
 
 public:
   PPCTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
-                   StringRef FS, const TargetOptions &Options,
-                   Optional<Reloc::Model> RM, CodeModel::Model CM,
-                   CodeGenOpt::Level OL);
+                   StringRef FS, const TargetOptions &Options, Reloc::Model RM,
+                   CodeModel::Model CM, CodeGenOpt::Level OL);
 
   ~PPCTargetMachine() override;
 
@@ -58,25 +57,25 @@ public:
   };
 };
 
-/// PowerPC 32-bit target machine.
+/// PPC32TargetMachine - PowerPC 32-bit target machine.
 ///
 class PPC32TargetMachine : public PPCTargetMachine {
   virtual void anchor();
 public:
   PPC32TargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
-                     Optional<Reloc::Model> RM, CodeModel::Model CM,
+                     Reloc::Model RM, CodeModel::Model CM,
                      CodeGenOpt::Level OL);
 };
 
-/// PowerPC 64-bit target machine.
+/// PPC64TargetMachine - PowerPC 64-bit target machine.
 ///
 class PPC64TargetMachine : public PPCTargetMachine {
   virtual void anchor();
 public:
   PPC64TargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
-                     Optional<Reloc::Model> RM, CodeModel::Model CM,
+                     Reloc::Model RM, CodeModel::Model CM,
                      CodeGenOpt::Level OL);
 };
 

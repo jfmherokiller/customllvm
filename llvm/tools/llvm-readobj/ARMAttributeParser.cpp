@@ -8,10 +8,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "ARMAttributeParser.h"
+#include "StreamWriter.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/LEB128.h"
-#include "llvm/Support/ScopedPrinter.h"
 
 using namespace llvm;
 using namespace llvm::ARMBuildAttrs;
@@ -63,7 +63,6 @@ ARMAttributeParser::DisplayRoutines[] = {
   ATTRIBUTE_HANDLER(ABI_FP_16bit_format),
   ATTRIBUTE_HANDLER(MPextension_use),
   ATTRIBUTE_HANDLER(DIV_use),
-  ATTRIBUTE_HANDLER(DSP_extension),
   ATTRIBUTE_HANDLER(T2EE_use),
   ATTRIBUTE_HANDLER(Virtualization_use),
   ATTRIBUTE_HANDLER(nodefaults)
@@ -119,7 +118,7 @@ void ARMAttributeParser::PrintAttribute(unsigned Tag, unsigned Value,
 
 void ARMAttributeParser::CPU_arch(AttrType Tag, const uint8_t *Data,
                                   uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Pre-v4", "ARM v4", "ARM v4T", "ARM v5T", "ARM v5TE", "ARM v5TEJ", "ARM v6",
     "ARM v6KZ", "ARM v6T2", "ARM v6K", "ARM v7", "ARM v6-M", "ARM v6S-M",
     "ARM v7E-M", "ARM v8"
@@ -150,7 +149,7 @@ void ARMAttributeParser::CPU_arch_profile(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ARM_ISA_use(AttrType Tag, const uint8_t *Data,
                                      uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "Permitted" };
+  static const char *Strings[] = { "Not Permitted", "Permitted" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -160,7 +159,7 @@ void ARMAttributeParser::ARM_ISA_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::THUMB_ISA_use(AttrType Tag, const uint8_t *Data,
                                        uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "Thumb-1", "Thumb-2" };
+  static const char *Strings[] = { "Not Permitted", "Thumb-1", "Thumb-2" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -170,7 +169,7 @@ void ARMAttributeParser::THUMB_ISA_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::FP_arch(AttrType Tag, const uint8_t *Data,
                                  uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Permitted", "VFPv1", "VFPv2", "VFPv3", "VFPv3-D16", "VFPv4",
     "VFPv4-D16", "ARMv8-a FP", "ARMv8-a FP-D16"
   };
@@ -183,7 +182,7 @@ void ARMAttributeParser::FP_arch(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::WMMX_arch(AttrType Tag, const uint8_t *Data,
                                    uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "WMMXv1", "WMMXv2" };
+  static const char *Strings[] = { "Not Permitted", "WMMXv1", "WMMXv2" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -193,8 +192,8 @@ void ARMAttributeParser::WMMX_arch(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::Advanced_SIMD_arch(AttrType Tag, const uint8_t *Data,
                                             uint32_t &Offset) {
-  static const char *const Strings[] = {
-    "Not Permitted", "NEONv1", "NEONv2+FMA", "ARMv8-a NEON", "ARMv8.1-a NEON"
+  static const char *Strings[] = {
+    "Not Permitted", "NEONv1", "NEONv2+FMA", "ARMv8-a NEON"
   };
 
   uint64_t Value = ParseInteger(Data, Offset);
@@ -205,7 +204,7 @@ void ARMAttributeParser::Advanced_SIMD_arch(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::PCS_config(AttrType Tag, const uint8_t *Data,
                                     uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "None", "Bare Platform", "Linux Application", "Linux DSO", "Palm OS 2004",
     "Reserved (Palm OS)", "Symbian OS 2004", "Reserved (Symbian OS)"
   };
@@ -218,7 +217,7 @@ void ARMAttributeParser::PCS_config(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_PCS_R9_use(AttrType Tag, const uint8_t *Data,
                                         uint32_t &Offset) {
-  static const char *const Strings[] = { "v6", "Static Base", "TLS", "Unused" };
+  static const char *Strings[] = { "v6", "Static Base", "TLS", "Unused" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -228,7 +227,7 @@ void ARMAttributeParser::ABI_PCS_R9_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_PCS_RW_data(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Absolute", "PC-relative", "SB-relative", "Not Permitted"
   };
 
@@ -240,9 +239,7 @@ void ARMAttributeParser::ABI_PCS_RW_data(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_PCS_RO_data(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = {
-    "Absolute", "PC-relative", "Not Permitted"
-  };
+  static const char *Strings[] = { "Absolute", "PC-relative", "Not Permitted" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -252,9 +249,7 @@ void ARMAttributeParser::ABI_PCS_RO_data(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_PCS_GOT_use(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = {
-    "Not Permitted", "Direct", "GOT-Indirect"
-  };
+  static const char *Strings[] = { "Not Permitted", "Direct", "GOT-Indirect" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -264,7 +259,7 @@ void ARMAttributeParser::ABI_PCS_GOT_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_PCS_wchar_t(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Permitted", "Unknown", "2-byte", "Unknown", "4-byte"
   };
 
@@ -276,7 +271,7 @@ void ARMAttributeParser::ABI_PCS_wchar_t(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_FP_rounding(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = { "IEEE-754", "Runtime" };
+  static const char *Strings[] = { "IEEE-754", "Runtime" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -286,9 +281,7 @@ void ARMAttributeParser::ABI_FP_rounding(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_FP_denormal(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = {
-    "Unsupported", "IEEE-754", "Sign Only"
-  };
+  static const char *Strings[] = { "Unsupported", "IEEE-754", "Sign Only" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -298,7 +291,7 @@ void ARMAttributeParser::ABI_FP_denormal(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_FP_exceptions(AttrType Tag, const uint8_t *Data,
                                            uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "IEEE-754" };
+  static const char *Strings[] = { "Not Permitted", "IEEE-754" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -309,7 +302,7 @@ void ARMAttributeParser::ABI_FP_exceptions(AttrType Tag, const uint8_t *Data,
 void ARMAttributeParser::ABI_FP_user_exceptions(AttrType Tag,
                                                 const uint8_t *Data,
                                                 uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "IEEE-754" };
+  static const char *Strings[] = { "Not Permitted", "IEEE-754" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -319,7 +312,7 @@ void ARMAttributeParser::ABI_FP_user_exceptions(AttrType Tag,
 
 void ARMAttributeParser::ABI_FP_number_model(AttrType Tag, const uint8_t *Data,
                                              uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Permitted", "Finite Only", "RTABI", "IEEE-754"
   };
 
@@ -331,7 +324,7 @@ void ARMAttributeParser::ABI_FP_number_model(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_align_needed(AttrType Tag, const uint8_t *Data,
                                           uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Permitted", "8-byte alignment", "4-byte alignment", "Reserved"
   };
 
@@ -341,7 +334,7 @@ void ARMAttributeParser::ABI_align_needed(AttrType Tag, const uint8_t *Data,
   if (Value < array_lengthof(Strings))
     Description = std::string(Strings[Value]);
   else if (Value <= 12)
-    Description = std::string("8-byte alignment, ") + utostr(1ULL << Value)
+    Description = std::string("8-byte alignment, ") + utostr(1 << Value)
                 + std::string("-byte extended alignment");
   else
     Description = "Invalid";
@@ -351,7 +344,7 @@ void ARMAttributeParser::ABI_align_needed(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_align_preserved(AttrType Tag, const uint8_t *Data,
                                              uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Required", "8-byte data alignment", "8-byte data and code alignment",
     "Reserved"
   };
@@ -362,8 +355,8 @@ void ARMAttributeParser::ABI_align_preserved(AttrType Tag, const uint8_t *Data,
   if (Value < array_lengthof(Strings))
     Description = std::string(Strings[Value]);
   else if (Value <= 12)
-    Description = std::string("8-byte stack alignment, ") +
-                  utostr(1ULL << Value) + std::string("-byte data alignment");
+    Description = std::string("8-byte stack alignment, ") + utostr(1 << Value)
+                + std::string("-byte data alignment");
   else
     Description = "Invalid";
 
@@ -372,7 +365,7 @@ void ARMAttributeParser::ABI_align_preserved(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_enum_size(AttrType Tag, const uint8_t *Data,
                                        uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Permitted", "Packed", "Int32", "External Int32"
   };
 
@@ -384,7 +377,7 @@ void ARMAttributeParser::ABI_enum_size(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_HardFP_use(AttrType Tag, const uint8_t *Data,
                                         uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Tag_FP_arch", "Single-Precision", "Reserved", "Tag_FP_arch (deprecated)"
   };
 
@@ -396,7 +389,7 @@ void ARMAttributeParser::ABI_HardFP_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_VFP_args(AttrType Tag, const uint8_t *Data,
                                       uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "AAPCS", "AAPCS VFP", "Custom", "Not Permitted"
   };
 
@@ -408,7 +401,7 @@ void ARMAttributeParser::ABI_VFP_args(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_WMMX_args(AttrType Tag, const uint8_t *Data,
                                        uint32_t &Offset) {
-  static const char *const Strings[] = { "AAPCS", "iWMMX", "Custom" };
+  static const char *Strings[] = { "AAPCS", "iWMMX", "Custom" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -419,7 +412,7 @@ void ARMAttributeParser::ABI_WMMX_args(AttrType Tag, const uint8_t *Data,
 void ARMAttributeParser::ABI_optimization_goals(AttrType Tag,
                                                 const uint8_t *Data,
                                                 uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "None", "Speed", "Aggressive Speed", "Size", "Aggressive Size", "Debugging",
     "Best Debugging"
   };
@@ -433,7 +426,7 @@ void ARMAttributeParser::ABI_optimization_goals(AttrType Tag,
 void ARMAttributeParser::ABI_FP_optimization_goals(AttrType Tag,
                                                    const uint8_t *Data,
                                                    uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "None", "Speed", "Aggressive Speed", "Size", "Aggressive Size", "Accuracy",
     "Best Accuracy"
   };
@@ -468,7 +461,7 @@ void ARMAttributeParser::compatibility(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::CPU_unaligned_access(AttrType Tag, const uint8_t *Data,
                                               uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "v6-style" };
+  static const char *Strings[] = { "Not Permitted", "v6-style" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -478,7 +471,7 @@ void ARMAttributeParser::CPU_unaligned_access(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::FP_HP_extension(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = { "If Available", "Permitted" };
+  static const char *Strings[] = { "If Available", "Permitted" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -488,7 +481,7 @@ void ARMAttributeParser::FP_HP_extension(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::ABI_FP_16bit_format(AttrType Tag, const uint8_t *Data,
                                              uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "IEEE-754", "VFPv3" };
+  static const char *Strings[] = { "Not Permitted", "IEEE-754", "VFPv3" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -498,7 +491,7 @@ void ARMAttributeParser::ABI_FP_16bit_format(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::MPextension_use(AttrType Tag, const uint8_t *Data,
                                          uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "Permitted" };
+  static const char *Strings[] = { "Not Permitted", "Permitted" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -508,7 +501,7 @@ void ARMAttributeParser::MPextension_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::DIV_use(AttrType Tag, const uint8_t *Data,
                                  uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "If Available", "Not Permitted", "Permitted"
   };
 
@@ -518,19 +511,9 @@ void ARMAttributeParser::DIV_use(AttrType Tag, const uint8_t *Data,
   PrintAttribute(Tag, Value, ValueDesc);
 }
 
-void ARMAttributeParser::DSP_extension(AttrType Tag, const uint8_t *Data,
-                                       uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "Permitted" };
-
-  uint64_t Value = ParseInteger(Data, Offset);
-  StringRef ValueDesc =
-    (Value < array_lengthof(Strings)) ? Strings[Value] : nullptr;
-  PrintAttribute(Tag, Value, ValueDesc);
-}
-
 void ARMAttributeParser::T2EE_use(AttrType Tag, const uint8_t *Data,
                                   uint32_t &Offset) {
-  static const char *const Strings[] = { "Not Permitted", "Permitted" };
+  static const char *Strings[] = { "Not Permitted", "Permitted" };
 
   uint64_t Value = ParseInteger(Data, Offset);
   StringRef ValueDesc =
@@ -540,7 +523,7 @@ void ARMAttributeParser::T2EE_use(AttrType Tag, const uint8_t *Data,
 
 void ARMAttributeParser::Virtualization_use(AttrType Tag, const uint8_t *Data,
                                             uint32_t &Offset) {
-  static const char *const Strings[] = {
+  static const char *Strings[] = {
     "Not Permitted", "TrustZone", "Virtualization Extensions",
     "TrustZone + Virtualization Extensions"
   };

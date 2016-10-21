@@ -17,9 +17,8 @@ using namespace llvm;
 namespace {
 
 TEST(IndirectionUtilsTest, MakeStub) {
-  LLVMContext Context;
-  ModuleBuilder MB(Context, "x86_64-apple-macosx10.10", "");
-  Function *F = MB.createFunctionDecl<void(DummyStruct, DummyStruct)>("");
+  ModuleBuilder MB(getGlobalContext(), "x86_64-apple-macosx10.10", "");
+  Function *F = MB.createFunctionDecl<void(DummyStruct, DummyStruct)>(MB.getModule(), "");
   SmallVector<AttributeSet, 4> Attrs;
   Attrs.push_back(
     AttributeSet::get(MB.getModule()->getContext(), 1U,

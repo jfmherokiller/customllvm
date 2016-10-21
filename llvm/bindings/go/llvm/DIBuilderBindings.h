@@ -55,18 +55,12 @@ LLVMMetadataRef LLVMDIBuilderCreateFunction(
     LLVMDIBuilderRef D, LLVMMetadataRef Scope, const char *Name,
     const char *LinkageName, LLVMMetadataRef File, unsigned Line,
     LLVMMetadataRef CompositeType, int IsLocalToUnit, int IsDefinition,
-    unsigned ScopeLine, unsigned Flags, int IsOptimized);
+    unsigned ScopeLine, unsigned Flags, int IsOptimized, LLVMValueRef Function);
 
-LLVMMetadataRef
-LLVMDIBuilderCreateAutoVariable(LLVMDIBuilderRef D, LLVMMetadataRef Scope,
-                                const char *Name, LLVMMetadataRef File,
-                                unsigned Line, LLVMMetadataRef Ty,
-                                int AlwaysPreserve, unsigned Flags);
-
-LLVMMetadataRef LLVMDIBuilderCreateParameterVariable(
-    LLVMDIBuilderRef D, LLVMMetadataRef Scope, const char *Name, unsigned ArgNo,
+LLVMMetadataRef LLVMDIBuilderCreateLocalVariable(
+    LLVMDIBuilderRef D, unsigned Tag, LLVMMetadataRef Scope, const char *Name,
     LLVMMetadataRef File, unsigned Line, LLVMMetadataRef Ty, int AlwaysPreserve,
-    unsigned Flags);
+    unsigned Flags, unsigned ArgNo);
 
 LLVMMetadataRef LLVMDIBuilderCreateBasicType(LLVMDIBuilderRef D,
                                              const char *Name,

@@ -1,4 +1,3 @@
-; RUN: opt < %s -S -passes=ipsccp | FileCheck %s
 ; RUN: opt < %s -S -ipsccp | FileCheck %s
 
 @_ZL6test1g = internal global i32 42, align 4

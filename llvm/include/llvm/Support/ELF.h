@@ -310,13 +310,7 @@ enum {
   EM_NORC          = 218, // Nanoradio Optimized RISC
   EM_CSR_KALIMBA   = 219, // CSR Kalimba architecture family
   EM_AMDGPU        = 224, // AMD GPU architecture
-  EM_LANAI         = 244, // Lanai 32-bit processor
-  EM_BPF           = 247, // Linux kernel bpf virtual machine
-
-  // A request has been made to the maintainer of the official registry for
-  // such numbers for an official value for WebAssembly. As soon as one is
-  // allocated, this enum will be updated to use it.
-  EM_WEBASSEMBLY   = 0x4157, // WebAssembly architecture
+  EM_ZCPU          = 999  // Document LLVM Backend Tutorial ZCPU
 };
 
 // Object file classes.
@@ -436,33 +430,6 @@ enum {
 #include "ELFRelocs/ARM.def"
 };
 
-// AVR specific e_flags
-enum : unsigned {
-  EF_AVR_ARCH_AVR1    = 1,
-  EF_AVR_ARCH_AVR2    = 2,
-  EF_AVR_ARCH_AVR25   = 25,
-  EF_AVR_ARCH_AVR3    = 3,
-  EF_AVR_ARCH_AVR31   = 31,
-  EF_AVR_ARCH_AVR35   = 35,
-  EF_AVR_ARCH_AVR4    = 4,
-  EF_AVR_ARCH_AVR5    = 5,
-  EF_AVR_ARCH_AVR51   = 51,
-  EF_AVR_ARCH_AVR6    = 6,
-  EF_AVR_ARCH_AVRTINY = 100,
-  EF_AVR_ARCH_XMEGA1  = 101,
-  EF_AVR_ARCH_XMEGA2  = 102,
-  EF_AVR_ARCH_XMEGA3  = 103,
-  EF_AVR_ARCH_XMEGA4  = 104,
-  EF_AVR_ARCH_XMEGA5  = 105,
-  EF_AVR_ARCH_XMEGA6  = 106,
-  EF_AVR_ARCH_XMEGA7  = 107
-};
-
-// ELF Relocation types for AVR
-enum {
-#include "ELFRelocs/AVR.def"
-};
-
 // Mips Specific e_flags
 enum : unsigned {
   EF_MIPS_NOREORDER = 0x00000001, // Don't reorder instructions
@@ -483,7 +450,6 @@ enum : unsigned {
   EF_MIPS_ABI        = 0x0000f000, // Mask for selecting EF_MIPS_ABI_ variant.
 
   // MIPS machine variant
-  EF_MIPS_MACH_NONE    = 0x00000000, // A standard MIPS implementation.
   EF_MIPS_MACH_3900    = 0x00810000, // Toshiba R3900
   EF_MIPS_MACH_4010    = 0x00820000, // LSI R4010
   EF_MIPS_MACH_4100    = 0x00830000, // NEC VR4100
@@ -557,28 +523,39 @@ enum {
   ODK_PAGESIZE   = 11   // Page size information
 };
 
-// Hexagon-specific e_flags
+// ZCPU Specific e_flags
 enum {
-  // Object processor version flags, bits[11:0]
+  EF_ZCPU_NOREORDER = 0x00000001, // Don't reorder instructions
+  EF_ZCPU_PIC       = 0x00000002, // Position independent code
+  EF_ZCPU_ARCH_32   = 0x50000000, // ZCPU32 instruction set per linux not elf.h
+  EF_ZCPU_ARCH      = 0xf0000000  // Mask for applying EF_ZCPU_ARCH_ variant
+};
+
+// ELF Relocation types for Mips
+enum {
+#include "ELFRelocs/ZCPU.def"
+};
+
+// Hexagon Specific e_flags
+// Release 5 ABI
+enum {
+  // Object processor version flags, bits[3:0]
   EF_HEXAGON_MACH_V2      = 0x00000001,   // Hexagon V2
   EF_HEXAGON_MACH_V3      = 0x00000002,   // Hexagon V3
   EF_HEXAGON_MACH_V4      = 0x00000003,   // Hexagon V4
   EF_HEXAGON_MACH_V5      = 0x00000004,   // Hexagon V5
-  EF_HEXAGON_MACH_V55     = 0x00000005,   // Hexagon V55
-  EF_HEXAGON_MACH_V60     = 0x00000060,   // Hexagon V60
 
   // Highest ISA version flags
-  EF_HEXAGON_ISA_MACH     = 0x00000000,   // Same as specified in bits[11:0]
+  EF_HEXAGON_ISA_MACH     = 0x00000000,   // Same as specified in bits[3:0]
                                           // of e_flags
   EF_HEXAGON_ISA_V2       = 0x00000010,   // Hexagon V2 ISA
   EF_HEXAGON_ISA_V3       = 0x00000020,   // Hexagon V3 ISA
   EF_HEXAGON_ISA_V4       = 0x00000030,   // Hexagon V4 ISA
-  EF_HEXAGON_ISA_V5       = 0x00000040,   // Hexagon V5 ISA
-  EF_HEXAGON_ISA_V55      = 0x00000050,   // Hexagon V55 ISA
-  EF_HEXAGON_ISA_V60      = 0x00000060,   // Hexagon V60 ISA
+  EF_HEXAGON_ISA_V5       = 0x00000040    // Hexagon V5 ISA
 };
 
-// Hexagon-specific section indexes for common small data
+// Hexagon specific Section indexes for common small data
+// Release 5 ABI
 enum {
   SHN_HEXAGON_SCOMMON     = 0xff00,       // Other access sizes
   SHN_HEXAGON_SCOMMON_1   = 0xff01,       // Byte-sized access
@@ -592,11 +569,6 @@ enum {
 #include "ELFRelocs/Hexagon.def"
 };
 
-// ELF Relocation type for Lanai.
-enum {
-#include "ELFRelocs/Lanai.def"
-};
-
 // ELF Relocation types for S390/zSeries
 enum {
 #include "ELFRelocs/SystemZ.def"
@@ -605,21 +577,6 @@ enum {
 // ELF Relocation type for Sparc.
 enum {
 #include "ELFRelocs/Sparc.def"
-};
-
-// ELF Relocation types for WebAssembly
-enum {
-#include "ELFRelocs/WebAssembly.def"
-};
-
-// ELF Relocation types for AMDGPU
-enum {
-#include "ELFRelocs/AMDGPU.def"
-};
-
-// ELF Relocation types for BPF
-enum {
-#include "ELFRelocs/BPF.def"
 };
 
 #undef ELF_RELOC
@@ -748,9 +705,6 @@ enum : unsigned {
   // This section holds Thread-Local Storage.
   SHF_TLS = 0x400U,
 
-  // Identifies a section containing compressed data.
-  SHF_COMPRESSED = 0x800U,
-
   // This section is excluded from the final executable or shared library.
   SHF_EXCLUDE = 0x80000000U,
 
@@ -807,12 +761,7 @@ enum : unsigned {
   SHF_MIPS_ADDR    = 0x40000000,
 
   // Section data is string data by default.
-  SHF_MIPS_STRING  = 0x80000000,
-
-  SHF_AMDGPU_HSA_GLOBAL   = 0x00100000,
-  SHF_AMDGPU_HSA_READONLY = 0x00200000,
-  SHF_AMDGPU_HSA_CODE     = 0x00400000,
-  SHF_AMDGPU_HSA_AGENT    = 0x00800000
+  SHF_MIPS_STRING  = 0x80000000
 };
 
 // Section Group Flags
@@ -893,12 +842,7 @@ enum {
   STT_LOOS    = 10,  // Lowest operating system-specific symbol type
   STT_HIOS    = 12,  // Highest operating system-specific symbol type
   STT_LOPROC  = 13,  // Lowest processor-specific symbol type
-  STT_HIPROC  = 15,  // Highest processor-specific symbol type
-
-  // AMDGPU symbol types
-  STT_AMDGPU_HSA_KERNEL            = 10,
-  STT_AMDGPU_HSA_INDIRECT_FUNCTION = 11,
-  STT_AMDGPU_HSA_METADATA          = 12
+  STT_HIPROC  = 15   // Highest processor-specific symbol type
 };
 
 enum {
@@ -1049,16 +993,7 @@ enum {
   PT_MIPS_REGINFO  = 0x70000000,  // Register usage information.
   PT_MIPS_RTPROC   = 0x70000001,  // Runtime procedure table.
   PT_MIPS_OPTIONS  = 0x70000002,  // Options segment.
-  PT_MIPS_ABIFLAGS = 0x70000003,  // Abiflags segment.
-
-  // AMDGPU program header types.
-  PT_AMDGPU_HSA_LOAD_GLOBAL_PROGRAM = 0x60000000,
-  PT_AMDGPU_HSA_LOAD_GLOBAL_AGENT   = 0x60000001,
-  PT_AMDGPU_HSA_LOAD_READONLY_AGENT = 0x60000002,
-  PT_AMDGPU_HSA_LOAD_CODE_AGENT     = 0x60000003,
-
-  // WebAssembly program header types.
-  PT_WEBASSEMBLY_FUNCTIONS = PT_LOPROC + 0, // Function definitions.
+  PT_MIPS_ABIFLAGS = 0x70000003   // Abiflags segment.
 };
 
 // Segment flag bits.
@@ -1137,8 +1072,6 @@ enum {
   DT_HIPROC       = 0x7FFFFFFF, // End of processor specific tags.
 
   DT_GNU_HASH     = 0x6FFFFEF5, // Reference to the GNU hash table.
-  DT_TLSDESC_PLT  = 0x6FFFFEF6, // Location of PLT entry for TLS descriptor resolver calls.
-  DT_TLSDESC_GOT  = 0x6FFFFEF7, // Location of GOT entry used by TLS descriptor resolver PLT entry.
   DT_RELACOUNT    = 0x6FFFFFF9, // ELF32_Rela count.
   DT_RELCOUNT     = 0x6FFFFFFA, // ELF32_Rel count.
 
@@ -1220,14 +1153,8 @@ enum {
   DT_MIPS_GP_VALUE          = 0x70000030, // GP value for auxiliary GOTs.
   DT_MIPS_AUX_DYNAMIC       = 0x70000031, // Address of auxiliary .dynamic.
   DT_MIPS_PLTGOT            = 0x70000032, // Address of the base of the PLTGOT.
-  DT_MIPS_RWPLT             = 0x70000034, // Points to the base
+  DT_MIPS_RWPLT             = 0x70000034  // Points to the base
                                           // of a writable PLT.
-  DT_MIPS_RLD_MAP_REL       = 0x70000035, // Relative offset of run time loader
-                                          // map, used for debugging.
-
-  // Sun machine-independent extensions.
-  DT_AUXILIARY              = 0x7FFFFFFD, // Shared object to load before self
-  DT_FILTER                 = 0x7FFFFFFF  // Shared object to get values from
 };
 
 // DT_FLAGS values.
@@ -1319,35 +1246,6 @@ enum {
 enum {
   VER_NEED_NONE = 0,
   VER_NEED_CURRENT = 1
-};
-
-// SHT_NOTE section types
-enum {
-  NT_GNU_BUILD_ID = 3
-};
-
-// Compressed section header for ELF32.
-struct Elf32_Chdr {
-  Elf32_Word ch_type;
-  Elf32_Word ch_size;
-  Elf32_Word ch_addralign;
-};
-
-// Compressed section header for ELF64.
-struct Elf64_Chdr {
-  Elf64_Word ch_type;
-  Elf64_Word ch_reserved;
-  Elf64_Xword ch_size;
-  Elf64_Xword ch_addralign;
-};
-
-// Legal values for ch_type field of compressed section header.
-enum {
-  ELFCOMPRESS_ZLIB = 1,            // ZLIB/DEFLATE algorithm.
-  ELFCOMPRESS_LOOS = 0x60000000,   // Start of OS-specific.
-  ELFCOMPRESS_HIOS = 0x6fffffff,   // End of OS-specific.
-  ELFCOMPRESS_LOPROC = 0x70000000, // Start of processor-specific.
-  ELFCOMPRESS_HIPROC = 0x7fffffff  // End of processor-specific.
 };
 
 } // end namespace ELF

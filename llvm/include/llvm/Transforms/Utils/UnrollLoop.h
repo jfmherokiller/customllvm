@@ -16,29 +16,25 @@
 #ifndef LLVM_TRANSFORMS_UTILS_UNROLLLOOP_H
 #define LLVM_TRANSFORMS_UTILS_UNROLLLOOP_H
 
+#include "llvm/ADT/StringRef.h"
 
 namespace llvm {
 
-class StringRef;
 class AssumptionCache;
-class DominatorTree;
 class Loop;
 class LoopInfo;
 class LPPassManager;
 class MDNode;
 class Pass;
-class ScalarEvolution;
 
-bool UnrollLoop(Loop *L, unsigned Count, unsigned TripCount, bool Force,
-                bool AllowRuntime, bool AllowExpensiveTripCount,
-                unsigned TripMultiple, LoopInfo *LI, ScalarEvolution *SE,
-                DominatorTree *DT, AssumptionCache *AC, bool PreserveLCSSA);
+bool UnrollLoop(Loop *L, unsigned Count, unsigned TripCount, bool AllowRuntime,
+                bool AllowExpensiveTripCount, unsigned TripMultiple,
+                LoopInfo *LI, Pass *PP, LPPassManager *LPM,
+                AssumptionCache *AC);
 
-bool UnrollRuntimeLoopRemainder(Loop *L, unsigned Count,
-                                bool AllowExpensiveTripCount,
-                                bool UseEpilogRemainder, LoopInfo *LI,
-                                ScalarEvolution *SE, DominatorTree *DT,
-                                bool PreserveLCSSA);
+bool UnrollRuntimeLoopProlog(Loop *L, unsigned Count,
+                             bool AllowExpensiveTripCount, LoopInfo *LI,
+                             LPPassManager *LPM);
 
 MDNode *GetUnrollMetadata(MDNode *LoopID, StringRef Name);
 }

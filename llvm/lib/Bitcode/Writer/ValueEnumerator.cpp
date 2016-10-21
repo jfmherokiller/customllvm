@@ -86,13 +86,16 @@ static OrderMap orderModule(const Module &M) {
   for (const GlobalAlias &A : M.aliases())
     if (!isa<GlobalValue>(A.getAliasee()))
       orderValue(A.getAliasee(), OM);
-  for (const GlobalIFunc &I : M.ifuncs())
-    if (!isa<GlobalValue>(I.getResolver()))
-      orderValue(I.getResolver(), OM);
   for (const Function &F : M) {
-    for (const Use &U : F.operands())
-      if (!isa<GlobalValue>(U.get()))
-        orderValue(U.get(), OM);
+    if (F.hasPrefixData())
+      if (!isa<GlobalValue>(F.getPrefixData()))
+        orderValue(F.getPrefixData(), OM);
+    if (F.hasPrologueData())
+      if (!isa<GlobalValue>(F.getPrologueData()))
+        orderValue(F.getPrologueData(), OM);
+    if (F.hasPersonalityFn())
+      if (!isa<GlobalValue>(F.getPersonalityFn()))
+        orderValue(F.getPersonalityFn(), OM);
   }
   OM.LastGlobalConstantID = OM.size();
 
@@ -108,8 +111,6 @@ static OrderMap orderModule(const Module &M) {
     orderValue(&F, OM);
   for (const GlobalAlias &A : M.aliases())
     orderValue(&A, OM);
-  for (const GlobalIFunc &I : M.ifuncs())
-    orderValue(&I, OM);
   for (const GlobalVariable &G : M.globals())
     orderValue(&G, OM);
   OM.LastGlobalValueID = OM.size();
@@ -266,18 +267,18 @@ static UseListOrderStack predictUseListOrder(const Module &M) {
     predictValueUseListOrder(&F, nullptr, OM, Stack);
   for (const GlobalAlias &A : M.aliases())
     predictValueUseListOrder(&A, nullptr, OM, Stack);
-  for (const GlobalIFunc &I : M.ifuncs())
-    predictValueUseListOrder(&I, nullptr, OM, Stack);
   for (const GlobalVariable &G : M.globals())
     if (G.hasInitializer())
       predictValueUseListOrder(G.getInitializer(), nullptr, OM, Stack);
   for (const GlobalAlias &A : M.aliases())
     predictValueUseListOrder(A.getAliasee(), nullptr, OM, Stack);
-  for (const GlobalIFunc &I : M.ifuncs())
-    predictValueUseListOrder(I.getResolver(), nullptr, OM, Stack);
   for (const Function &F : M) {
-    for (const Use &U : F.operands())
-      predictValueUseListOrder(U.get(), nullptr, OM, Stack);
+    if (F.hasPrefixData())
+      predictValueUseListOrder(F.getPrefixData(), nullptr, OM, Stack);
+    if (F.hasPrologueData())
+      predictValueUseListOrder(F.getPrologueData(), nullptr, OM, Stack);
+    if (F.hasPersonalityFn())
+      predictValueUseListOrder(F.getPersonalityFn(), nullptr, OM, Stack);
   }
 
   return Stack;
@@ -289,7 +290,8 @@ static bool isIntOrIntVectorValue(const std::pair<const Value*, unsigned> &V) {
 
 ValueEnumerator::ValueEnumerator(const Module &M,
                                  bool ShouldPreserveUseListOrder)
-    : ShouldPreserveUseListOrder(ShouldPreserveUseListOrder) {
+    : HasMDString(false), HasDILocation(false), HasGenericDINode(false),
+      ShouldPreserveUseListOrder(ShouldPreserveUseListOrder) {
   if (ShouldPreserveUseListOrder)
     UseListOrders = predictUseListOrder(M);
 
@@ -307,10 +309,6 @@ ValueEnumerator::ValueEnumerator(const Module &M,
   for (const GlobalAlias &GA : M.aliases())
     EnumerateValue(&GA);
 
-  // Enumerate the ifuncs.
-  for (const GlobalIFunc &GIF : M.ifuncs())
-    EnumerateValue(&GIF);
-
   // Remember what is the cutoff between globalvalue's and other constants.
   unsigned FirstConstant = Values.size();
 
@@ -323,14 +321,20 @@ ValueEnumerator::ValueEnumerator(const Module &M,
   for (const GlobalAlias &GA : M.aliases())
     EnumerateValue(GA.getAliasee());
 
-  // Enumerate the ifunc resolvers.
-  for (const GlobalIFunc &GIF : M.ifuncs())
-    EnumerateValue(GIF.getResolver());
-
-  // Enumerate any optional Function data.
+  // Enumerate the prefix data constants.
   for (const Function &F : M)
-    for (const Use &U : F.operands())
-      EnumerateValue(U.get());
+    if (F.hasPrefixData())
+      EnumerateValue(F.getPrefixData());
+
+  // Enumerate the prologue data constants.
+  for (const Function &F : M)
+    if (F.hasPrologueData())
+      EnumerateValue(F.getPrologueData());
+
+  // Enumerate the personality functions.
+  for (Module::const_iterator I = M.begin(), E = M.end(); I != E; ++I)
+    if (I->hasPersonalityFn())
+      EnumerateValue(I->getPersonalityFn());
 
   // Enumerate the metadata type.
   //
@@ -344,15 +348,6 @@ ValueEnumerator::ValueEnumerator(const Module &M,
   EnumerateNamedMetadata(M);
 
   SmallVector<std::pair<unsigned, MDNode *>, 8> MDs;
-  for (const GlobalVariable &GV : M.globals()) {
-    MDs.clear();
-    GV.getAllMetadata(MDs);
-    for (const auto &I : MDs)
-      // FIXME: Pass GV to EnumerateMetadata and arrange for the bitcode writer
-      // to write metadata to the global variable's own metadata block
-      // (PR28134).
-      EnumerateMetadata(nullptr, I.second);
-  }
 
   // Enumerate types used by function bodies and argument lists.
   for (const Function &F : M) {
@@ -360,10 +355,9 @@ ValueEnumerator::ValueEnumerator(const Module &M,
       EnumerateType(A.getType());
 
     // Enumerate metadata attached to this function.
-    MDs.clear();
     F.getAllMetadata(MDs);
     for (const auto &I : MDs)
-      EnumerateMetadata(F.isDeclaration() ? nullptr : &F, I.second);
+      EnumerateMetadata(I.second);
 
     for (const BasicBlock &BB : F)
       for (const Instruction &I : BB) {
@@ -378,7 +372,7 @@ ValueEnumerator::ValueEnumerator(const Module &M,
           if (isa<LocalAsMetadata>(MD->getMetadata()))
             continue;
 
-          EnumerateMetadata(&F, MD->getMetadata());
+          EnumerateMetadata(MD->getMetadata());
         }
         EnumerateType(I.getType());
         if (const CallInst *CI = dyn_cast<CallInst>(&I))
@@ -390,21 +384,17 @@ ValueEnumerator::ValueEnumerator(const Module &M,
         MDs.clear();
         I.getAllMetadataOtherThanDebugLoc(MDs);
         for (unsigned i = 0, e = MDs.size(); i != e; ++i)
-          EnumerateMetadata(&F, MDs[i].second);
+          EnumerateMetadata(MDs[i].second);
 
         // Don't enumerate the location directly -- it has a special record
         // type -- but enumerate its operands.
         if (DILocation *L = I.getDebugLoc())
-          for (const Metadata *Op : L->operands())
-            EnumerateMetadata(&F, Op);
+          EnumerateMDNodeOperands(L);
       }
   }
 
   // Optimize constant ordering.
   OptimizeConstants(FirstConstant, Values.size());
-
-  // Organize metadata ordering.
-  organizeMetadata();
 }
 
 unsigned ValueEnumerator::getInstructionID(const Instruction *Inst) const {
@@ -432,10 +422,10 @@ unsigned ValueEnumerator::getValueID(const Value *V) const {
   return I->second-1;
 }
 
-LLVM_DUMP_METHOD void ValueEnumerator::dump() const {
+void ValueEnumerator::dump() const {
   print(dbgs(), ValueMap, "Default");
   dbgs() << '\n';
-  print(dbgs(), MetadataMap, "MetaData");
+  print(dbgs(), MDValueMap, "MetaData");
   dbgs() << '\n';
 }
 
@@ -475,10 +465,8 @@ void ValueEnumerator::print(raw_ostream &OS, const MetadataMapType &Map,
   OS << "Size: " << Map.size() << "\n";
   for (auto I = Map.begin(), E = Map.end(); I != E; ++I) {
     const Metadata *MD = I->first;
-    OS << "Metadata: slot = " << I->second.ID << "\n";
-    OS << "Metadata: function = " << I->second.F << "\n";
+    OS << "Metadata: slot = " << I->second << "\n";
     MD->print(OS);
-    OS << "\n";
   }
 }
 
@@ -504,8 +492,8 @@ void ValueEnumerator::OptimizeConstants(unsigned CstStart, unsigned CstEnd) {
   // Ensure that integer and vector of integer constants are at the start of the
   // constant pool.  This is important so that GEP structure indices come before
   // gep constant exprs.
-  std::stable_partition(Values.begin() + CstStart, Values.begin() + CstEnd,
-                        isIntOrIntVectorValue);
+  std::partition(Values.begin()+CstStart, Values.begin()+CstEnd,
+                 isIntOrIntVectorValue);
 
   // Rebuild the modified portion of ValueMap.
   for (; CstStart != CstEnd; ++CstStart)
@@ -524,250 +512,73 @@ void ValueEnumerator::EnumerateValueSymbolTable(const ValueSymbolTable &VST) {
 /// Insert all of the values referenced by named metadata in the specified
 /// module.
 void ValueEnumerator::EnumerateNamedMetadata(const Module &M) {
-  for (const auto &I : M.named_metadata())
-    EnumerateNamedMDNode(&I);
+  for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
+                                             E = M.named_metadata_end();
+       I != E; ++I)
+    EnumerateNamedMDNode(I);
 }
 
 void ValueEnumerator::EnumerateNamedMDNode(const NamedMDNode *MD) {
   for (unsigned i = 0, e = MD->getNumOperands(); i != e; ++i)
-    EnumerateMetadata(nullptr, MD->getOperand(i));
+    EnumerateMetadata(MD->getOperand(i));
 }
 
-unsigned ValueEnumerator::getMetadataFunctionID(const Function *F) const {
-  return F ? getValueID(F) + 1 : 0;
-}
-
-void ValueEnumerator::EnumerateMetadata(const Function *F, const Metadata *MD) {
-  EnumerateMetadata(getMetadataFunctionID(F), MD);
-}
-
-void ValueEnumerator::EnumerateFunctionLocalMetadata(
-    const Function &F, const LocalAsMetadata *Local) {
-  EnumerateFunctionLocalMetadata(getMetadataFunctionID(&F), Local);
-}
-
-void ValueEnumerator::dropFunctionFromMetadata(
-    MetadataMapType::value_type &FirstMD) {
-  SmallVector<const MDNode *, 64> Worklist;
-  auto push = [this, &Worklist](MetadataMapType::value_type &MD) {
-    auto &Entry = MD.second;
-
-    // Nothing to do if this metadata isn't tagged.
-    if (!Entry.F)
-      return;
-
-    // Drop the function tag.
-    Entry.F = 0;
-
-    // If this is has an ID and is an MDNode, then its operands have entries as
-    // well.  We need to drop the function from them too.
-    if (Entry.ID)
-      if (auto *N = dyn_cast<MDNode>(MD.first))
-        Worklist.push_back(N);
-  };
-  push(FirstMD);
-  while (!Worklist.empty())
-    for (const Metadata *Op : Worklist.pop_back_val()->operands()) {
-      if (!Op)
-        continue;
-      auto MD = MetadataMap.find(Op);
-      if (MD != MetadataMap.end())
-        push(*MD);
-    }
-}
-
-void ValueEnumerator::EnumerateMetadata(unsigned F, const Metadata *MD) {
-  // It's vital for reader efficiency that uniqued subgraphs are done in
-  // post-order; it's expensive when their operands have forward references.
-  // If a distinct node is referenced from a uniqued node, it'll be delayed
-  // until the uniqued subgraph has been completely traversed.
-  SmallVector<const MDNode *, 32> DelayedDistinctNodes;
-
-  // Start by enumerating MD, and then work through its transitive operands in
-  // post-order.  This requires a depth-first search.
-  SmallVector<std::pair<const MDNode *, MDNode::op_iterator>, 32> Worklist;
-  if (const MDNode *N = enumerateMetadataImpl(F, MD))
-    Worklist.push_back(std::make_pair(N, N->op_begin()));
-
-  while (!Worklist.empty()) {
-    const MDNode *N = Worklist.back().first;
-
-    // Enumerate operands until we hit a new node.  We need to traverse these
-    // nodes' operands before visiting the rest of N's operands.
-    MDNode::op_iterator I = std::find_if(
-        Worklist.back().second, N->op_end(),
-        [&](const Metadata *MD) { return enumerateMetadataImpl(F, MD); });
-    if (I != N->op_end()) {
-      auto *Op = cast<MDNode>(*I);
-      Worklist.back().second = ++I;
-
-      // Delay traversing Op if it's a distinct node and N is uniqued.
-      if (Op->isDistinct() && !N->isDistinct())
-        DelayedDistinctNodes.push_back(Op);
-      else
-        Worklist.push_back(std::make_pair(Op, Op->op_begin()));
+/// EnumerateMDNodeOperands - Enumerate all non-function-local values
+/// and types referenced by the given MDNode.
+void ValueEnumerator::EnumerateMDNodeOperands(const MDNode *N) {
+  for (unsigned i = 0, e = N->getNumOperands(); i != e; ++i) {
+    Metadata *MD = N->getOperand(i);
+    if (!MD)
       continue;
-    }
-
-    // All the operands have been visited.  Now assign an ID.
-    Worklist.pop_back();
-    MDs.push_back(N);
-    MetadataMap[N].ID = MDs.size();
-
-    // Flush out any delayed distinct nodes; these are all the distinct nodes
-    // that are leaves in last uniqued subgraph.
-    if (Worklist.empty() || Worklist.back().first->isDistinct()) {
-      for (const MDNode *N : DelayedDistinctNodes)
-        Worklist.push_back(std::make_pair(N, N->op_begin()));
-      DelayedDistinctNodes.clear();
-    }
+    assert(!isa<LocalAsMetadata>(MD) && "MDNodes cannot be function-local");
+    EnumerateMetadata(MD);
   }
 }
 
-const MDNode *ValueEnumerator::enumerateMetadataImpl(unsigned F, const Metadata *MD) {
-  if (!MD)
-    return nullptr;
-
+void ValueEnumerator::EnumerateMetadata(const Metadata *MD) {
   assert(
       (isa<MDNode>(MD) || isa<MDString>(MD) || isa<ConstantAsMetadata>(MD)) &&
       "Invalid metadata kind");
 
-  auto Insertion = MetadataMap.insert(std::make_pair(MD, MDIndex(F)));
-  MDIndex &Entry = Insertion.first->second;
-  if (!Insertion.second) {
-    // Already mapped.  If F doesn't match the function tag, drop it.
-    if (Entry.hasDifferentFunction(F))
-      dropFunctionFromMetadata(*Insertion.first);
-    return nullptr;
-  }
+  // Insert a dummy ID to block the co-recursive call to
+  // EnumerateMDNodeOperands() from re-visiting MD in a cyclic graph.
+  //
+  // Return early if there's already an ID.
+  if (!MDValueMap.insert(std::make_pair(MD, 0)).second)
+    return;
 
-  // Don't assign IDs to metadata nodes.
+  // Visit operands first to minimize RAUW.
   if (auto *N = dyn_cast<MDNode>(MD))
-    return N;
-
-  // Save the metadata.
-  MDs.push_back(MD);
-  Entry.ID = MDs.size();
-
-  // Enumerate the constant, if any.
-  if (auto *C = dyn_cast<ConstantAsMetadata>(MD))
+    EnumerateMDNodeOperands(N);
+  else if (auto *C = dyn_cast<ConstantAsMetadata>(MD))
     EnumerateValue(C->getValue());
 
-  return nullptr;
+  HasMDString |= isa<MDString>(MD);
+  HasDILocation |= isa<DILocation>(MD);
+  HasGenericDINode |= isa<GenericDINode>(MD);
+
+  // Replace the dummy ID inserted above with the correct one.  MDValueMap may
+  // have changed by inserting operands, so we need a fresh lookup here.
+  MDs.push_back(MD);
+  MDValueMap[MD] = MDs.size();
 }
 
 /// EnumerateFunctionLocalMetadataa - Incorporate function-local metadata
 /// information reachable from the metadata.
 void ValueEnumerator::EnumerateFunctionLocalMetadata(
-    unsigned F, const LocalAsMetadata *Local) {
-  assert(F && "Expected a function");
-
+    const LocalAsMetadata *Local) {
   // Check to see if it's already in!
-  MDIndex &Index = MetadataMap[Local];
-  if (Index.ID) {
-    assert(Index.F == F && "Expected the same function");
+  unsigned &MDValueID = MDValueMap[Local];
+  if (MDValueID)
     return;
-  }
 
   MDs.push_back(Local);
-  Index.F = F;
-  Index.ID = MDs.size();
+  MDValueID = MDs.size();
 
   EnumerateValue(Local->getValue());
-}
 
-static unsigned getMetadataTypeOrder(const Metadata *MD) {
-  // Strings are emitted in bulk and must come first.
-  if (isa<MDString>(MD))
-    return 0;
-
-  // ConstantAsMetadata doesn't reference anything.  We may as well shuffle it
-  // to the front since we can detect it.
-  auto *N = dyn_cast<MDNode>(MD);
-  if (!N)
-    return 1;
-
-  // The reader is fast forward references for distinct node operands, but slow
-  // when uniqued operands are unresolved.
-  return N->isDistinct() ? 2 : 3;
-}
-
-void ValueEnumerator::organizeMetadata() {
-  assert(MetadataMap.size() == MDs.size() &&
-         "Metadata map and vector out of sync");
-
-  if (MDs.empty())
-    return;
-
-  // Copy out the index information from MetadataMap in order to choose a new
-  // order.
-  SmallVector<MDIndex, 64> Order;
-  Order.reserve(MetadataMap.size());
-  for (const Metadata *MD : MDs)
-    Order.push_back(MetadataMap.lookup(MD));
-
-  // Partition:
-  //   - by function, then
-  //   - by isa<MDString>
-  // and then sort by the original/current ID.  Since the IDs are guaranteed to
-  // be unique, the result of std::sort will be deterministic.  There's no need
-  // for std::stable_sort.
-  std::sort(Order.begin(), Order.end(), [this](MDIndex LHS, MDIndex RHS) {
-    return std::make_tuple(LHS.F, getMetadataTypeOrder(LHS.get(MDs)), LHS.ID) <
-           std::make_tuple(RHS.F, getMetadataTypeOrder(RHS.get(MDs)), RHS.ID);
-  });
-
-  // Rebuild MDs, index the metadata ranges for each function in FunctionMDs,
-  // and fix up MetadataMap.
-  std::vector<const Metadata *> OldMDs = std::move(MDs);
-  MDs.reserve(OldMDs.size());
-  for (unsigned I = 0, E = Order.size(); I != E && !Order[I].F; ++I) {
-    auto *MD = Order[I].get(OldMDs);
-    MDs.push_back(MD);
-    MetadataMap[MD].ID = I + 1;
-    if (isa<MDString>(MD))
-      ++NumMDStrings;
-  }
-
-  // Return early if there's nothing for the functions.
-  if (MDs.size() == Order.size())
-    return;
-
-  // Build the function metadata ranges.
-  MDRange R;
-  FunctionMDs.reserve(OldMDs.size());
-  unsigned PrevF = 0;
-  for (unsigned I = MDs.size(), E = Order.size(), ID = MDs.size(); I != E;
-       ++I) {
-    unsigned F = Order[I].F;
-    if (!PrevF) {
-      PrevF = F;
-    } else if (PrevF != F) {
-      R.Last = FunctionMDs.size();
-      std::swap(R, FunctionMDInfo[PrevF]);
-      R.First = FunctionMDs.size();
-
-      ID = MDs.size();
-      PrevF = F;
-    }
-
-    auto *MD = Order[I].get(OldMDs);
-    FunctionMDs.push_back(MD);
-    MetadataMap[MD].ID = ++ID;
-    if (isa<MDString>(MD))
-      ++R.NumStrings;
-  }
-  R.Last = FunctionMDs.size();
-  FunctionMDInfo[PrevF] = R;
-}
-
-void ValueEnumerator::incorporateFunctionMetadata(const Function &F) {
-  NumModuleMDs = MDs.size();
-
-  auto R = FunctionMDInfo.lookup(getValueID(&F) + 1);
-  NumMDStrings = R.NumStrings;
-  MDs.insert(MDs.end(), FunctionMDs.begin() + R.First,
-             FunctionMDs.begin() + R.Last);
+  // Also, collect all function-local metadata for easy access.
+  FunctionLocalMDs.push_back(Local);
 }
 
 void ValueEnumerator::EnumerateValue(const Value *V) {
@@ -861,7 +672,13 @@ void ValueEnumerator::EnumerateType(Type *Ty) {
 void ValueEnumerator::EnumerateOperandType(const Value *V) {
   EnumerateType(V->getType());
 
-  assert(!isa<MetadataAsValue>(V) && "Unexpected metadata operand");
+  if (auto *MD = dyn_cast<MetadataAsValue>(V)) {
+    assert(!isa<LocalAsMetadata>(MD->getMetadata()) &&
+           "Function-local metadata should be left for later");
+
+    EnumerateMetadata(MD->getMetadata());
+    return;
+  }
 
   const Constant *C = dyn_cast<Constant>(V);
   if (!C)
@@ -909,26 +726,26 @@ void ValueEnumerator::EnumerateAttributes(AttributeSet PAL) {
 void ValueEnumerator::incorporateFunction(const Function &F) {
   InstructionCount = 0;
   NumModuleValues = Values.size();
-
-  // Add global metadata to the function block.  This doesn't include
-  // LocalAsMetadata.
-  incorporateFunctionMetadata(F);
+  NumModuleMDs = MDs.size();
 
   // Adding function arguments to the value table.
-  for (const auto &I : F.args())
-    EnumerateValue(&I);
+  for (Function::const_arg_iterator I = F.arg_begin(), E = F.arg_end();
+       I != E; ++I)
+    EnumerateValue(I);
 
   FirstFuncConstantID = Values.size();
 
   // Add all function-level constants to the value table.
-  for (const BasicBlock &BB : F) {
-    for (const Instruction &I : BB)
-      for (const Use &OI : I.operands()) {
-        if ((isa<Constant>(OI) && !isa<GlobalValue>(OI)) || isa<InlineAsm>(OI))
-          EnumerateValue(OI);
+  for (Function::const_iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E; ++I)
+      for (User::const_op_iterator OI = I->op_begin(), E = I->op_end();
+           OI != E; ++OI) {
+        if ((isa<Constant>(*OI) && !isa<GlobalValue>(*OI)) ||
+            isa<InlineAsm>(*OI))
+          EnumerateValue(*OI);
       }
-    BasicBlocks.push_back(&BB);
-    ValueMap[&BB] = BasicBlocks.size();
+    BasicBlocks.push_back(BB);
+    ValueMap[BB] = BasicBlocks.size();
   }
 
   // Optimize the constant layout.
@@ -942,28 +759,24 @@ void ValueEnumerator::incorporateFunction(const Function &F) {
 
   SmallVector<LocalAsMetadata *, 8> FnLocalMDVector;
   // Add all of the instructions.
-  for (const BasicBlock &BB : F) {
-    for (const Instruction &I : BB) {
-      for (const Use &OI : I.operands()) {
-        if (auto *MD = dyn_cast<MetadataAsValue>(&OI))
+  for (Function::const_iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+    for (BasicBlock::const_iterator I = BB->begin(), E = BB->end(); I!=E; ++I) {
+      for (User::const_op_iterator OI = I->op_begin(), E = I->op_end();
+           OI != E; ++OI) {
+        if (auto *MD = dyn_cast<MetadataAsValue>(&*OI))
           if (auto *Local = dyn_cast<LocalAsMetadata>(MD->getMetadata()))
             // Enumerate metadata after the instructions they might refer to.
             FnLocalMDVector.push_back(Local);
       }
 
-      if (!I.getType()->isVoidTy())
-        EnumerateValue(&I);
+      if (!I->getType()->isVoidTy())
+        EnumerateValue(I);
     }
   }
 
   // Add all of the function-local metadata.
-  for (unsigned i = 0, e = FnLocalMDVector.size(); i != e; ++i) {
-    // At this point, every local values have been incorporated, we shouldn't
-    // have a metadata operand that references a value that hasn't been seen.
-    assert(ValueMap.count(FnLocalMDVector[i]->getValue()) &&
-           "Missing value for metadata operand");
-    EnumerateFunctionLocalMetadata(F, FnLocalMDVector[i]);
-  }
+  for (unsigned i = 0, e = FnLocalMDVector.size(); i != e; ++i)
+    EnumerateFunctionLocalMetadata(FnLocalMDVector[i]);
 }
 
 void ValueEnumerator::purgeFunction() {
@@ -971,21 +784,21 @@ void ValueEnumerator::purgeFunction() {
   for (unsigned i = NumModuleValues, e = Values.size(); i != e; ++i)
     ValueMap.erase(Values[i].first);
   for (unsigned i = NumModuleMDs, e = MDs.size(); i != e; ++i)
-    MetadataMap.erase(MDs[i]);
+    MDValueMap.erase(MDs[i]);
   for (unsigned i = 0, e = BasicBlocks.size(); i != e; ++i)
     ValueMap.erase(BasicBlocks[i]);
 
   Values.resize(NumModuleValues);
   MDs.resize(NumModuleMDs);
   BasicBlocks.clear();
-  NumMDStrings = 0;
+  FunctionLocalMDs.clear();
 }
 
 static void IncorporateFunctionInfoGlobalBBIDs(const Function *F,
                                  DenseMap<const BasicBlock*, unsigned> &IDMap) {
   unsigned Counter = 0;
-  for (const BasicBlock &BB : *F)
-    IDMap[&BB] = ++Counter;
+  for (Function::const_iterator BB = F->begin(), E = F->end(); BB != E; ++BB)
+    IDMap[BB] = ++Counter;
 }
 
 /// getGlobalBasicBlockID - This returns the function-specific ID for the

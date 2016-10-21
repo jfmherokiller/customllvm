@@ -14,38 +14,29 @@
 #include "llvm/Support/Path.h"
 #include <cstdio>
 
-namespace llvm {
+using namespace llvm;
 using namespace dwarf;
 
 void DWARFUnitSectionBase::parse(DWARFContext &C, const DWARFSection &Section) {
   parseImpl(C, Section, C.getDebugAbbrev(), C.getRangeSection(),
             C.getStringSection(), StringRef(), C.getAddrSection(),
-            C.getLineSection().Data, C.isLittleEndian(), false);
+            C.isLittleEndian());
 }
 
 void DWARFUnitSectionBase::parseDWO(DWARFContext &C,
-                                    const DWARFSection &DWOSection,
-                                    DWARFUnitIndex *Index) {
+                                    const DWARFSection &DWOSection) {
   parseImpl(C, DWOSection, C.getDebugAbbrevDWO(), C.getRangeDWOSection(),
             C.getStringDWOSection(), C.getStringOffsetDWOSection(),
-            C.getAddrSection(), C.getLineDWOSection().Data, C.isLittleEndian(),
-            true);
+            C.getAddrSection(), C.isLittleEndian());
 }
 
 DWARFUnit::DWARFUnit(DWARFContext &DC, const DWARFSection &Section,
                      const DWARFDebugAbbrev *DA, StringRef RS, StringRef SS,
-                     StringRef SOS, StringRef AOS, StringRef LS, bool LE,
-                     bool IsDWO, const DWARFUnitSectionBase &UnitSection,
-                     const DWARFUnitIndex::Entry *IndexEntry)
+                     StringRef SOS, StringRef AOS, bool LE,
+                     const DWARFUnitSectionBase &UnitSection)
     : Context(DC), InfoSection(Section), Abbrev(DA), RangeSection(RS),
-      LineSection(LS), StringSection(SS), StringOffsetSection([&]() {
-        if (IndexEntry)
-          if (const auto *C = IndexEntry->getOffset(DW_SECT_STR_OFFSETS))
-            return SOS.slice(C->Offset, C->Offset + C->Length);
-        return SOS;
-      }()),
-      AddrOffsetSection(AOS), isLittleEndian(LE), isDWO(IsDWO),
-      UnitSection(UnitSection), IndexEntry(IndexEntry) {
+      StringSection(SS), StringOffsetSection(SOS), AddrOffsetSection(AOS),
+      isLittleEndian(LE), UnitSection(UnitSection) {
   clear();
 }
 
@@ -78,17 +69,6 @@ bool DWARFUnit::extractImpl(DataExtractor debug_info, uint32_t *offset_ptr) {
   Length = debug_info.getU32(offset_ptr);
   Version = debug_info.getU16(offset_ptr);
   uint64_t AbbrOffset = debug_info.getU32(offset_ptr);
-  if (IndexEntry) {
-    if (AbbrOffset)
-      return false;
-    auto *UnitContrib = IndexEntry->getOffset();
-    if (!UnitContrib || UnitContrib->Length != (Length + 4))
-      return false;
-    auto *AbbrEntry = IndexEntry->getOffset(DW_SECT_ABBREV);
-    if (!AbbrEntry)
-      return false;
-    AbbrOffset = AbbrEntry->Offset;
-  }
   AddrSize = debug_info.getU8(offset_ptr);
 
   bool LengthOK = debug_info.isValidOffset(getNextUnitOffset() - 1);
@@ -269,11 +249,8 @@ size_t DWARFUnit::extractDIEsIfNeeded(bool CUDieOnly) {
 DWARFUnit::DWOHolder::DWOHolder(StringRef DWOPath)
     : DWOFile(), DWOContext(), DWOU(nullptr) {
   auto Obj = object::ObjectFile::createObjectFile(DWOPath);
-  if (!Obj) {
-    // TODO: Actually report errors helpfully.
-    consumeError(Obj.takeError());
+  if (!Obj)
     return;
-  }
   DWOFile = std::move(Obj.get());
   DWOContext.reset(
       cast<DWARFContext>(new DWARFContextInMemory(*DWOFile.getBinary())));
@@ -282,8 +259,6 @@ DWARFUnit::DWOHolder::DWOHolder(StringRef DWOPath)
 }
 
 bool DWARFUnit::parseDWO() {
-  if (isDWO)
-    return false;
   if (DWO.get())
     return false;
   extractDIEsIfNeeded(true);
@@ -381,26 +356,22 @@ DWARFUnit::getInlinedChainForAddress(uint64_t Address) {
   // First, find a subprogram that contains the given address (the root
   // of inlined chain).
   const DWARFUnit *ChainCU = nullptr;
-  const DWARFDebugInfoEntryMinimal *SubprogramDIE;
-  // Try to look for subprogram DIEs in the DWO file.
-  parseDWO();
-  if (DWO) {
-    if ((SubprogramDIE = DWO->getUnit()->getSubprogramForAddress(Address)))
-      ChainCU = DWO->getUnit();
-  } else if ((SubprogramDIE = getSubprogramForAddress(Address)))
+  const DWARFDebugInfoEntryMinimal *SubprogramDIE =
+      getSubprogramForAddress(Address);
+  if (SubprogramDIE) {
     ChainCU = this;
+  } else {
+    // Try to look for subprogram DIEs in the DWO file.
+    parseDWO();
+    if (DWO.get()) {
+      SubprogramDIE = DWO->getUnit()->getSubprogramForAddress(Address);
+      if (SubprogramDIE)
+        ChainCU = DWO->getUnit();
+    }
+  }
 
   // Get inlined chain rooted at this subprogram DIE.
   if (!SubprogramDIE)
     return DWARFDebugInfoEntryInlinedChain();
   return SubprogramDIE->getInlinedChainForAddress(ChainCU, Address);
-}
-
-const DWARFUnitIndex &getDWARFUnitIndex(DWARFContext &Context,
-                                        DWARFSectionKind Kind) {
-  if (Kind == DW_SECT_INFO)
-    return Context.getCUIndex();
-  assert(Kind == DW_SECT_TYPES);
-  return Context.getTUIndex();
-}
 }

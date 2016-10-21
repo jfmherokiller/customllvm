@@ -18,10 +18,10 @@
 #include "llvm/DebugInfo/DWARF/DWARFDebugFrame.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugLine.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugLoc.h"
-#include "llvm/DebugInfo/DWARF/DWARFDebugMacro.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugRangeList.h"
 #include "llvm/DebugInfo/DWARF/DWARFSection.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypeUnit.h"
+#include <vector>
 
 namespace llvm {
 
@@ -39,19 +39,15 @@ typedef DenseMap<uint64_t, std::pair<uint8_t, int64_t> > RelocAddrMap;
 class DWARFContext : public DIContext {
 
   DWARFUnitSection<DWARFCompileUnit> CUs;
-  std::deque<DWARFUnitSection<DWARFTypeUnit>> TUs;
-  std::unique_ptr<DWARFUnitIndex> CUIndex;
-  std::unique_ptr<DWARFUnitIndex> TUIndex;
+  std::vector<DWARFUnitSection<DWARFTypeUnit>> TUs;
   std::unique_ptr<DWARFDebugAbbrev> Abbrev;
   std::unique_ptr<DWARFDebugLoc> Loc;
   std::unique_ptr<DWARFDebugAranges> Aranges;
   std::unique_ptr<DWARFDebugLine> Line;
   std::unique_ptr<DWARFDebugFrame> DebugFrame;
-  std::unique_ptr<DWARFDebugFrame> EHFrame;
-  std::unique_ptr<DWARFDebugMacro> Macro;
 
   DWARFUnitSection<DWARFCompileUnit> DWOCUs;
-  std::deque<DWARFUnitSection<DWARFTypeUnit>> DWOTUs;
+  std::vector<DWARFUnitSection<DWARFTypeUnit>> DWOTUs;
   std::unique_ptr<DWARFDebugAbbrev> AbbrevDWO;
   std::unique_ptr<DWARFDebugLocDWO> LocDWO;
 
@@ -81,12 +77,11 @@ public:
     return DICtx->getKind() == CK_DWARF;
   }
 
-  void dump(raw_ostream &OS, DIDumpType DumpType = DIDT_All,
-            bool DumpEH = false) override;
+  void dump(raw_ostream &OS, DIDumpType DumpType = DIDT_All) override;
 
   typedef DWARFUnitSection<DWARFCompileUnit>::iterator_range cu_iterator_range;
   typedef DWARFUnitSection<DWARFTypeUnit>::iterator_range tu_iterator_range;
-  typedef iterator_range<decltype(TUs)::iterator> tu_section_iterator_range;
+  typedef iterator_range<std::vector<DWARFUnitSection<DWARFTypeUnit>>::iterator> tu_section_iterator_range;
 
   /// Get compile units in this context.
   cu_iterator_range compile_units() {
@@ -148,9 +143,6 @@ public:
     return DWOCUs[index].get();
   }
 
-  const DWARFUnitIndex &getCUIndex();
-  const DWARFUnitIndex &getTUIndex();
-
   /// Get a pointer to the parsed DebugAbbrev object.
   const DWARFDebugAbbrev *getDebugAbbrev();
 
@@ -168,12 +160,6 @@ public:
 
   /// Get a pointer to the parsed frame information object.
   const DWARFDebugFrame *getDebugFrame();
-
-  /// Get a pointer to the parsed eh frame information object.
-  const DWARFDebugFrame *getEHFrame();
-
-  /// Get a pointer to the parsed DebugMacro object.
-  const DWARFDebugMacro *getDebugMacro();
 
   /// Get a pointer to a parsed line table corresponding to a compile unit.
   const DWARFDebugLine::LineTable *getLineTableForUnit(DWARFUnit *cu);
@@ -195,11 +181,9 @@ public:
   virtual const DWARFSection &getLocSection() = 0;
   virtual StringRef getARangeSection() = 0;
   virtual StringRef getDebugFrameSection() = 0;
-  virtual StringRef getEHFrameSection() = 0;
   virtual const DWARFSection &getLineSection() = 0;
   virtual StringRef getStringSection() = 0;
   virtual StringRef getRangeSection() = 0;
-  virtual StringRef getMacinfoSection() = 0;
   virtual StringRef getPubNamesSection() = 0;
   virtual StringRef getPubTypesSection() = 0;
   virtual StringRef getGnuPubNamesSection() = 0;
@@ -219,11 +203,9 @@ public:
   virtual const DWARFSection& getAppleTypesSection() = 0;
   virtual const DWARFSection& getAppleNamespacesSection() = 0;
   virtual const DWARFSection& getAppleObjCSection() = 0;
-  virtual StringRef getCUIndexSection() = 0;
-  virtual StringRef getTUIndexSection() = 0;
 
   static bool isSupportedVersion(unsigned version) {
-    return version == 2 || version == 3 || version == 4 || version == 5;
+    return version == 2 || version == 3 || version == 4;
   }
 private:
   /// Return the compile unit that includes an offset (relative to .debug_info).
@@ -247,11 +229,9 @@ class DWARFContextInMemory : public DWARFContext {
   DWARFSection LocSection;
   StringRef ARangeSection;
   StringRef DebugFrameSection;
-  StringRef EHFrameSection;
   DWARFSection LineSection;
   StringRef StringSection;
   StringRef RangeSection;
-  StringRef MacinfoSection;
   StringRef PubNamesSection;
   StringRef PubTypesSection;
   StringRef GnuPubNamesSection;
@@ -271,8 +251,6 @@ class DWARFContextInMemory : public DWARFContext {
   DWARFSection AppleTypesSection;
   DWARFSection AppleNamespacesSection;
   DWARFSection AppleObjCSection;
-  StringRef CUIndexSection;
-  StringRef TUIndexSection;
 
   SmallVector<SmallString<32>, 4> UncompressedSections;
 
@@ -287,11 +265,9 @@ public:
   const DWARFSection &getLocSection() override { return LocSection; }
   StringRef getARangeSection() override { return ARangeSection; }
   StringRef getDebugFrameSection() override { return DebugFrameSection; }
-  StringRef getEHFrameSection() override { return EHFrameSection; }
   const DWARFSection &getLineSection() override { return LineSection; }
   StringRef getStringSection() override { return StringSection; }
   StringRef getRangeSection() override { return RangeSection; }
-  StringRef getMacinfoSection() override { return MacinfoSection; }
   StringRef getPubNamesSection() override { return PubNamesSection; }
   StringRef getPubTypesSection() override { return PubTypesSection; }
   StringRef getGnuPubNamesSection() override { return GnuPubNamesSection; }
@@ -317,8 +293,6 @@ public:
   StringRef getAddrSection() override {
     return AddrSection;
   }
-  StringRef getCUIndexSection() override { return CUIndexSection; }
-  StringRef getTUIndexSection() override { return TUIndexSection; }
 };
 
 }

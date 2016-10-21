@@ -11,7 +11,6 @@
 #define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_TARGETS_RUNTIMEDYLDMACHOARM_H
 
 #include "../RuntimeDyldMachO.h"
-#include <string>
 
 #define DEBUG_TYPE "dyld"
 
@@ -36,7 +35,7 @@ public:
 
   int64_t decodeAddend(const RelocationEntry &RE) const {
     const SectionEntry &Section = Sections[RE.SectionID];
-    uint8_t *LocalAddress = Section.getAddressWithOffset(RE.Offset);
+    uint8_t *LocalAddress = Section.Address + RE.Offset;
 
     switch (RE.RelType) {
       default:
@@ -50,7 +49,7 @@ public:
     }
   }
 
-  Expected<relocation_iterator>
+  relocation_iterator
   processRelocationRef(unsigned SectionID, relocation_iterator RelI,
                        const ObjectFile &BaseObjT,
                        ObjSectionToIDMap &ObjSectionToID,
@@ -65,36 +64,14 @@ public:
       if (RelType == MachO::ARM_RELOC_HALF_SECTDIFF)
         return processHALFSECTDIFFRelocation(SectionID, RelI, Obj,
                                              ObjSectionToID);
-      else if (RelType == MachO::GENERIC_RELOC_VANILLA)
-        return processScatteredVANILLA(SectionID, RelI, Obj, ObjSectionToID);
       else
-        return ++RelI;
-    }
-
-    // Sanity check relocation type.
-    switch (RelType) {
-    UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_PAIR);
-    UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_SECTDIFF);
-    UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_LOCAL_SECTDIFF);
-    UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_PB_LA_PTR);
-    UNIMPLEMENTED_RELOC(MachO::ARM_THUMB_RELOC_BR22);
-    UNIMPLEMENTED_RELOC(MachO::ARM_THUMB_32BIT_BRANCH);
-    UNIMPLEMENTED_RELOC(MachO::ARM_RELOC_HALF);
-    default:
-      if (RelType > MachO::ARM_RELOC_HALF_SECTDIFF)
-        return make_error<RuntimeDyldError>(("MachO ARM relocation type " +
-                                             Twine(RelType) +
-                                             " is out of range").str());
-      break;
+        return ++++RelI;
     }
 
     RelocationEntry RE(getRelocationEntry(SectionID, Obj, RelI));
     RE.Addend = decodeAddend(RE);
-    RelocationValueRef Value;
-    if (auto ValueOrErr = getRelocationValueRef(Obj, RelI, RE, ObjSectionToID))
-      Value = *ValueOrErr;
-    else
-      return ValueOrErr.takeError();
+    RelocationValueRef Value(
+        getRelocationValueRef(Obj, RelI, RE, ObjSectionToID));
 
     if (RE.IsPCRel)
       makeValueAddendPCRel(Value, RelI, 8);
@@ -115,12 +92,12 @@ public:
   void resolveRelocation(const RelocationEntry &RE, uint64_t Value) override {
     DEBUG(dumpRelocationToResolve(RE, Value));
     const SectionEntry &Section = Sections[RE.SectionID];
-    uint8_t *LocalAddress = Section.getAddressWithOffset(RE.Offset);
+    uint8_t *LocalAddress = Section.Address + RE.Offset;
 
     // If the relocation is PC-relative, the value to be encoded is the
     // pointer difference.
     if (RE.IsPCRel) {
-      uint64_t FinalAddress = Section.getLoadAddressWithOffset(RE.Offset);
+      uint64_t FinalAddress = Section.LoadAddress + RE.Offset;
       Value -= FinalAddress;
       // ARM PCRel relocations have an effective-PC offset of two instructions
       // (four bytes in Thumb mode, 8 bytes in ARM mode).
@@ -129,6 +106,8 @@ public:
     }
 
     switch (RE.RelType) {
+    default:
+      llvm_unreachable("Invalid relocation type!");
     case MachO::ARM_RELOC_VANILLA:
       writeBytesUnaligned(Value + RE.Addend, LocalAddress, 1 << RE.Size);
       break;
@@ -151,8 +130,8 @@ public:
       break;
     }
     case MachO::ARM_RELOC_HALF_SECTDIFF: {
-      uint64_t SectionABase = Sections[RE.Sections.SectionA].getLoadAddress();
-      uint64_t SectionBBase = Sections[RE.Sections.SectionB].getLoadAddress();
+      uint64_t SectionABase = Sections[RE.Sections.SectionA].LoadAddress;
+      uint64_t SectionBBase = Sections[RE.Sections.SectionB].LoadAddress;
       assert((Value == SectionABase || Value == SectionBBase) &&
              "Unexpected HALFSECTDIFF relocation value.");
       Value = SectionABase - SectionBBase + RE.Addend;
@@ -166,20 +145,26 @@ public:
       break;
     }
 
-    default:
-      llvm_unreachable("Invalid relocation type");
+    case MachO::ARM_THUMB_RELOC_BR22:
+    case MachO::ARM_THUMB_32BIT_BRANCH:
+    case MachO::ARM_RELOC_HALF:
+    case MachO::ARM_RELOC_PAIR:
+    case MachO::ARM_RELOC_SECTDIFF:
+    case MachO::ARM_RELOC_LOCAL_SECTDIFF:
+    case MachO::ARM_RELOC_PB_LA_PTR:
+      Error("Relocation type not implemented yet!");
+      return;
     }
   }
 
-  Error finalizeSection(const ObjectFile &Obj, unsigned SectionID,
+  void finalizeSection(const ObjectFile &Obj, unsigned SectionID,
                        const SectionRef &Section) {
     StringRef Name;
     Section.getName(Name);
 
     if (Name == "__nl_symbol_ptr")
-      return populateIndirectSymbolPointersSection(cast<MachOObjectFile>(Obj),
-                                                   Section, SectionID);
-    return Error::success();
+      populateIndirectSymbolPointersSection(cast<MachOObjectFile>(Obj),
+                                            Section, SectionID);
   }
 
 private:
@@ -193,28 +178,28 @@ private:
     RuntimeDyldMachO::StubMap::const_iterator i = Stubs.find(Value);
     uint8_t *Addr;
     if (i != Stubs.end()) {
-      Addr = Section.getAddressWithOffset(i->second);
+      Addr = Section.Address + i->second;
     } else {
       // Create a new stub function.
-      Stubs[Value] = Section.getStubOffset();
-      uint8_t *StubTargetAddr = createStubFunction(
-          Section.getAddressWithOffset(Section.getStubOffset()));
-      RelocationEntry StubRE(
-          RE.SectionID, StubTargetAddr - Section.getAddress(),
-          MachO::GENERIC_RELOC_VANILLA, Value.Offset, false, 2);
+      Stubs[Value] = Section.StubOffset;
+      uint8_t *StubTargetAddr =
+          createStubFunction(Section.Address + Section.StubOffset);
+      RelocationEntry StubRE(RE.SectionID, StubTargetAddr - Section.Address,
+                             MachO::GENERIC_RELOC_VANILLA, Value.Offset, false,
+                             2);
       if (Value.SymbolName)
         addRelocationForSymbol(StubRE, Value.SymbolName);
       else
         addRelocationForSection(StubRE, Value.SectionID);
-      Addr = Section.getAddressWithOffset(Section.getStubOffset());
-      Section.advanceStubOffset(getMaxStubSize());
+      Addr = Section.Address + Section.StubOffset;
+      Section.StubOffset += getMaxStubSize();
     }
     RelocationEntry TargetRE(RE.SectionID, RE.Offset, RE.RelType, 0,
                              RE.IsPCRel, RE.Size);
     resolveRelocation(TargetRE, (uint64_t)Addr);
   }
 
-  Expected<relocation_iterator>
+  relocation_iterator
   processHALFSECTDIFFRelocation(unsigned SectionID, relocation_iterator RelI,
                                 const ObjectFile &BaseTObj,
                                 ObjSectionToIDMap &ObjSectionToID) {
@@ -236,7 +221,7 @@ private:
     uint32_t RelocType = MachO.getAnyRelocationType(RE);
     bool IsPCRel = MachO.getAnyRelocationPCRel(RE);
     uint64_t Offset = RelI->getOffset();
-    uint8_t *LocalAddress = Section.getAddressWithOffset(Offset);
+    uint8_t *LocalAddress = Section.Address + Offset;
     int64_t Immediate = readBytesUnaligned(LocalAddress, 4); // Copy the whole instruction out.
     Immediate = ((Immediate >> 4) & 0xf000) | (Immediate & 0xfff);
 
@@ -250,12 +235,8 @@ private:
     uint64_t SectionAOffset = AddrA - SectionABase;
     SectionRef SectionA = *SAI;
     bool IsCode = SectionA.isText();
-    uint32_t SectionAID = ~0U;
-    if (auto SectionAIDOrErr =
-          findOrEmitSection(MachO, SectionA, IsCode, ObjSectionToID))
-      SectionAID = *SectionAIDOrErr;
-    else
-      return SectionAIDOrErr.takeError();
+    uint32_t SectionAID =
+        findOrEmitSection(MachO, SectionA, IsCode, ObjSectionToID);
 
     uint32_t AddrB = MachO.getScatteredRelocationValue(RE2);
     section_iterator SBI = getSectionByAddress(MachO, AddrB);
@@ -263,12 +244,8 @@ private:
     uint64_t SectionBBase = SBI->getAddress();
     uint64_t SectionBOffset = AddrB - SectionBBase;
     SectionRef SectionB = *SBI;
-    uint32_t SectionBID = ~0U;
-    if (auto SectionBIDOrErr =
-          findOrEmitSection(MachO, SectionB, IsCode, ObjSectionToID))
-      SectionBID = *SectionBIDOrErr;
-    else
-      return SectionBIDOrErr.takeError();
+    uint32_t SectionBID =
+        findOrEmitSection(MachO, SectionB, IsCode, ObjSectionToID);
 
     uint32_t OtherHalf = MachO.getAnyRelocationAddress(RE2) & 0xffff;
     unsigned Shift = (HalfDiffKindBits & 0x1) ? 16 : 0;

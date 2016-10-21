@@ -7,8 +7,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Analysis/TypeBasedAliasAnalysis.h"
-#include "llvm/Analysis/AliasAnalysisEvaluator.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
@@ -69,7 +67,7 @@ TEST_F(MixedTBAATest, MixedTBAA) {
   // because the AA eval pass only runs one test per store-pair.
   const char* args[] = { "MixedTBAATest", "-evaluate-aa-metadata" };
   cl::ParseCommandLineOptions(sizeof(args) / sizeof(const char*), args);
-  PM.add(createTypeBasedAAWrapperPass());
+  PM.add(createTypeBasedAliasAnalysisPass());
   PM.add(createAAEvalPass());
   PM.run(M);
 }

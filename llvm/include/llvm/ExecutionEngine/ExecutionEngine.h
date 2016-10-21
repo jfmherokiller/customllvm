@@ -22,6 +22,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ValueHandle.h"
 #include "llvm/IR/ValueMap.h"
+#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/Object/Binary.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Mutex.h"
@@ -103,12 +104,7 @@ class ExecutionEngine {
   ExecutionEngineState EEState;
 
   /// The target data for the platform for which execution is being performed.
-  ///
-  /// Note: the DataLayout is LLVMContext specific because it has an
-  /// internal cache based on type pointers. It makes unsafe to reuse the
-  /// ExecutionEngine across context, we don't enforce this rule but undefined
-  /// behavior can occurs if the user tries to do it.
-  const DataLayout DL;
+  const DataLayout *DL;
 
   /// Whether lazy JIT compilation is enabled.
   bool CompilingLazily;
@@ -129,6 +125,8 @@ protected:
   /// The list of Modules that we are JIT'ing from.  We use a SmallVector to
   /// optimize for the case where there is only one module.
   SmallVector<std::unique_ptr<Module>, 1> Modules;
+
+  void setDataLayout(const DataLayout *Val) { DL = Val; }
 
   /// getMemoryforGV - Allocate memory for a global variable.
   virtual char *getMemoryForGV(const GlobalVariable *GV);
@@ -196,7 +194,7 @@ public:
 
   //===--------------------------------------------------------------------===//
 
-  const DataLayout &getDataLayout() const { return DL; }
+  const DataLayout *getDataLayout() const { return DL; }
 
   /// removeModule - Remove a Module from the list of modules.  Returns true if
   /// M is found.
@@ -289,8 +287,7 @@ public:
   /// at the specified location.  This is used internally as functions are JIT'd
   /// and as global variables are laid out in memory.  It can and should also be
   /// used by clients of the EE that want to have an LLVM global overlay
-  /// existing data in memory. Values to be mapped should be named, and have
-  /// external or weak linkage. Mappings are automatically removed when their
+  /// existing data in memory.  Mappings are automatically removed when their
   /// GlobalValue is destroyed.
   void addGlobalMapping(const GlobalValue *GV, void *Addr);
   void addGlobalMapping(StringRef Name, uint64_t Addr);
@@ -477,12 +474,11 @@ public:
   /// specified function pointer is invoked to create it.  If it returns null,
   /// the JIT will abort.
   void InstallLazyFunctionCreator(FunctionCreator C) {
-    LazyFunctionCreator = std::move(C);
+    LazyFunctionCreator = C;
   }
 
 protected:
-  ExecutionEngine(DataLayout DL) : DL(std::move(DL)) {}
-  explicit ExecutionEngine(DataLayout DL, std::unique_ptr<Module> M);
+  ExecutionEngine() {}
   explicit ExecutionEngine(std::unique_ptr<Module> M);
 
   void emitGlobals();
@@ -492,9 +488,6 @@ protected:
   GenericValue getConstantValue(const Constant *C);
   void LoadValueFromMemory(GenericValue &Result, GenericValue *Ptr,
                            Type *Ty);
-
-private:
-  void Init(std::unique_ptr<Module> M);
 };
 
 namespace EngineKind {
@@ -518,7 +511,7 @@ private:
   std::shared_ptr<MCJITMemoryManager> MemMgr;
   std::shared_ptr<RuntimeDyld::SymbolResolver> Resolver;
   TargetOptions Options;
-  Optional<Reloc::Model> RelocModel;
+  Reloc::Model RelocModel;
   CodeModel::Model CMModel;
   std::string MArch;
   std::string MCPU;

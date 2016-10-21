@@ -1,4 +1,4 @@
-; RUN: llc < %s -verify-machineinstrs -mtriple=aarch64-none-linux-gnu -mattr=neon | FileCheck %s
+; RUN: llc < %s -verify-machineinstrs -mtriple=aarch64-none-linux-gnu -mattr=neon | FileCheck %s --check-prefix=CHECK
 
 define void @test_store_f128(fp128* %ptr, fp128 %val) #0 {
 ; CHECK-LABEL: test_store_f128

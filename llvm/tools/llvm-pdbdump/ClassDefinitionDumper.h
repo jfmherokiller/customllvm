@@ -19,7 +19,6 @@
 #include <unordered_map>
 
 namespace llvm {
-namespace pdb {
 
 class LinePrinter;
 
@@ -59,5 +58,5 @@ private:
   int dumpAccessGroup(PDB_MemberAccess Access, const SymbolGroup &Group);
 };
 }
-}
+
 #endif

@@ -14,26 +14,25 @@
 #ifndef LLVM_SUPPORT_MANAGEDSTATIC_H
 #define LLVM_SUPPORT_MANAGEDSTATIC_H
 
-#include "llvm/Support/Compiler.h"
-#include <atomic>
-#include <cstddef>
+#include "llvm/Support/Atomic.h"
+#include "llvm/Support/Threading.h"
+#include "llvm/Support/Valgrind.h"
 
 namespace llvm {
 
 /// object_creator - Helper method for ManagedStatic.
 template<class C>
-LLVM_LIBRARY_VISIBILITY void* object_creator() {
+void* object_creator() {
   return new C();
 }
 
 /// object_deleter - Helper method for ManagedStatic.
 ///
-template <typename T> struct LLVM_LIBRARY_VISIBILITY object_deleter {
-  static void call(void *Ptr) { delete (T *)Ptr; }
+template<typename T> struct object_deleter {
+  static void call(void * Ptr) { delete (T*)Ptr; }
 };
-template <typename T, size_t N>
-struct LLVM_LIBRARY_VISIBILITY object_deleter<T[N]> {
-  static void call(void *Ptr) { delete[](T *)Ptr; }
+template<typename T, size_t N> struct object_deleter<T[N]> {
+  static void call(void * Ptr) { delete[] (T*)Ptr; }
 };
 
 /// ManagedStaticBase - Common base class for ManagedStatic instances.
@@ -41,7 +40,7 @@ class ManagedStaticBase {
 protected:
   // This should only be used as a static variable, which guarantees that this
   // will be zero initialized.
-  mutable std::atomic<void *> Ptr;
+  mutable void *Ptr;
   mutable void (*DeleterFn)(void*);
   mutable const ManagedStaticBase *Next;
 
@@ -61,26 +60,40 @@ public:
 template<class C>
 class ManagedStatic : public ManagedStaticBase {
 public:
+
   // Accessors.
   C &operator*() {
-    void *Tmp = Ptr.load(std::memory_order_acquire);
-    if (!Tmp)
-      RegisterManagedStatic(object_creator<C>, object_deleter<C>::call);
+    void* tmp = Ptr;
+    if (llvm_is_multithreaded()) sys::MemoryFence();
+    if (!tmp) RegisterManagedStatic(object_creator<C>, object_deleter<C>::call);
+    TsanHappensAfter(this);
 
-    return *static_cast<C *>(Ptr.load(std::memory_order_relaxed));
+    return *static_cast<C*>(Ptr);
   }
+  C *operator->() {
+    void* tmp = Ptr;
+    if (llvm_is_multithreaded()) sys::MemoryFence();
+    if (!tmp) RegisterManagedStatic(object_creator<C>, object_deleter<C>::call);
+    TsanHappensAfter(this);
 
-  C *operator->() { return &**this; }
-
+    return static_cast<C*>(Ptr);
+  }
   const C &operator*() const {
-    void *Tmp = Ptr.load(std::memory_order_acquire);
-    if (!Tmp)
-      RegisterManagedStatic(object_creator<C>, object_deleter<C>::call);
+    void* tmp = Ptr;
+    if (llvm_is_multithreaded()) sys::MemoryFence();
+    if (!tmp) RegisterManagedStatic(object_creator<C>, object_deleter<C>::call);
+    TsanHappensAfter(this);
 
-    return *static_cast<C *>(Ptr.load(std::memory_order_relaxed));
+    return *static_cast<C*>(Ptr);
   }
+  const C *operator->() const {
+    void* tmp = Ptr;
+    if (llvm_is_multithreaded()) sys::MemoryFence();
+    if (!tmp) RegisterManagedStatic(object_creator<C>, object_deleter<C>::call);
+    TsanHappensAfter(this);
 
-  const C *operator->() const { return &**this; }
+    return static_cast<C*>(Ptr);
+  }
 };
 
 /// llvm_shutdown - Deallocate and destroy all ManagedStatic variables.

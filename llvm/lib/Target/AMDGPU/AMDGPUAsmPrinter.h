@@ -12,15 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUASMPRINTER_H
-#define LLVM_LIB_TARGET_AMDGPU_AMDGPUASMPRINTER_H
+#ifndef LLVM_LIB_TARGET_R600_AMDGPUASMPRINTER_H
+#define LLVM_LIB_TARGET_R600_AMDGPUASMPRINTER_H
 
 #include "llvm/CodeGen/AsmPrinter.h"
 #include <vector>
 
 namespace llvm {
 
-class AMDGPUAsmPrinter final : public AsmPrinter {
+class AMDGPUAsmPrinter : public AsmPrinter {
 private:
   struct SIProgramInfo {
     SIProgramInfo() :
@@ -40,10 +40,6 @@ private:
       NumVGPR(0),
       NumSGPR(0),
       FlatUsed(false),
-      ReservedVGPRFirst(0),
-      ReservedVGPRCount(0),
-      DebuggerWavefrontPrivateSegmentOffsetSGPR((uint16_t)-1),
-      DebuggerPrivateSegmentBufferSGPR((uint16_t)-1),
       VCCUsed(false),
       CodeLen(0) {}
 
@@ -70,20 +66,6 @@ private:
     uint32_t NumSGPR;
     uint32_t LDSSize;
     bool FlatUsed;
-
-    // If ReservedVGPRCount is 0 then must be 0. Otherwise, this is the first
-    // fixed VGPR number reserved.
-    uint16_t ReservedVGPRFirst;
-    // The number of consecutive VGPRs reserved.
-    uint16_t ReservedVGPRCount;
-
-    // Fixed SGPR number used to hold wave scratch offset for entire kernel
-    // execution, or uint16_t(-1) if the register is not used or not known.
-    uint16_t DebuggerWavefrontPrivateSegmentOffsetSGPR;
-    // Fixed SGPR number of the first 4 SGPRs used to hold scratch V# for entire
-    // kernel execution, or uint16_t(-1) if the register is not used or not
-    // known.
-    uint16_t DebuggerPrivateSegmentBufferSGPR;
 
     // Bonus information for debugging.
     bool VCCUsed;
@@ -117,19 +99,11 @@ public:
 
   void EmitFunctionBodyStart() override;
 
-  void EmitFunctionEntryLabel() override;
-
-  void EmitGlobalVariable(const GlobalVariable *GV) override;
-
-  void EmitStartOfAsmFile(Module &M) override;
+  void EmitEndOfAsmFile(Module &M) override;
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,
                        unsigned AsmVariant, const char *ExtraCode,
                        raw_ostream &O) override;
-
-  void emitStartOfRuntimeMetadata(const Module &M);
-
-  void emitRuntimeMetadata(const Function &F);
 
 protected:
   std::vector<std::string> DisasmLines, HexLines;

@@ -23,26 +23,21 @@ void RecordStreamer::markDefined(const MCSymbol &Symbol) {
   case Used:
     S = Defined;
     break;
-  case GlobalWeak:
-    break;
   }
 }
 
-void RecordStreamer::markGlobal(const MCSymbol &Symbol,
-                                MCSymbolAttr Attribute) {
+void RecordStreamer::markGlobal(const MCSymbol &Symbol) {
   State &S = Symbols[Symbol.getName()];
   switch (S) {
   case DefinedGlobal:
   case Defined:
-    S = (Attribute == MCSA_Weak) ? GlobalWeak : DefinedGlobal;
+    S = DefinedGlobal;
     break;
 
   case NeverSeen:
   case Global:
   case Used:
-    S = (Attribute == MCSA_Weak) ? GlobalWeak : Global;
-    break;
-  case GlobalWeak:
+    S = Global;
     break;
   }
 }
@@ -53,7 +48,6 @@ void RecordStreamer::markUsed(const MCSymbol &Symbol) {
   case DefinedGlobal:
   case Defined:
   case Global:
-  case GlobalWeak:
     break;
 
   case NeverSeen:
@@ -90,8 +84,8 @@ void RecordStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
 
 bool RecordStreamer::EmitSymbolAttribute(MCSymbol *Symbol,
                                          MCSymbolAttr Attribute) {
-  if (Attribute == MCSA_Global || Attribute == MCSA_Weak)
-    markGlobal(*Symbol, Attribute);
+  if (Attribute == MCSA_Global)
+    markGlobal(*Symbol);
   return true;
 }
 

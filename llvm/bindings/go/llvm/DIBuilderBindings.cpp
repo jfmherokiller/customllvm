@@ -74,34 +74,23 @@ LLVMMetadataRef LLVMDIBuilderCreateFunction(
     LLVMDIBuilderRef Dref, LLVMMetadataRef Scope, const char *Name,
     const char *LinkageName, LLVMMetadataRef File, unsigned Line,
     LLVMMetadataRef CompositeType, int IsLocalToUnit, int IsDefinition,
-    unsigned ScopeLine, unsigned Flags, int IsOptimized) {
+    unsigned ScopeLine, unsigned Flags, int IsOptimized, LLVMValueRef Func) {
   DIBuilder *D = unwrap(Dref);
   return wrap(D->createFunction(unwrap<DIScope>(Scope), Name, LinkageName,
                                 File ? unwrap<DIFile>(File) : nullptr, Line,
                                 unwrap<DISubroutineType>(CompositeType),
                                 IsLocalToUnit, IsDefinition, ScopeLine, Flags,
-                                IsOptimized));
+                                IsOptimized, unwrap<Function>(Func)));
 }
 
-LLVMMetadataRef
-LLVMDIBuilderCreateAutoVariable(LLVMDIBuilderRef Dref, LLVMMetadataRef Scope,
-                                const char *Name, LLVMMetadataRef File,
-                                unsigned Line, LLVMMetadataRef Ty,
-                                int AlwaysPreserve, unsigned Flags) {
+LLVMMetadataRef LLVMDIBuilderCreateLocalVariable(
+    LLVMDIBuilderRef Dref, unsigned Tag, LLVMMetadataRef Scope,
+    const char *Name, LLVMMetadataRef File, unsigned Line, LLVMMetadataRef Ty,
+    int AlwaysPreserve, unsigned Flags, unsigned ArgNo) {
   DIBuilder *D = unwrap(Dref);
-  return wrap(D->createAutoVariable(unwrap<DIScope>(Scope), Name,
-                                    unwrap<DIFile>(File), Line,
-                                    unwrap<DIType>(Ty), AlwaysPreserve, Flags));
-}
-
-LLVMMetadataRef LLVMDIBuilderCreateParameterVariable(
-    LLVMDIBuilderRef Dref, LLVMMetadataRef Scope, const char *Name,
-    unsigned ArgNo, LLVMMetadataRef File, unsigned Line, LLVMMetadataRef Ty,
-    int AlwaysPreserve, unsigned Flags) {
-  DIBuilder *D = unwrap(Dref);
-  return wrap(D->createParameterVariable(
-      unwrap<DIScope>(Scope), Name, ArgNo, unwrap<DIFile>(File), Line,
-      unwrap<DIType>(Ty), AlwaysPreserve, Flags));
+  return wrap(D->createLocalVariable(
+      Tag, unwrap<DIScope>(Scope), Name, unwrap<DIFile>(File), Line,
+      unwrap<DIType>(Ty), AlwaysPreserve, Flags, ArgNo));
 }
 
 LLVMMetadataRef LLVMDIBuilderCreateBasicType(LLVMDIBuilderRef Dref,
@@ -128,7 +117,8 @@ LLVMDIBuilderCreateSubroutineType(LLVMDIBuilderRef Dref, LLVMMetadataRef File,
                                   LLVMMetadataRef ParameterTypes) {
   DIBuilder *D = unwrap(Dref);
   return wrap(
-      D->createSubroutineType(DITypeRefArray(unwrap<MDTuple>(ParameterTypes))));
+      D->createSubroutineType(File ? unwrap<DIFile>(File) : nullptr,
+                              DITypeRefArray(unwrap<MDTuple>(ParameterTypes))));
 }
 
 LLVMMetadataRef LLVMDIBuilderCreateStructType(

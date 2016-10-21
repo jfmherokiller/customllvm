@@ -17,10 +17,10 @@
 
 namespace llvm {
 
-class ModulePass;
+  class ModulePass;
 
-ModulePass *createCallGraphViewerPass();
-ModulePass *createCallGraphDOTPrinterPass();
+  ModulePass *createCallGraphViewerPass();
+  ModulePass *createCallGraphPrinterPass();
 
 } // end namespace llvm
 

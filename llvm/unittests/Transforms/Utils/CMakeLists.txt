@@ -1,5 +1,4 @@
 set(LLVM_LINK_COMPONENTS
-  Analysis
   Core
   Support
   TransformUtils
@@ -10,6 +9,5 @@ add_llvm_unittest(UtilsTests
   Cloning.cpp
   IntegerDivision.cpp
   Local.cpp
-  MemorySSA.cpp
   ValueMapperTest.cpp
   )

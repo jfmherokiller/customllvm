@@ -1,7 +1,5 @@
 ; distilled from 255.vortex
-; RUN: opt < %s -globaldce -S | FileCheck %s
-
-; CHECK-NOT: testfunc
+; RUN: opt < %s -globaldce -S | not grep testfunc
 
 declare i1 ()* @getfunc()
 

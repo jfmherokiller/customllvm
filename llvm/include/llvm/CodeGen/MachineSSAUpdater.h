@@ -14,6 +14,7 @@
 #ifndef LLVM_CODEGEN_MACHINESSAUPDATER_H
 #define LLVM_CODEGEN_MACHINESSAUPDATER_H
 
+#include "llvm/Support/Allocator.h"
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {

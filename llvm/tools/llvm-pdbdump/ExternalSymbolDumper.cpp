@@ -15,7 +15,6 @@
 #include "llvm/Support/Format.h"
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 ExternalSymbolDumper::ExternalSymbolDumper(LinePrinter &P)
     : PDBSymDumper(true), Printer(P) {}

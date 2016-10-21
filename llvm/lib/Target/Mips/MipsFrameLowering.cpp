@@ -13,6 +13,7 @@
 
 #include "MipsFrameLowering.h"
 #include "MCTargetDesc/MipsBaseInfo.h"
+#include "MipsAnalyzeImmediate.h"
 #include "MipsInstrInfo.h"
 #include "MipsMachineFunction.h"
 #include "MipsTargetMachine.h"
@@ -23,6 +24,7 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
@@ -120,7 +122,7 @@ uint64_t MipsFrameLowering::estimateStackSize(const MachineFunction &MF) const {
   // Conservatively assume all callee-saved registers will be saved.
   for (const MCPhysReg *R = TRI.getCalleeSavedRegs(&MF); *R; ++R) {
     unsigned Size = TRI.getMinimalPhysRegClass(*R)->getSize();
-    Offset = alignTo(Offset + Size, Size);
+    Offset = RoundUpToAlignment(Offset + Size, Size);
   }
 
   unsigned MaxAlign = MFI->getMaxAlignment();
@@ -131,18 +133,18 @@ uint64_t MipsFrameLowering::estimateStackSize(const MachineFunction &MF) const {
 
   // Iterate over other objects.
   for (unsigned I = 0, E = MFI->getObjectIndexEnd(); I != E; ++I)
-    Offset = alignTo(Offset + MFI->getObjectSize(I), MaxAlign);
+    Offset = RoundUpToAlignment(Offset + MFI->getObjectSize(I), MaxAlign);
 
   // Call frame.
   if (MFI->adjustsStack() && hasReservedCallFrame(MF))
-    Offset = alignTo(Offset + MFI->getMaxCallFrameSize(),
-                     std::max(MaxAlign, getStackAlignment()));
+    Offset = RoundUpToAlignment(Offset + MFI->getMaxCallFrameSize(),
+                                std::max(MaxAlign, getStackAlignment()));
 
-  return alignTo(Offset, getStackAlignment());
+  return RoundUpToAlignment(Offset, getStackAlignment());
 }
 
 // Eliminate ADJCALLSTACKDOWN, ADJCALLSTACKUP pseudo instructions
-MachineBasicBlock::iterator MipsFrameLowering::
+void MipsFrameLowering::
 eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                               MachineBasicBlock::iterator I) const {
   unsigned SP = STI.getABI().IsN64() ? Mips::SP_64 : Mips::SP;
@@ -155,5 +157,5 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     STI.getInstrInfo()->adjustStackPtr(SP, Amount, MBB, I);
   }
 
-  return MBB.erase(I);
+  MBB.erase(I);
 }

@@ -8,9 +8,10 @@ declare void @foo(i32 *)
 define void @f1(i32 *%ptr, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f1:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i32 , i32 *%ptr
@@ -23,9 +24,10 @@ define void @f1(i32 *%ptr, i32 %alt, i32 %limit) {
 define void @f2(i32 *%ptr, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f2:
 ; CHECK-NOT: %r2
-; CHECK: bher %r14
+; CHECK: jhe [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i32 , i32 *%ptr
@@ -39,9 +41,10 @@ define void @f2(i32 *%ptr, i32 %alt, i32 %limit) {
 define void @f3(i32 *%ptr, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f3:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i32 , i32 *%ptr
@@ -56,9 +59,10 @@ define void @f3(i32 *%ptr, i64 %alt, i32 %limit) {
 define void @f4(i32 *%ptr, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f4:
 ; CHECK-NOT: %r2
-; CHECK: bher %r14
+; CHECK: jhe [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i32 , i32 *%ptr
@@ -74,9 +78,10 @@ define void @f4(i32 *%ptr, i64 %alt, i32 %limit) {
 define void @f5(i32 *%ptr, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f5:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i32 , i32 *%ptr
@@ -91,9 +96,10 @@ define void @f5(i32 *%ptr, i64 %alt, i32 %limit) {
 define void @f6(i32 *%ptr, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f6:
 ; CHECK-NOT: %r2
-; CHECK: bher %r14
+; CHECK: jhe [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i32 , i32 *%ptr
@@ -108,9 +114,10 @@ define void @f6(i32 *%ptr, i64 %alt, i32 %limit) {
 define void @f7(i32 *%base, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f7:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: st %r3, 4092(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i32, i32 *%base, i64 1023
   %cond = icmp ult i32 %limit, 420
@@ -124,9 +131,10 @@ define void @f7(i32 *%base, i32 %alt, i32 %limit) {
 define void @f8(i32 *%base, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f8:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: sty %r3, 4096(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i32, i32 *%base, i64 1024
   %cond = icmp ult i32 %limit, 420
@@ -140,9 +148,10 @@ define void @f8(i32 *%base, i32 %alt, i32 %limit) {
 define void @f9(i32 *%base, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f9:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: sty %r3, 524284(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i32, i32 *%base, i64 131071
   %cond = icmp ult i32 %limit, 420
@@ -157,10 +166,11 @@ define void @f9(i32 *%base, i32 %alt, i32 %limit) {
 define void @f10(i32 *%base, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f10:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: agfi %r2, 524288
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i32, i32 *%base, i64 131072
   %cond = icmp ult i32 %limit, 420
@@ -174,9 +184,10 @@ define void @f10(i32 *%base, i32 %alt, i32 %limit) {
 define void @f11(i32 *%base, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f11:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: sty %r3, -524288(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i32, i32 *%base, i64 -131072
   %cond = icmp ult i32 %limit, 420
@@ -191,10 +202,11 @@ define void @f11(i32 *%base, i32 %alt, i32 %limit) {
 define void @f12(i32 *%base, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f12:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: agfi %r2, -524292
 ; CHECK: st %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i32, i32 *%base, i64 -131073
   %cond = icmp ult i32 %limit, 420
@@ -208,9 +220,10 @@ define void @f12(i32 *%base, i32 %alt, i32 %limit) {
 define void @f13(i64 %base, i64 %index, i32 %alt, i32 %limit) {
 ; CHECK-LABEL: f13:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: sty %r4, 4096(%r3,%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %add1 = add i64 %base, %index
   %add2 = add i64 %add1, 4096

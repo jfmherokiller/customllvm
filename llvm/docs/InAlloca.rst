@@ -41,7 +41,7 @@ that passes two default-constructed ``Foo`` objects to ``g`` in the
       g(Foo(), Foo());
     }
 
-.. code-block:: text
+.. code-block:: llvm
 
     %struct.Foo = type { i32, i32 }
     declare void @Foo_ctor(%struct.Foo* %this)

@@ -23,7 +23,6 @@
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCSymbolMachO.h"
-#include "llvm/MC/MCValue.h"
 #include "llvm/Support/Dwarf.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -61,7 +60,6 @@ public:
 
   /// state management
   void reset() override {
-    CreatedADWARFSection = false;
     HasSectionLabel.clear();
     MCObjectStreamer::reset();
   }
@@ -71,7 +69,6 @@ public:
 
   void ChangeSection(MCSection *Sect, const MCExpr *Subsect) override;
   void EmitLabel(MCSymbol *Symbol) override;
-  void EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) override;
   void EmitEHSymAttributes(const MCSymbol *Symbol, MCSymbol *EHSymbol) override;
   void EmitAssemblerFlag(MCAssemblerFlag Flag) override;
   void EmitLinkerOptions(ArrayRef<std::string> Options) override;
@@ -183,6 +180,8 @@ void MCMachOStreamer::EmitEHSymAttributes(const MCSymbol *Symbol,
 void MCMachOStreamer::EmitLabel(MCSymbol *Symbol) {
   assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
 
+  // isSymbolLinkerVisible uses the section.
+  AssignSection(Symbol, getCurrentSection().first);
   // We have to create a new fragment if this is an atom defining symbol,
   // fragments cannot span atoms.
   if (getAssembler().isSymbolLinkerVisible(*Symbol))
@@ -200,20 +199,9 @@ void MCMachOStreamer::EmitLabel(MCSymbol *Symbol) {
   cast<MCSymbolMachO>(Symbol)->clearReferenceType();
 }
 
-void MCMachOStreamer::EmitAssignment(MCSymbol *Symbol, const MCExpr *Value) {
-  MCValue Res;
-
-  if (Value->evaluateAsRelocatable(Res, nullptr, nullptr)) {
-    if (const MCSymbolRefExpr *SymAExpr = Res.getSymA()) {
-      const MCSymbol &SymA = SymAExpr->getSymbol();
-      if (!Res.getSymB() && (SymA.getName() == "" || Res.getConstant() != 0))
-        cast<MCSymbolMachO>(Symbol)->setAltEntry();
-    }
-  }
-  MCObjectStreamer::EmitAssignment(Symbol, Value);
-}
-
 void MCMachOStreamer::EmitDataRegion(DataRegionData::KindTy Kind) {
+  if (!getAssembler().getBackend().hasDataInCodeSupport())
+    return;
   // Create a temporary label to mark the start of the data region.
   MCSymbol *Start = getContext().createTempSymbol();
   EmitLabel(Start);
@@ -224,6 +212,8 @@ void MCMachOStreamer::EmitDataRegion(DataRegionData::KindTy Kind) {
 }
 
 void MCMachOStreamer::EmitDataRegionEnd() {
+  if (!getAssembler().getBackend().hasDataInCodeSupport())
+    return;
   std::vector<DataRegionData> &Regions = getAssembler().getDataRegions();
   assert(!Regions.empty() && "Mismatched .end_data_region!");
   DataRegionData &Data = Regions.back();
@@ -357,10 +347,6 @@ bool MCMachOStreamer::EmitSymbolAttribute(MCSymbol *Sym,
     Symbol->setSymbolResolver();
     break;
 
-  case MCSA_AltEntry:
-    Symbol->setAltEntry();
-    break;
-
   case MCSA_PrivateExtern:
     Symbol->setExternal(true);
     Symbol->setPrivateExtern(true);
@@ -398,6 +384,8 @@ void MCMachOStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
   // FIXME: Darwin 'as' does appear to allow redef of a .comm by itself.
   assert(Symbol->isUndefined() && "Cannot define a symbol twice!");
 
+  AssignSection(Symbol, nullptr);
+
   getAssembler().registerSymbol(*Symbol);
   Symbol->setExternal(true);
   Symbol->setCommon(Size, ByteAlignment);
@@ -429,7 +417,9 @@ void MCMachOStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
   if (ByteAlignment != 1)
     new MCAlignFragment(ByteAlignment, 0, 0, ByteAlignment, Section);
 
-  MCFragment *F = new MCFillFragment(0, Size, Section);
+  AssignSection(Symbol, Section);
+
+  MCFragment *F = new MCFillFragment(0, 0, Size, Section);
   Symbol->setFragment(F);
 
   // Update the maximum alignment on the zero fill section if necessary.
@@ -442,6 +432,7 @@ void MCMachOStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
 void MCMachOStreamer::EmitTBSSSymbol(MCSection *Section, MCSymbol *Symbol,
                                      uint64_t Size, unsigned ByteAlignment) {
   EmitZerofill(Section, Symbol, Size, ByteAlignment);
+  return;
 }
 
 void MCMachOStreamer::EmitInstToData(const MCInst &Inst,
@@ -452,11 +443,12 @@ void MCMachOStreamer::EmitInstToData(const MCInst &Inst,
   SmallString<256> Code;
   raw_svector_ostream VecOS(Code);
   getAssembler().getEmitter().encodeInstruction(Inst, VecOS, Fixups, STI);
+  VecOS.flush();
 
   // Add the fixups and data.
-  for (MCFixup &Fixup : Fixups) {
-    Fixup.setOffset(Fixup.getOffset() + DF->getContents().size());
-    DF->getFixups().push_back(Fixup);
+  for (unsigned i = 0, e = Fixups.size(); i != e; ++i) {
+    Fixups[i].setOffset(Fixups[i].getOffset() + DF->getContents().size());
+    DF->getFixups().push_back(Fixups[i]);
   }
   DF->getContents().append(Code.begin(), Code.end());
 }
@@ -471,8 +463,7 @@ void MCMachOStreamer::FinishImpl() {
   // defining symbols.
   DenseMap<const MCFragment *, const MCSymbol *> DefiningSymbolMap;
   for (const MCSymbol &Symbol : getAssembler().symbols()) {
-    if (getAssembler().isSymbolLinkerVisible(Symbol) && Symbol.isInSection() &&
-        !Symbol.isVariable()) {
+    if (getAssembler().isSymbolLinkerVisible(Symbol) && Symbol.getFragment()) {
       // An atom defining symbol should never be internal to a fragment.
       assert(Symbol.getOffset() == 0 &&
              "Invalid offset in atom defining symbol!");
@@ -482,12 +473,14 @@ void MCMachOStreamer::FinishImpl() {
 
   // Set the fragment atom associations by tracking the last seen atom defining
   // symbol.
-  for (MCSection &Sec : getAssembler()) {
+  for (MCAssembler::iterator it = getAssembler().begin(),
+         ie = getAssembler().end(); it != ie; ++it) {
     const MCSymbol *CurrentAtom = nullptr;
-    for (MCFragment &Frag : Sec) {
-      if (const MCSymbol *Symbol = DefiningSymbolMap.lookup(&Frag))
+    for (MCSection::iterator it2 = it->begin(), ie2 = it->end(); it2 != ie2;
+         ++it2) {
+      if (const MCSymbol *Symbol = DefiningSymbolMap.lookup(it2))
         CurrentAtom = Symbol;
-      Frag.setAtom(CurrentAtom);
+      it2->setAtom(CurrentAtom);
     }
   }
 
@@ -500,26 +493,6 @@ MCStreamer *llvm::createMachOStreamer(MCContext &Context, MCAsmBackend &MAB,
                                       bool LabelSections) {
   MCMachOStreamer *S = new MCMachOStreamer(Context, MAB, OS, CE,
                                            DWARFMustBeAtTheEnd, LabelSections);
-  const Triple &TT = Context.getObjectFileInfo()->getTargetTriple();
-  if (TT.isOSDarwin()) {
-    unsigned Major, Minor, Update;
-    TT.getOSVersion(Major, Minor, Update);
-    // If there is a version specified, Major will be non-zero.
-    if (Major) {
-      MCVersionMinType VersionType;
-      if (TT.isWatchOS())
-        VersionType = MCVM_WatchOSVersionMin;
-      else if (TT.isTvOS())
-        VersionType = MCVM_TvOSVersionMin;
-      else if (TT.isMacOSX())
-        VersionType = MCVM_OSXVersionMin;
-      else {
-        assert(TT.isiOS() && "Must only be iOS platform left");
-        VersionType = MCVM_IOSVersionMin;
-      }
-      S->EmitVersionMin(VersionType, Major, Minor, Update);
-    }
-  }
   if (RelaxAll)
     S->getAssembler().setRelaxAll(true);
   return S;

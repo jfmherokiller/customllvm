@@ -13,12 +13,6 @@
 
 include "HexagonScheduleV4.td"
 
-// V55 Machine Info +
-include "HexagonScheduleV55.td"
-
 //===----------------------------------------------------------------------===//
-// V60 Machine Info -
+// V4 Machine Info -
 //===----------------------------------------------------------------------===//
-
-include "HexagonScheduleV60.td"
-

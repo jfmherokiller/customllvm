@@ -76,22 +76,23 @@ for.end:                                          ; preds = %for.body, %entry
 
 @tls_var = external thread_local global i8
 
-define i32 @test4(i32 %inp) {
+define i32 @test4() {
 entry:
   br label %for.body
 
 for.body:                                         ; preds = %for.body, %entry
-  %phi = phi i32 [ %dec, %for.body ], [ %inp, %entry ]
+  %phi = phi i32 [ %dec, %for.body ], [ undef, %entry ]
   %load = ptrtoint i8* @tls_var to i32
-  %val = add i32 %load, %phi
   %dec = add i32 %phi, -1
   %cmp = icmp sgt i32 %phi, 1
   br i1 %cmp, label %for.body, label %return
 
 return:                                           ; preds = %for.body
-  ret i32 %val
+  ret i32 %load
 ; CHECK-LABEL: @test4
-; CHECK: mtctr
-; CHECK: bdnz
-; CHECK: __tls_get_addr
+; CHECK-NOT: mtctr
+; CHECK: addi {{[0-9]+}}
+; CHECK: cmpwi
+; CHECK-NOT: bdnz
+; CHECK: bgt
 }

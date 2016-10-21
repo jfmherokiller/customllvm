@@ -28,11 +28,12 @@ class FlattenCFGOpt {
   AliasAnalysis *AA;
   /// \brief Use parallel-and or parallel-or to generate conditions for
   /// conditional branches.
-  bool FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder);
+  bool FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder,
+                            Pass *P = nullptr);
   /// \brief If \param BB is the merge block of an if-region, attempt to merge
   /// the if-region with an adjacent if-region upstream if two if-regions
   /// contain identical instructions.
-  bool MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder);
+  bool MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder, Pass *P = nullptr);
   /// \brief Compare a pair of blocks: \p Block1 and \p Block2, which
   /// are from two if-regions whose entry blocks are \p Head1 and \p
   /// Head2.  \returns true if \p Block1 and \p Block2 contain identical
@@ -121,7 +122,8 @@ public:
 ///  its predecessor.  In Case 2, \param BB (BB3) only has conditional branches
 ///  as its predecessors.
 ///
-bool FlattenCFGOpt::FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder) {
+bool FlattenCFGOpt::FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder,
+                                         Pass *P) {
   PHINode *PHI = dyn_cast<PHINode>(BB->begin());
   if (PHI)
     return false; // For simplicity, avoid cases containing PHI nodes.
@@ -175,9 +177,8 @@ bool FlattenCFGOpt::FlattenParallelAndOr(BasicBlock *BB, IRBuilder<> &Builder) {
 
       // Instructions in the internal condition blocks should be safe
       // to hoist up.
-      for (BasicBlock::iterator BI = Pred->begin(), BE = PBI->getIterator();
-           BI != BE;) {
-        Instruction *CI = &*BI++;
+      for (BasicBlock::iterator BI = Pred->begin(), BE = PBI; BI != BE;) {
+        Instruction *CI = BI++;
         if (isa<PHINode>(CI) || !isSafeToSpeculativelyExecute(CI))
           return false;
       }
@@ -314,7 +315,7 @@ bool FlattenCFGOpt::CompareIfRegionBlock(BasicBlock *Head1, BasicBlock *Head2,
                                          BasicBlock *Block1,
                                          BasicBlock *Block2) {
   TerminatorInst *PTI2 = Head2->getTerminator();
-  Instruction *PBI2 = &Head2->front();
+  Instruction *PBI2 = Head2->begin();
 
   bool eq1 = (Block1 == Head1);
   bool eq2 = (Block2 == Head2);
@@ -326,9 +327,9 @@ bool FlattenCFGOpt::CompareIfRegionBlock(BasicBlock *Head1, BasicBlock *Head2,
   // Check whether instructions in Block1 and Block2 are identical
   // and do not alias with instructions in Head2.
   BasicBlock::iterator iter1 = Block1->begin();
-  BasicBlock::iterator end1 = Block1->getTerminator()->getIterator();
+  BasicBlock::iterator end1 = Block1->getTerminator();
   BasicBlock::iterator iter2 = Block2->begin();
-  BasicBlock::iterator end2 = Block2->getTerminator()->getIterator();
+  BasicBlock::iterator end2 = Block2->getTerminator();
 
   while (1) {
     if (iter1 == end1) {
@@ -337,7 +338,7 @@ bool FlattenCFGOpt::CompareIfRegionBlock(BasicBlock *Head1, BasicBlock *Head2,
       break;
     }
 
-    if (!iter1->isIdenticalTo(&*iter2))
+    if (!iter1->isIdenticalTo(iter2))
       return false;
 
     // Illegal to remove instructions with side effects except
@@ -355,10 +356,10 @@ bool FlattenCFGOpt::CompareIfRegionBlock(BasicBlock *Head1, BasicBlock *Head2,
       return false;
 
     if (iter1->mayWriteToMemory()) {
-      for (BasicBlock::iterator BI(PBI2), BE(PTI2); BI != BE; ++BI) {
+      for (BasicBlock::iterator BI = PBI2, BE = PTI2; BI != BE; ++BI) {
         if (BI->mayReadFromMemory() || BI->mayWriteToMemory()) {
           // Check alias with Head2.
-          if (!AA || AA->alias(&*iter1, &*BI))
+          if (!AA || AA->alias(iter1, BI))
             return false;
         }
       }
@@ -385,7 +386,8 @@ bool FlattenCFGOpt::CompareIfRegionBlock(BasicBlock *Head1, BasicBlock *Head2,
 /// if (a || b)
 ///   statement;
 ///
-bool FlattenCFGOpt::MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder) {
+bool FlattenCFGOpt::MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder,
+                                  Pass *P) {
   BasicBlock *IfTrue2, *IfFalse2;
   Value *IfCond2 = GetIfCondition(BB, IfTrue2, IfFalse2);
   Instruction *CInst2 = dyn_cast_or_null<Instruction>(IfCond2);
@@ -411,7 +413,7 @@ bool FlattenCFGOpt::MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder) {
     return false;
 
   TerminatorInst *PTI2 = SecondEntryBlock->getTerminator();
-  Instruction *PBI2 = &SecondEntryBlock->front();
+  Instruction *PBI2 = SecondEntryBlock->begin();
 
   if (!CompareIfRegionBlock(FirstEntryBlock, SecondEntryBlock, IfTrue1,
                             IfTrue2))
@@ -423,8 +425,8 @@ bool FlattenCFGOpt::MergeIfRegion(BasicBlock *BB, IRBuilder<> &Builder) {
 
   // Check whether \param SecondEntryBlock has side-effect and is safe to
   // speculate.
-  for (BasicBlock::iterator BI(PBI2), BE(PTI2); BI != BE; ++BI) {
-    Instruction *CI = &*BI;
+  for (BasicBlock::iterator BI = PBI2, BE = PTI2; BI != BE; ++BI) {
+    Instruction *CI = BI;
     if (isa<PHINode>(CI) || CI->mayHaveSideEffects() ||
         !isSafeToSpeculativelyExecute(CI))
       return false;

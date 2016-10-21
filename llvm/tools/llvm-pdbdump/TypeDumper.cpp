@@ -24,7 +24,6 @@
 #include "llvm/DebugInfo/PDB/PDBSymbolTypeUDT.h"
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 TypeDumper::TypeDumper(LinePrinter &P) : PDBSymDumper(true), Printer(P) {}
 
@@ -63,7 +62,7 @@ void TypeDumper::dump(const PDBSymbolTypeEnum &Symbol) {
   if (Printer.IsTypeExcluded(Symbol.getName()))
     return;
   // Dump member enums when dumping their class definition.
-  if (nullptr != Symbol.getClassParent())
+  if (Symbol.isNested())
     return;
 
   Printer.NewLine();
@@ -88,7 +87,7 @@ void TypeDumper::dump(const PDBSymbolTypeUDT &Symbol) {
 
   Printer.NewLine();
 
-  if (opts::pretty::NoClassDefs) {
+  if (opts::NoClassDefs) {
     WithColor(Printer, PDB_ColorItem::Keyword).get() << "class ";
     WithColor(Printer, PDB_ColorItem::Identifier).get() << Symbol.getName();
   } else {

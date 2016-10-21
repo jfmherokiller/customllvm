@@ -1,5 +1,4 @@
-; RUN: opt < %s -globalopt -S | FileCheck %s
-; CHECK-NOT: store
+; RUN: opt < %s -globalopt -S | not grep store
 
 @llvm.global_ctors = appending global [1 x { i32, void ()* }] [ { i32, void ()* } { i32 65535, void ()* @_GLOBAL__I__Z3foov } ]          ; <[1 x { i32, void ()* }]*> [#uses=0]
 @X.0 = internal global i32 undef                ; <i32*> [#uses=2]
@@ -15,3 +14,4 @@ entry:
         store i32 1, i32* @X.0
         ret void
 }
+

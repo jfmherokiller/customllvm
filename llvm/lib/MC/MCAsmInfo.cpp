@@ -75,7 +75,6 @@ MCAsmInfo::MCAsmInfo() {
   HasSingleParameterDotFile = true;
   HasIdentDirective = false;
   HasNoDeadStrip = false;
-  HasAltEntry = false;
   WeakDirective = "\t.weak\t";
   WeakRefDirective = nullptr;
   HasWeakDefDirective = false;
@@ -107,9 +106,8 @@ MCAsmInfo::MCAsmInfo() {
   //   architecture basis.
   //   - The target subclasses for AArch64, ARM, and X86 handle these cases
   UseIntegratedAssembler = false;
-  PreserveAsmComments = true;
 
-  CompressDebugSections = DebugCompressionType::DCT_None;
+  CompressDebugSections = false;
 }
 
 MCAsmInfo::~MCAsmInfo() {
@@ -158,10 +156,4 @@ bool MCAsmInfo::isValidUnquotedName(StringRef Name) const {
   }
 
   return true;
-}
-
-bool MCAsmInfo::shouldOmitSectionDirective(StringRef SectionName) const {
-  // FIXME: Does .section .bss/.data/.text work everywhere??
-  return SectionName == ".text" || SectionName == ".data" ||
-        (SectionName == ".bss" && !usesELFSectionDirectiveForBSS());
 }

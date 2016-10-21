@@ -1,6 +1,6 @@
 ; RUN: llc < %s -O0 -verify-machineinstrs -fast-isel-abort=1 -mtriple=powerpc64-unknown-linux-gnu -mcpu=pwr7 -mattr=-vsx | FileCheck %s --check-prefix=ELF64
 
-define zeroext i1 @testi1(i8 %in) nounwind {
+define zeroext i1 @testi1(i8 %in) nounwind uwtable ssp {
 entry:
   %c = icmp eq i8 %in, 5
   br i1 %c, label %true, label %false

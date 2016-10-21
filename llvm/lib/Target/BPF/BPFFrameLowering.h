@@ -31,10 +31,10 @@ public:
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS) const override;
 
-  MachineBasicBlock::iterator
+  void
   eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator MI) const override {
-    return MBB.erase(MI);
+    MBB.erase(MI);
   }
 };
 }

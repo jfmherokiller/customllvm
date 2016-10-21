@@ -25,6 +25,7 @@ required_libraries =
  BitWriter
  CodeGen
  Core
+ IPA
  IPO
  InstCombine
  Linker
@@ -34,4 +35,3 @@ required_libraries =
  Scalar
  Support
  Target
- TransformUtils

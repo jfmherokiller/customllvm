@@ -15,15 +15,15 @@
 #define LLVM_MC_MCSECTION_H
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
-#include "llvm/MC/MCFragment.h"
 #include "llvm/MC/SectionKind.h"
 #include "llvm/Support/Compiler.h"
 
 namespace llvm {
-class MCAsmInfo;
 class MCAssembler;
+class MCAsmInfo;
 class MCContext;
 class MCExpr;
 class MCFragment;
@@ -92,8 +92,6 @@ private:
 
   unsigned IsRegistered : 1;
 
-  MCDummyFragment DummyFragment;
-
   FragmentListType Fragments;
 
   /// Mapping from subsection number to insertion point for subsection numbers
@@ -104,9 +102,10 @@ protected:
   MCSection(SectionVariant V, SectionKind K, MCSymbol *Begin);
   SectionVariant Variant;
   SectionKind Kind;
-  ~MCSection();
 
 public:
+  virtual ~MCSection();
+
   SectionKind getKind() const { return Kind; }
 
   SectionVariant getVariant() const { return Variant; }
@@ -152,14 +151,6 @@ public:
   const MCSection::FragmentListType &getFragmentList() const {
     return const_cast<MCSection *>(this)->getFragmentList();
   }
-
-  /// Support for MCFragment::getNextNode().
-  static FragmentListType MCSection::*getSublistAccess(MCFragment *) {
-    return &MCSection::Fragments;
-  }
-
-  const MCDummyFragment &getDummyFragment() const { return DummyFragment; }
-  MCDummyFragment &getDummyFragment() { return DummyFragment; }
 
   MCSection::iterator begin();
   MCSection::const_iterator begin() const {

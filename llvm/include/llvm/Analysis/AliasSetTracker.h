@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file defines two classes: AliasSetTracker and AliasSet. These interfaces
+// This file defines two classes: AliasSetTracker and AliasSet.  These interface
 // are used to classify a collection of pointer references into a maximal number
-// of disjoint sets. Each AliasSet object constructed by the AliasSetTracker
+// of disjoint sets.  Each AliasSet object constructed by the AliasSetTracker
 // object refers to memory disjoint from the other sets.
 //
 //===----------------------------------------------------------------------===//
@@ -20,17 +20,16 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/ValueHandle.h"
 #include <vector>
 
 namespace llvm {
 
+class AliasAnalysis;
 class LoadInst;
 class StoreInst;
 class VAArgInst;
-class MemSetInst;
 class AliasSetTracker;
 class AliasSet;
 
@@ -43,14 +42,13 @@ class AliasSet : public ilist_node<AliasSet> {
     AliasSet *AS;
     uint64_t Size;
     AAMDNodes AAInfo;
-
   public:
     PointerRec(Value *V)
       : Val(V), PrevInList(nullptr), NextInList(nullptr), AS(nullptr), Size(0),
         AAInfo(DenseMapInfo<AAMDNodes>::getEmptyKey()) {}
 
     Value *getValue() const { return Val; }
-
+    
     PointerRec *getNext() const { return NextInList; }
     bool hasAliasSet() const { return AS != nullptr; }
 
@@ -59,12 +57,8 @@ class AliasSet : public ilist_node<AliasSet> {
       return &NextInList;
     }
 
-    bool updateSizeAndAAInfo(uint64_t NewSize, const AAMDNodes &NewAAInfo) {
-      bool SizeChanged = false;
-      if (NewSize > Size) {
-        Size = NewSize;
-        SizeChanged = true;
-      }
+    void updateSizeAndAAInfo(uint64_t NewSize, const AAMDNodes &NewAAInfo) {
+      if (NewSize > Size) Size = NewSize;
 
       if (AAInfo == DenseMapInfo<AAMDNodes>::getEmptyKey())
         // We don't have a AAInfo yet. Set it to NewAAInfo.
@@ -72,14 +66,12 @@ class AliasSet : public ilist_node<AliasSet> {
       else if (AAInfo != NewAAInfo)
         // NewAAInfo conflicts with AAInfo.
         AAInfo = DenseMapInfo<AAMDNodes>::getTombstoneKey();
-
-      return SizeChanged;
     }
 
     uint64_t getSize() const { return Size; }
 
-    /// Return the AAInfo, or null if there is no information or conflicting
-    /// information.
+    /// getAAInfo - Return the AAInfo, or null if there is no
+    /// information or conflicting information.
     AAMDNodes getAAInfo() const {
       // If we have missing or conflicting AAInfo, return null.
       if (AAInfo == DenseMapInfo<AAMDNodes>::getEmptyKey() ||
@@ -118,11 +110,11 @@ class AliasSet : public ilist_node<AliasSet> {
   PointerRec *PtrList, **PtrListEnd;  // Doubly linked list of nodes.
   AliasSet *Forward;             // Forwarding pointer.
 
-  /// All instructions without a specific address in this alias set.
+  // All instructions without a specific address in this alias set.
   std::vector<AssertingVH<Instruction> > UnknownInsts;
 
-  /// Number of nodes pointing to this AliasSet plus the number of AliasSets
-  /// forwarding to it.
+  // RefCount - Number of nodes pointing to this AliasSet plus the number of
+  // AliasSets forwarding to it.
   unsigned RefCount : 28;
 
   /// The kinds of access this alias set models.
@@ -150,8 +142,8 @@ class AliasSet : public ilist_node<AliasSet> {
   };
   unsigned Alias : 1;
 
-  /// True if this alias set contains volatile loads or stores.
-  unsigned Volatile : 1;
+  // Volatile - True if this alias set contains volatile loads or stores.
+  bool Volatile : 1;
 
   void addRef() { ++RefCount; }
   void dropRef(AliasSetTracker &AST) {
@@ -164,7 +156,7 @@ class AliasSet : public ilist_node<AliasSet> {
     assert(i < UnknownInsts.size());
     return UnknownInsts[i];
   }
-
+  
 public:
   /// Accessors...
   bool isRef() const { return Access & RefAccess; }
@@ -172,18 +164,20 @@ public:
   bool isMustAlias() const { return Alias == SetMustAlias; }
   bool isMayAlias()  const { return Alias == SetMayAlias; }
 
-  /// Return true if this alias set contains volatile loads or stores.
+  // isVolatile - Return true if this alias set contains volatile loads or
+  // stores.
   bool isVolatile() const { return Volatile; }
 
-  /// Return true if this alias set should be ignored as part of the
-  /// AliasSetTracker object.
+  /// isForwardingAliasSet - Return true if this alias set should be ignored as
+  /// part of the AliasSetTracker object.
   bool isForwardingAliasSet() const { return Forward; }
 
-  /// Merge the specified alias set into this alias set.
+  /// mergeSetIn - Merge the specified alias set into this alias set...
+  ///
   void mergeSetIn(AliasSet &AS, AliasSetTracker &AST);
 
-  // Alias Set iteration - Allow access to all of the pointers which are part of
-  // this alias set.
+  // Alias Set iteration - Allow access to all of the pointer which are part of
+  // this alias set...
   class iterator;
   iterator begin() const { return iterator(PtrList); }
   iterator end()   const { return iterator(); }
@@ -196,7 +190,6 @@ public:
   class iterator : public std::iterator<std::forward_iterator_tag,
                                         PointerRec, ptrdiff_t> {
     PointerRec *CurNode;
-
   public:
     explicit iterator(PointerRec *CN = nullptr) : CurNode(CN) {}
 
@@ -241,9 +234,9 @@ private:
     return PtrList;
   }
 
-  /// Return the real alias set this represents. If this has been merged with
-  /// another set and is forwarding, return the ultimate destination set. This
-  /// also implements the union-find collapsing as well.
+  /// getForwardedTarget - Return the real alias set this represents.  If this
+  /// has been merged with another set and is forwarding, return the ultimate
+  /// destination set.  This also implements the union-find collapsing as well.
   AliasSet *getForwardedTarget(AliasSetTracker &AST) {
     if (!Forward) return this;
 
@@ -276,8 +269,9 @@ private:
   void setVolatile() { Volatile = true; }
 
 public:
-  /// Return true if the specified pointer "may" (or must) alias one of the
-  /// members in the set.
+  /// aliasesPointer - Return true if the specified pointer "may" (or must)
+  /// alias one of the members in the set.
+  ///
   bool aliasesPointer(const Value *Ptr, uint64_t Size, const AAMDNodes &AAInfo,
                       AliasAnalysis &AA) const;
   bool aliasesUnknownInst(const Instruction *Inst, AliasAnalysis &AA) const;
@@ -288,20 +282,20 @@ inline raw_ostream& operator<<(raw_ostream &OS, const AliasSet &AS) {
   return OS;
 }
 
+
 class AliasSetTracker {
-  /// A CallbackVH to arrange for AliasSetTracker to be notified whenever a
-  /// Value is deleted.
-  class ASTCallbackVH final : public CallbackVH {
+  /// CallbackVH - A CallbackVH to arrange for AliasSetTracker to be
+  /// notified whenever a Value is deleted.
+  class ASTCallbackVH : public CallbackVH {
     AliasSetTracker *AST;
     void deleted() override;
     void allUsesReplacedWith(Value *) override;
-
   public:
     ASTCallbackVH(Value *V, AliasSetTracker *AST = nullptr);
     ASTCallbackVH &operator=(Value *V);
   };
-  /// Traits to tell DenseMap that tell us how to compare and hash the value
-  /// handle.
+  /// ASTCallbackVHDenseMapInfo - Traits to tell DenseMap that tell us how to
+  /// compare and hash the value handle.
   struct ASTCallbackVHDenseMapInfo : public DenseMapInfo<Value *> {};
 
   AliasAnalysis &AA;
@@ -315,14 +309,15 @@ class AliasSetTracker {
   PointerMapType PointerMap;
 
 public:
-  /// Create an empty collection of AliasSets, and use the specified alias
-  /// analysis object to disambiguate load and store addresses.
+  /// AliasSetTracker ctor - Create an empty collection of AliasSets, and use
+  /// the specified alias analysis object to disambiguate load and store
+  /// addresses.
   explicit AliasSetTracker(AliasAnalysis &aa) : AA(aa) {}
   ~AliasSetTracker() { clear(); }
 
-  /// These methods are used to add different types of instructions to the alias
-  /// sets. Adding a new instruction can result in one of three actions
-  /// happening:
+  /// add methods - These methods are used to add different types of
+  /// instructions to the alias sets.  Adding a new instruction can result in
+  /// one of three actions happening:
   ///
   ///   1. If the instruction doesn't alias any other sets, create a new set.
   ///   2. If the instruction aliases exactly one set, add it to the set
@@ -336,46 +331,47 @@ public:
   bool add(LoadInst *LI);
   bool add(StoreInst *SI);
   bool add(VAArgInst *VAAI);
-  bool add(MemSetInst *MSI);
   bool add(Instruction *I);       // Dispatch to one of the other add methods...
   void add(BasicBlock &BB);       // Add all instructions in basic block
   void add(const AliasSetTracker &AST); // Add alias relations from another AST
   bool addUnknown(Instruction *I);
 
-  /// These methods are used to remove all entries that might be aliased by the
-  /// specified instruction. These methods return true if any alias sets were
-  /// eliminated.
+  /// remove methods - These methods are used to remove all entries that might
+  /// be aliased by the specified instruction.  These methods return true if any
+  /// alias sets were eliminated.
+  // Remove a location
   bool remove(Value *Ptr, uint64_t Size, const AAMDNodes &AAInfo);
   bool remove(LoadInst *LI);
   bool remove(StoreInst *SI);
   bool remove(VAArgInst *VAAI);
-  bool remove(MemSetInst *MSI);
   bool remove(Instruction *I);
   void remove(AliasSet &AS);
   bool removeUnknown(Instruction *I);
-
+  
   void clear();
 
-  /// Return the alias sets that are active.
+  /// getAliasSets - Return the alias sets that are active.
+  ///
   const ilist<AliasSet> &getAliasSets() const { return AliasSets; }
 
-  /// Return the alias set that the specified pointer lives in. If the New
-  /// argument is non-null, this method sets the value to true if a new alias
-  /// set is created to contain the pointer (because the pointer didn't alias
-  /// anything).
+  /// getAliasSetForPointer - Return the alias set that the specified pointer
+  /// lives in.  If the New argument is non-null, this method sets the value to
+  /// true if a new alias set is created to contain the pointer (because the
+  /// pointer didn't alias anything).
   AliasSet &getAliasSetForPointer(Value *P, uint64_t Size,
                                   const AAMDNodes &AAInfo,
                                   bool *New = nullptr);
 
-  /// Return the alias set containing the location specified if one exists,
-  /// otherwise return null.
+  /// getAliasSetForPointerIfExists - Return the alias set containing the
+  /// location specified if one exists, otherwise return null.
   AliasSet *getAliasSetForPointerIfExists(const Value *P, uint64_t Size,
                                           const AAMDNodes &AAInfo) {
-    return mergeAliasSetsForPointer(P, Size, AAInfo);
+    return findAliasSetForPointer(P, Size, AAInfo);
   }
 
-  /// Return true if the specified location is represented by this alias set,
-  /// false otherwise. This does not modify the AST object or alias sets.
+  /// containsPointer - Return true if the specified location is represented by
+  /// this alias set, false otherwise.  This does not modify the AST object or
+  /// alias sets.
   bool containsPointer(const Value *P, uint64_t Size,
                        const AAMDNodes &AAInfo) const;
 
@@ -383,20 +379,25 @@ public:
   /// members in any of the sets.
   bool containsUnknown(const Instruction *I) const;
 
-  /// Return the underlying alias analysis object used by this tracker.
+  /// getAliasAnalysis - Return the underlying alias analysis object used by
+  /// this tracker.
   AliasAnalysis &getAliasAnalysis() const { return AA; }
 
-  /// This method is used to remove a pointer value from the AliasSetTracker
-  /// entirely. It should be used when an instruction is deleted from the
-  /// program to update the AST. If you don't use this, you would have dangling
-  /// pointers to deleted instructions.
+  /// deleteValue method - This method is used to remove a pointer value from
+  /// the AliasSetTracker entirely.  It should be used when an instruction is
+  /// deleted from the program to update the AST.  If you don't use this, you
+  /// would have dangling pointers to deleted instructions.
+  ///
   void deleteValue(Value *PtrVal);
 
-  /// This method should be used whenever a preexisting value in the program is
-  /// copied or cloned, introducing a new value.  Note that it is ok for clients
-  /// that use this method to introduce the same value multiple times: if the
-  /// tracker already knows about a value, it will ignore the request.
+  /// copyValue - This method should be used whenever a preexisting value in the
+  /// program is copied or cloned, introducing a new value.  Note that it is ok
+  /// for clients that use this method to introduce the same value multiple
+  /// times: if the tracker already knows about a value, it will ignore the
+  /// request.
+  ///
   void copyValue(Value *From, Value *To);
+
 
   typedef ilist<AliasSet>::iterator iterator;
   typedef ilist<AliasSet>::const_iterator const_iterator;
@@ -414,8 +415,8 @@ private:
   friend class AliasSet;
   void removeAliasSet(AliasSet *AS);
 
-  /// Just like operator[] on the map, except that it creates an entry for the
-  /// pointer if it doesn't already exist.
+  // getEntryFor - Just like operator[] on the map, except that it creates an
+  // entry for the pointer if it doesn't already exist.
   AliasSet::PointerRec &getEntryFor(Value *V) {
     AliasSet::PointerRec *&Entry = PointerMap[ASTCallbackVH(V, this)];
     if (!Entry)
@@ -431,8 +432,8 @@ private:
     AS.Access |= E;
     return AS;
   }
-  AliasSet *mergeAliasSetsForPointer(const Value *Ptr, uint64_t Size,
-                                     const AAMDNodes &AAInfo);
+  AliasSet *findAliasSetForPointer(const Value *Ptr, uint64_t Size,
+                                   const AAMDNodes &AAInfo);
 
   AliasSet *findAliasSetForUnknownInst(Instruction *Inst);
 };

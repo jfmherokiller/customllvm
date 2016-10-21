@@ -16,7 +16,6 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringMap.h"
-#include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/TableGen/Record.h"
@@ -37,10 +36,6 @@ class MatcherTableEmitter {
   
   DenseMap<TreePattern *, unsigned> NodePredicateMap;
   std::vector<TreePredicateFn> NodePredicates;
-
-  // We de-duplicate the predicates by code string, and use this map to track
-  // all the patterns with "identical" predicates.
-  StringMap<TinyPtrVector<TreePattern *>> NodePredicatesByCodeToRun;
   
   StringMap<unsigned> PatternPredicateMap;
   std::vector<std::string> PatternPredicates;
@@ -67,23 +62,10 @@ private:
                        formatted_raw_ostream &OS);
 
   unsigned getNodePredicate(TreePredicateFn Pred) {
-    TreePattern *TP = Pred.getOrigPatFragRecord();
-    unsigned &Entry = NodePredicateMap[TP];
+    unsigned &Entry = NodePredicateMap[Pred.getOrigPatFragRecord()];
     if (Entry == 0) {
-      TinyPtrVector<TreePattern *> &SameCodePreds =
-          NodePredicatesByCodeToRun[Pred.getCodeToRunOnSDNode()];
-      if (SameCodePreds.empty()) {
-        // We've never seen a predicate with the same code: allocate an entry.
-        NodePredicates.push_back(Pred);
-        Entry = NodePredicates.size();
-      } else {
-        // We did see an identical predicate: re-use it.
-        Entry = NodePredicateMap[SameCodePreds.front()];
-        assert(Entry != 0);
-      }
-      // In both cases, we've never seen this particular predicate before, so
-      // mark it in the list of predicates sharing the same code.
-      SameCodePreds.push_back(TP);
+      NodePredicates.push_back(Pred);
+      Entry = NodePredicates.size();
     }
     return Entry-1;
   }
@@ -247,16 +229,9 @@ EmitMatcher(const Matcher *N, unsigned Indent, unsigned CurrentIdx,
     OS << "OPC_CaptureGlueInput,\n";
     return 1;
 
-  case Matcher::MoveChild: {
-    const auto *MCM = cast<MoveChildMatcher>(N);
-
-    OS << "OPC_MoveChild";
-    // Handle the specialized forms.
-    if (MCM->getChildNo() >= 8)
-      OS << ", ";
-    OS << MCM->getChildNo() << ",\n";
-    return (MCM->getChildNo() >= 8) ? 2 : 1;
-  }
+  case Matcher::MoveChild:
+    OS << "OPC_MoveChild, " << cast<MoveChildMatcher>(N)->getChildNo() << ",\n";
+    return 2;
 
   case Matcher::MoveParent:
     OS << "OPC_MoveParent,\n";
@@ -507,8 +482,8 @@ EmitMatcher(const Matcher *N, unsigned Indent, unsigned CurrentIdx,
     const EmitMergeInputChainsMatcher *MN =
       cast<EmitMergeInputChainsMatcher>(N);
 
-    // Handle the specialized forms OPC_EmitMergeInputChains1_0, 1_1, and 1_2.
-    if (MN->getNumNodes() == 1 && MN->getNode(0) < 3) {
+    // Handle the specialized forms OPC_EmitMergeInputChains1_0 and 1_1.
+    if (MN->getNumNodes() == 1 && MN->getNode(0) < 2) {
       OS << "OPC_EmitMergeInputChains1_" << MN->getNode(0) << ",\n";
       return 1;
     }
@@ -539,10 +514,6 @@ EmitMatcher(const Matcher *N, unsigned Indent, unsigned CurrentIdx,
   case Matcher::MorphNodeTo: {
     const EmitNodeMatcherCommon *EN = cast<EmitNodeMatcherCommon>(N);
     OS << (isa<EmitNodeMatcher>(EN) ? "OPC_EmitNode" : "OPC_MorphNodeTo");
-    bool CompressVTs = EN->getNumVTs() < 3;
-    if (CompressVTs)
-      OS << EN->getNumVTs();
-
     OS << ", TARGET_VAL(" << EN->getOpcodeName() << "), 0";
 
     if (EN->hasChain())   OS << "|OPFL_Chain";
@@ -553,13 +524,10 @@ EmitMatcher(const Matcher *N, unsigned Indent, unsigned CurrentIdx,
       OS << "|OPFL_Variadic" << EN->getNumFixedArityOperands();
     OS << ",\n";
 
-    OS.PadToColumn(Indent*2+4);
-    if (!CompressVTs) {
-      OS << EN->getNumVTs();
-      if (!OmitComments)
-        OS << "/*#VTs*/";
-      OS << ", ";
-    }
+    OS.PadToColumn(Indent*2+4) << EN->getNumVTs();
+    if (!OmitComments)
+      OS << "/*#VTs*/";
+    OS << ", ";
     for (unsigned i = 0, e = EN->getNumVTs(); i != e; ++i)
       OS << getEnumName(EN->getVT(i)) << ", ";
 
@@ -593,7 +561,16 @@ EmitMatcher(const Matcher *N, unsigned Indent, unsigned CurrentIdx,
     } else
       OS << '\n';
 
-    return 5 + !CompressVTs + EN->getNumVTs() + NumOperandBytes;
+    return 6+EN->getNumVTs()+NumOperandBytes;
+  }
+  case Matcher::MarkGlueResults: {
+    const MarkGlueResultsMatcher *CFR = cast<MarkGlueResultsMatcher>(N);
+    OS << "OPC_MarkGlueResults, " << CFR->getNumNodes() << ", ";
+    unsigned NumOperandBytes = 0;
+    for (unsigned i = 0, e = CFR->getNumNodes(); i != e; ++i)
+      NumOperandBytes += EmitVBRValue(CFR->getNode(i), OS);
+    OS << '\n';
+    return 2+NumOperandBytes;
   }
   case Matcher::CompleteMatch: {
     const CompleteMatchMatcher *CM = cast<CompleteMatchMatcher>(N);
@@ -648,6 +625,13 @@ void MatcherTableEmitter::EmitPredicateFunctions(formatted_raw_ostream &OS) {
   }
 
   // Emit Node predicates.
+  // FIXME: Annoyingly, these are stored by name, which we never even emit. Yay?
+  StringMap<TreePattern*> PFsByName;
+
+  for (CodeGenDAGPatterns::pf_iterator I = CGP.pf_begin(), E = CGP.pf_end();
+       I != E; ++I)
+    PFsByName[I->first->getName()] = I->second.get();
+
   if (!NodePredicates.empty()) {
     OS << "bool CheckNodePredicate(SDNode *Node,\n";
     OS << "                        unsigned PredNo) const override {\n";
@@ -658,10 +642,7 @@ void MatcherTableEmitter::EmitPredicateFunctions(formatted_raw_ostream &OS) {
       TreePredicateFn PredFn = NodePredicates[i];
       
       assert(!PredFn.isAlwaysTrue() && "No code in this predicate");
-      OS << "  case " << i << ": { \n";
-      for (auto *SimilarPred :
-           NodePredicatesByCodeToRun[PredFn.getCodeToRunOnSDNode()])
-        OS << "    // " << TreePredicateFn(SimilarPred).getFnName() <<'\n';
+      OS << "  case " << i << ": { // " << NodePredicates[i].getFnName() <<'\n';
       
       OS << PredFn.getCodeToRunOnSDNode() << "\n  }\n";
     }
@@ -812,6 +793,7 @@ void MatcherTableEmitter::EmitHistogram(const Matcher *M,
     case Matcher::EmitNode: OS << "OPC_EmitNode"; break;
     case Matcher::MorphNodeTo: OS << "OPC_MorphNodeTo"; break;
     case Matcher::EmitNodeXForm: OS << "OPC_EmitNodeXForm"; break;
+    case Matcher::MarkGlueResults: OS << "OPC_MarkGlueResults"; break;
     case Matcher::CompleteMatch: OS << "OPC_CompleteMatch"; break;
     }
 
@@ -841,9 +823,8 @@ void llvm::EmitMatcherTable(const Matcher *TheMatcher,
   MatcherEmitter.EmitHistogram(TheMatcher, OS);
 
   OS << "  #undef TARGET_VAL\n";
-  OS << "  SelectCodeCommon(N, MatcherTable,sizeof(MatcherTable));\n";
-  OS << "  return nullptr;\n";
-  OS << "}\n";
+  OS << "  return SelectCodeCommon(N, MatcherTable,sizeof(MatcherTable));\n}\n";
+  OS << '\n';
 
   // Next up, emit the function for node and pattern predicates:
   MatcherEmitter.EmitPredicateFunctions(OS);

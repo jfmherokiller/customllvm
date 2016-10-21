@@ -53,12 +53,6 @@ namespace LCOMM {
 enum LCOMMType { NoAlignment, ByteAlignment, Log2Alignment };
 }
 
-enum class DebugCompressionType {
-  DCT_None,    // no compression
-  DCT_Zlib,    // zlib style complession
-  DCT_ZlibGnu  // zlib-gnu style compression
-};
-
 /// This class is intended to be used as a base class for asm
 /// properties and features specific to the target.
 class MCAsmInfo {
@@ -286,10 +280,6 @@ protected:
   /// to false.
   bool HasNoDeadStrip;
 
-  /// True if this target supports the MachO .alt_entry directive.  Defaults to
-  /// false.
-  bool HasAltEntry;
-
   /// Used to declare a global as being a weak symbol. Defaults to ".weak".
   const char *WeakDirective;
 
@@ -362,19 +352,12 @@ protected:
   /// construction (see LLVMTargetMachine::initAsmInfo()).
   bool UseIntegratedAssembler;
 
-  /// Preserve Comments in assembly
-  bool PreserveAsmComments;
-
-  /// Compress DWARF debug sections. Defaults to no compression.
-  DebugCompressionType CompressDebugSections;
+  /// Compress DWARF debug sections. Defaults to false.
+  bool CompressDebugSections;
 
   /// True if the integrated assembler should interpret 'a >> b' constant
   /// expressions as logical rather than arithmetic.
   bool UseLogicalShr;
-
-  // If true, emit GOTPCRELX/REX_GOTPCRELX instead of GOTPCREL, on
-  // X86_64 ELF.
-  bool RelaxELFRelocations = true;
 
 public:
   explicit MCAsmInfo();
@@ -430,15 +413,6 @@ public:
   /// Return true if the identifier \p Name does not need quotes to be
   /// syntactically correct.
   virtual bool isValidUnquotedName(StringRef Name) const;
-
-  /// Return true if the .section directive should be omitted when
-  /// emitting \p SectionName.  For example:
-  ///
-  /// shouldOmitSectionDirective(".text")
-  ///
-  /// returns false => .section .text,#alloc,#execinstr
-  /// returns true  => .text
-  virtual bool shouldOmitSectionDirective(StringRef SectionName) const;
 
   bool usesSunStyleELFSectionSwitchSyntax() const {
     return SunStyleELFSectionSwitchSyntax;
@@ -500,7 +474,7 @@ public:
   bool getAlignmentIsInBytes() const { return AlignmentIsInBytes; }
   unsigned getTextAlignFillValue() const { return TextAlignFillValue; }
   const char *getGlobalDirective() const { return GlobalDirective; }
-  bool doesSetDirectiveSuppressReloc() const {
+  bool doesSetDirectiveSuppressesReloc() const {
     return SetDirectiveSuppressesReloc;
   }
   bool hasAggressiveSymbolFolding() const { return HasAggressiveSymbolFolding; }
@@ -515,7 +489,6 @@ public:
   bool hasSingleParameterDotFile() const { return HasSingleParameterDotFile; }
   bool hasIdentDirective() const { return HasIdentDirective; }
   bool hasNoDeadStrip() const { return HasNoDeadStrip; }
-  bool hasAltEntry() const { return HasAltEntry; }
   const char *getWeakDirective() const { return WeakDirective; }
   const char *getWeakRefDirective() const { return WeakRefDirective; }
   bool hasWeakDefDirective() const { return HasWeakDefDirective; }
@@ -537,10 +510,6 @@ public:
   }
   ExceptionHandling getExceptionHandlingType() const { return ExceptionsType; }
   WinEH::EncodingType getWinEHEncodingType() const { return WinEHEncodingType; }
-
-  void setExceptionsType(ExceptionHandling EH) {
-    ExceptionsType = EH;
-  }
 
   /// Returns true if the exception handling method for the platform uses call
   /// frame information to unwind.
@@ -578,26 +547,13 @@ public:
     UseIntegratedAssembler = Value;
   }
 
-  /// Return true if assembly (inline or otherwise) should be parsed.
-  bool preserveAsmComments() const { return PreserveAsmComments; }
+  bool compressDebugSections() const { return CompressDebugSections; }
 
-  /// Set whether assembly (inline or otherwise) should be parsed.
-  virtual void setPreserveAsmComments(bool Value) {
-    PreserveAsmComments = Value;
-  }
-
-  DebugCompressionType compressDebugSections() const {
-    return CompressDebugSections;
-  }
-
-  void setCompressDebugSections(DebugCompressionType CompressDebugSections) {
+  void setCompressDebugSections(bool CompressDebugSections) {
     this->CompressDebugSections = CompressDebugSections;
   }
 
   bool shouldUseLogicalShr() const { return UseLogicalShr; }
-
-  bool canRelaxRelocations() const { return RelaxELFRelocations; }
-  void setRelaxELFRelocations(bool V) { RelaxELFRelocations = V; }
 };
 }
 

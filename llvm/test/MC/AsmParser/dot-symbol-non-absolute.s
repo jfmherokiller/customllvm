@@ -4,6 +4,6 @@
 
 	.extern foo
 
-# CHECK: : expected absolute expression
+# CHECK: error: expected absolute expression
 . = foo + 10
 	.byte 1

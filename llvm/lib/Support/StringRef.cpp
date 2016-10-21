@@ -140,30 +140,20 @@ std::string StringRef::upper() const {
 /// \return - The index of the first occurrence of \arg Str, or npos if not
 /// found.
 size_t StringRef::find(StringRef Str, size_t From) const {
-  if (From > Length)
-    return npos;
-
-  const char *Needle = Str.data();
   size_t N = Str.size();
-  if (N == 0)
-    return From;
-
-  size_t Size = Length - From;
-  if (Size < N)
+  if (N > Length)
     return npos;
-
-  const char *Start = Data + From;
-  const char *Stop = Start + (Size - N + 1);
 
   // For short haystacks or unsupported needles fall back to the naive algorithm
-  if (Size < 16 || N > 255) {
-    do {
-      if (std::memcmp(Start, Needle, N) == 0)
-        return Start - Data;
-      ++Start;
-    } while (Start < Stop);
+  if (Length < 16 || N > 255 || N == 0) {
+    for (size_t e = Length - N + 1, i = std::min(From, e); i != e; ++i)
+      if (substr(i, N).equals(Str))
+        return i;
     return npos;
   }
+
+  if (From >= Length)
+    return npos;
 
   // Build the bad char heuristic table, with uint8_t to reduce cache thrashing.
   uint8_t BadCharSkip[256];
@@ -171,13 +161,16 @@ size_t StringRef::find(StringRef Str, size_t From) const {
   for (unsigned i = 0; i != N-1; ++i)
     BadCharSkip[(uint8_t)Str[i]] = N-1-i;
 
-  do {
-    if (std::memcmp(Start, Needle, N) == 0)
-      return Start - Data;
+  unsigned Len = Length-From, Pos = From;
+  while (Len >= N) {
+    if (substr(Pos, N).equals(Str)) // See if this is the correct substring.
+      return Pos;
 
     // Otherwise skip the appropriate number of bytes.
-    Start += BadCharSkip[(uint8_t)Start[N-1]];
-  } while (Start < Stop);
+    uint8_t Skip = BadCharSkip[(uint8_t)(*this)[Pos+N-1]];
+    Len -= Skip;
+    Pos += Skip;
+  }
 
   return npos;
 }
@@ -281,56 +274,24 @@ StringRef::size_type StringRef::find_last_not_of(StringRef Chars,
 }
 
 void StringRef::split(SmallVectorImpl<StringRef> &A,
-                      StringRef Separator, int MaxSplit,
+                      StringRef Separators, int MaxSplit,
                       bool KeepEmpty) const {
-  StringRef S = *this;
+  StringRef rest = *this;
 
-  // Count down from MaxSplit. When MaxSplit is -1, this will just split
-  // "forever". This doesn't support splitting more than 2^31 times
-  // intentionally; if we ever want that we can make MaxSplit a 64-bit integer
-  // but that seems unlikely to be useful.
-  while (MaxSplit-- != 0) {
-    size_t Idx = S.find(Separator);
-    if (Idx == npos)
-      break;
+  // rest.data() is used to distinguish cases like "a," that splits into
+  // "a" + "" and "a" that splits into "a" + 0.
+  for (int splits = 0;
+       rest.data() != nullptr && (MaxSplit < 0 || splits < MaxSplit);
+       ++splits) {
+    std::pair<StringRef, StringRef> p = rest.split(Separators);
 
-    // Push this split.
-    if (KeepEmpty || Idx > 0)
-      A.push_back(S.slice(0, Idx));
-
-    // Jump forward.
-    S = S.slice(Idx + Separator.size(), npos);
+    if (KeepEmpty || p.first.size() != 0)
+      A.push_back(p.first);
+    rest = p.second;
   }
-
-  // Push the tail.
-  if (KeepEmpty || !S.empty())
-    A.push_back(S);
-}
-
-void StringRef::split(SmallVectorImpl<StringRef> &A, char Separator,
-                      int MaxSplit, bool KeepEmpty) const {
-  StringRef S = *this;
-
-  // Count down from MaxSplit. When MaxSplit is -1, this will just split
-  // "forever". This doesn't support splitting more than 2^31 times
-  // intentionally; if we ever want that we can make MaxSplit a 64-bit integer
-  // but that seems unlikely to be useful.
-  while (MaxSplit-- != 0) {
-    size_t Idx = S.find(Separator);
-    if (Idx == npos)
-      break;
-
-    // Push this split.
-    if (KeepEmpty || Idx > 0)
-      A.push_back(S.slice(0, Idx));
-
-    // Jump forward.
-    S = S.slice(Idx + 1, npos);
-  }
-
-  // Push the tail.
-  if (KeepEmpty || !S.empty())
-    A.push_back(S);
+  // If we have a tail left, add it.
+  if (rest.data() != nullptr && (rest.size() != 0 || KeepEmpty))
+    A.push_back(rest);
 }
 
 //===----------------------------------------------------------------------===//
@@ -351,12 +312,12 @@ size_t StringRef::count(StringRef Str) const {
 }
 
 static unsigned GetAutoSenseRadix(StringRef &Str) {
-  if (Str.startswith("0x") || Str.startswith("0X")) {
+  if (Str.startswith("0x")) {
     Str = Str.substr(2);
     return 16;
   }
   
-  if (Str.startswith("0b") || Str.startswith("0B")) {
+  if (Str.startswith("0b")) {
     Str = Str.substr(2);
     return 2;
   }

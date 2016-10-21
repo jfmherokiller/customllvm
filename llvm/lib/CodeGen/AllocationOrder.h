@@ -24,7 +24,6 @@ namespace llvm {
 
 class RegisterClassInfo;
 class VirtRegMap;
-class LiveRegMatrix;
 
 class LLVM_LIBRARY_VISIBILITY AllocationOrder {
   SmallVector<MCPhysReg, 16> Hints;
@@ -38,8 +37,7 @@ public:
   /// @param RegClassInfo Information about reserved and allocatable registers.
   AllocationOrder(unsigned VirtReg,
                   const VirtRegMap &VRM,
-                  const RegisterClassInfo &RegClassInfo,
-                  const LiveRegMatrix *Matrix);
+                  const RegisterClassInfo &RegClassInfo);
 
   /// Get the allocation order without reordered hints.
   ArrayRef<MCPhysReg> getOrder() const { return Order; }

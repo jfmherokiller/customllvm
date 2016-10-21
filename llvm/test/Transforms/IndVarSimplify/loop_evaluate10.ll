@@ -48,4 +48,6 @@ bb5:		; preds = %bb3
 	ret i32 0
 }
 
+declare void @llvm.memset.i64(i8* nocapture, i8, i64, i32) nounwind
+
 declare void @abort() noreturn nounwind

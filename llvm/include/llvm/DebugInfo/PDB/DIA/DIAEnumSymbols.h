@@ -14,7 +14,7 @@
 #include "llvm/DebugInfo/PDB/IPDBEnumChildren.h"
 
 namespace llvm {
-namespace pdb {
+
 class DIASession;
 
 class DIAEnumSymbols : public IPDBEnumChildren<PDBSymbol> {
@@ -32,7 +32,6 @@ private:
   const DIASession &Session;
   CComPtr<IDiaEnumSymbols> Enumerator;
 };
-}
 }
 
 #endif

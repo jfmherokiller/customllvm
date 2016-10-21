@@ -9,8 +9,7 @@ define double @f1(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 0
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -21,8 +20,7 @@ define double @f2(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 1
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -33,8 +31,7 @@ define double @f3(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 127
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -46,8 +43,7 @@ define double @f4(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 128
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -59,8 +55,7 @@ define double @f5(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 32767
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -72,8 +67,7 @@ define double @f6(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 32768
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -85,8 +79,7 @@ define double @f7(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 2147483647
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -97,8 +90,7 @@ define double @f8(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, 2147483648
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -109,8 +101,7 @@ define double @f9(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -1
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -121,8 +112,7 @@ define double @f10(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -128
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -134,8 +124,7 @@ define double @f11(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -129
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -147,8 +136,7 @@ define double @f12(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -32768
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -160,8 +148,7 @@ define double @f13(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -32769
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -173,8 +160,7 @@ define double @f14(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -2147483648
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }
 
@@ -185,7 +171,6 @@ define double @f15(double %a, double %b, i64 %i1) {
 ; CHECK: ldr %f0, %f2
 ; CHECK: br %r14
   %cond = icmp slt i64 %i1, -2147483649
-  %tmp = select i1 %cond, double %a, double %b
-  %res = fadd double %tmp, 1.0
+  %res = select i1 %cond, double %a, double %b
   ret double %res
 }

@@ -1,4 +1,4 @@
-//===-- HexagonTargetObjectFile.h -----------------------------------------===//
+//===-- HexagonTargetAsmInfo.h - Hexagon asm properties --------*- C++ -*--===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -16,31 +16,24 @@
 namespace llvm {
 
   class HexagonTargetObjectFile : public TargetLoweringObjectFileELF {
-  public:
-    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
-
-    MCSection *SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
-        Mangler &Mang, const TargetMachine &TM) const override;
-
-    MCSection *getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
-        Mangler &Mang, const TargetMachine &TM) const override;
-
-    bool isGlobalInSmallSection(const GlobalValue *GV, const TargetMachine &TM)
-        const;
-
-    bool isSmallDataEnabled() const;
-
-    unsigned getSmallDataSize() const;
-
-  private:
     MCSectionELF *SmallDataSection;
     MCSectionELF *SmallBSSSection;
 
-    unsigned getSmallestAddressableSize(const Type *Ty, const GlobalValue *GV,
-        const TargetMachine &TM) const;
+  public:
+    void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
 
-    MCSection *selectSmallSectionForGlobal(const GlobalValue *GV,
-        SectionKind Kind, Mangler &Mang, const TargetMachine &TM) const;
+    /// IsGlobalInSmallSection - Return true if this global address should be
+    /// placed into small data/bss section.
+    bool IsGlobalInSmallSection(const GlobalValue *GV,
+                                const TargetMachine &TM,
+                                SectionKind Kind) const;
+    bool IsGlobalInSmallSection(const GlobalValue *GV,
+                                const TargetMachine &TM) const;
+
+    bool IsSmallDataEnabled () const;
+    MCSection *SelectSectionForGlobal(const GlobalValue *GV, SectionKind Kind,
+                                      Mangler &Mang,
+                                      const TargetMachine &TM) const override;
   };
 
 } // namespace llvm

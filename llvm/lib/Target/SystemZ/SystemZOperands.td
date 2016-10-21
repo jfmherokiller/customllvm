@@ -451,11 +451,11 @@ def PCRelTLS32 : PCRelTLSAsmOperand<"32">;
 // and multiplied by 2.
 def brtarget16 : PCRelOperand<OtherVT, PCRel16> {
   let EncoderMethod = "getPC16DBLEncoding";
-  let DecoderMethod = "decodePC16DBLBranchOperand";
+  let DecoderMethod = "decodePC16DBLOperand";
 }
 def brtarget32 : PCRelOperand<OtherVT, PCRel32> {
   let EncoderMethod = "getPC32DBLEncoding";
-  let DecoderMethod = "decodePC32DBLBranchOperand";
+  let DecoderMethod = "decodePC32DBLOperand";
 }
 
 // Variants of brtarget16/32 with an optional additional TLS symbol.
@@ -464,12 +464,12 @@ def tlssym : Operand<i64> { }
 def brtarget16tls : PCRelTLSOperand<OtherVT, PCRelTLS16> {
   let MIOperandInfo = (ops brtarget16:$func, tlssym:$sym);
   let EncoderMethod = "getPC16DBLTLSEncoding";
-  let DecoderMethod = "decodePC16DBLBranchOperand";
+  let DecoderMethod = "decodePC16DBLOperand";
 }
 def brtarget32tls : PCRelTLSOperand<OtherVT, PCRelTLS32> {
   let MIOperandInfo = (ops brtarget32:$func, tlssym:$sym);
   let EncoderMethod = "getPC32DBLTLSEncoding";
-  let DecoderMethod = "decodePC32DBLBranchOperand";
+  let DecoderMethod = "decodePC32DBLOperand";
 }
 
 // A PC-relative offset of a global value.  The offset is sign-extended

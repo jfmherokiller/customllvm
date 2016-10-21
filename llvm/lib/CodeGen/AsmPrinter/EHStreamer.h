@@ -22,6 +22,7 @@ struct LandingPadInfo;
 class MachineModuleInfo;
 class MachineInstr;
 class MachineFunction;
+class AsmPrinter;
 class MCSymbol;
 class MCSymbolRefExpr;
 
@@ -75,6 +76,10 @@ protected:
                                SmallVectorImpl<ActionEntry> &Actions,
                                SmallVectorImpl<unsigned> &FirstActions);
 
+  /// Return `true' if this is a call to a function marked `nounwind'. Return
+  /// `false' otherwise.
+  bool callToNoUnwindFunction(const MachineInstr *MI);
+
   void computePadMap(const SmallVectorImpl<const LandingPadInfo *> &LandingPads,
                      RangeMapType &PadMap);
 
@@ -126,10 +131,6 @@ public:
   void setSymbolSize(const MCSymbol *Sym, uint64_t Size) override {}
   void beginInstruction(const MachineInstr *MI) override {}
   void endInstruction() override {}
-
-  /// Return `true' if this is a call to a function marked `nounwind'. Return
-  /// `false' otherwise.
-  static bool callToNoUnwindFunction(const MachineInstr *MI);
 };
 }
 

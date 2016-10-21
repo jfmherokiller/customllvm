@@ -63,7 +63,7 @@ void MipsELFStreamer::SwitchSection(MCSection *Section,
 }
 
 void MipsELFStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
-                                    SMLoc Loc) {
+                                    const SMLoc &Loc) {
   MCELFStreamer::EmitValueImpl(Value, Size, Loc);
   Labels.clear();
 }

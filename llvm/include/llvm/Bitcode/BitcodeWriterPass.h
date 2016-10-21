@@ -16,12 +16,12 @@
 #define LLVM_BITCODE_BITCODEWRITERPASS_H
 
 #include "llvm/ADT/StringRef.h"
-#include "llvm/IR/PassManager.h"
 
 namespace llvm {
 class Module;
 class ModulePass;
 class raw_ostream;
+class PreservedAnalyses;
 
 /// \brief Create and return a pass that writes the module to the specified
 /// ostream. Note that this pass is designed for use with the legacy pass
@@ -29,16 +29,8 @@ class raw_ostream;
 ///
 /// If \c ShouldPreserveUseListOrder, encode use-list order so it can be
 /// reproduced when deserialized.
-///
-/// If \c EmitSummaryIndex, emit the summary index (currently for use in ThinLTO
-/// optimization).
-///
-/// If \c EmitModuleHash, compute and emit the module hash in the bitcode
-/// (currently for use in ThinLTO incremental build).
 ModulePass *createBitcodeWriterPass(raw_ostream &Str,
-                                    bool ShouldPreserveUseListOrder = false,
-                                    bool EmitSummaryIndex = false,
-                                    bool EmitModuleHash = false);
+                                    bool ShouldPreserveUseListOrder = false);
 
 /// \brief Pass for writing a module of IR out to a bitcode file.
 ///
@@ -47,27 +39,19 @@ ModulePass *createBitcodeWriterPass(raw_ostream &Str,
 class BitcodeWriterPass {
   raw_ostream &OS;
   bool ShouldPreserveUseListOrder;
-  bool EmitSummaryIndex;
-  bool EmitModuleHash;
 
 public:
   /// \brief Construct a bitcode writer pass around a particular output stream.
   ///
   /// If \c ShouldPreserveUseListOrder, encode use-list order so it can be
   /// reproduced when deserialized.
-  ///
-  /// If \c EmitSummaryIndex, emit the summary index (currently
-  /// for use in ThinLTO optimization).
   explicit BitcodeWriterPass(raw_ostream &OS,
-                             bool ShouldPreserveUseListOrder = false,
-                             bool EmitSummaryIndex = false,
-                             bool EmitModuleHash = false)
-      : OS(OS), ShouldPreserveUseListOrder(ShouldPreserveUseListOrder),
-  EmitSummaryIndex(EmitSummaryIndex), EmitModuleHash(EmitModuleHash) {}
+                             bool ShouldPreserveUseListOrder = false)
+      : OS(OS), ShouldPreserveUseListOrder(ShouldPreserveUseListOrder) {}
 
   /// \brief Run the bitcode writer pass, and output the module to the selected
   /// output stream.
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &);
+  PreservedAnalyses run(Module &M);
 
   static StringRef name() { return "BitcodeWriterPass"; }
 };

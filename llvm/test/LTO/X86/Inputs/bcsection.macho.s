@@ -1,5 +1,2 @@
-.section __FOO,__bitcode
-.asciz "Wrong Section"
-
-.section __LLVM,__bitcode
+.section .llvmbc,.llvmbc
 .incbin "bcsection.bc"

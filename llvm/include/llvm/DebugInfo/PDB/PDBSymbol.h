@@ -15,7 +15,9 @@
 #include "PDBExtras.h"
 #include "PDBTypes.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
+#include <unordered_map>
 
 #define FORWARD_SYMBOL_METHOD(MethodName)                                      \
   auto MethodName() const->decltype(RawSymbol->MethodName()) {                 \
@@ -24,11 +26,8 @@
 
 namespace llvm {
 
-class StringRef;
-class raw_ostream;
-
-namespace pdb {
 class IPDBRawSymbol;
+class raw_ostream;
 
 #define DECLARE_PDB_SYMBOL_CONCRETE_TYPE(TagValue)                             \
   static const PDB_SymType Tag = TagValue;                                     \
@@ -42,8 +41,7 @@ class IPDBRawSymbol;
 /// https://msdn.microsoft.com/en-us/library/370hs6k4.aspx
 class PDBSymbol {
 protected:
-  PDBSymbol(const IPDBSession &PDBSession,
-            std::unique_ptr<IPDBRawSymbol> Symbol);
+  PDBSymbol(const IPDBSession &PDBSession, std::unique_ptr<IPDBRawSymbol> Symbol);
 
 public:
   static std::unique_ptr<PDBSymbol>
@@ -59,7 +57,6 @@ public:
   void defaultDump(raw_ostream &OS, int Indent) const;
 
   PDB_SymType getSymTag() const;
-  uint32_t getSymIndexId() const;
 
   template <typename T> std::unique_ptr<T> findOneChild() const {
     auto Enumerator(findAllChildren<T>());
@@ -96,6 +93,5 @@ protected:
 };
 
 } // namespace llvm
-}
 
 #endif

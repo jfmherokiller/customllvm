@@ -1,23 +1,25 @@
 #include "AMDGPUMachineFunction.h"
-
+#include "AMDGPU.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/Function.h"
 using namespace llvm;
+
+static const char *const ShaderTypeAttribute = "ShaderType";
 
 // Pin the vtable to this file.
 void AMDGPUMachineFunction::anchor() {}
 
 AMDGPUMachineFunction::AMDGPUMachineFunction(const MachineFunction &MF) :
   MachineFunctionInfo(),
-  KernArgSize(0),
-  MaxKernArgAlign(0),
+  ShaderType(ShaderType::COMPUTE),
   LDSSize(0),
-  ABIArgOffset(0),
   ScratchSize(0),
-  IsKernel(MF.getFunction()->getCallingConv() == llvm::CallingConv::AMDGPU_KERNEL ||
-           MF.getFunction()->getCallingConv() == llvm::CallingConv::SPIR_KERNEL)
-{
-}
+  IsKernel(true) {
+  Attribute A = MF.getFunction()->getFnAttribute(ShaderTypeAttribute);
 
-bool AMDGPUMachineFunction::isKernel() const
-{
-  return IsKernel;
+  if (A.isStringAttribute()) {
+    StringRef Str = A.getValueAsString();
+    if (Str.getAsInteger(0, ShaderType))
+      llvm_unreachable("Can't parse shader type!");
+  }
 }

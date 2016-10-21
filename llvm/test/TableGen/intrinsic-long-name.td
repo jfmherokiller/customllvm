@@ -19,10 +19,10 @@ class Intrinsic<string name, list<LLVMType> param_types = []> {
   string TargetPrefix = "";
   list<LLVMType> RetTypes = [];
   list<LLVMType> ParamTypes = param_types;
-  list<IntrinsicProperty> IntrProperties = [];
+  list<IntrinsicProperty> Properties = [];
 }
 
-def iAny : ValueType<0, 125>;
+def iAny : ValueType<0, 254>;
 def llvm_anyint_ty : LLVMType<iAny>;
 
 // Make sure we generate the long name without crashing

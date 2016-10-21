@@ -1,4 +1,4 @@
-// RUN: llvm-mc %s -triple=thumbv7-linux-gnueabi \
+// RUN: llvm-mc %s -triple=thumbv7-linux-gnueabi -relocation-model=pic \
 // RUN: -filetype=obj -o - | llvm-readobj -s -sd -r -t | \
 // RUN: FileCheck %s
 

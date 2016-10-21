@@ -127,17 +127,17 @@ external add_sccp
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_sccp"
 
-(** See the [llvm::createSROAPass] function. *)
+(** See the [llvm::createScalarReplAggregatesPass] function. *)
 external add_scalar_repl_aggregation
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_scalar_repl_aggregates"
 
-(** See the [llvm::createSROAPass] function. *)
+(** See the [llvm::createScalarReplAggregatesPassSSA] function. *)
 external add_scalar_repl_aggregation_ssa
   : [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_scalar_repl_aggregates_ssa"
 
-(** See the [llvm::createSROAPass] function. *)
+(** See the [llvm::createScalarReplAggregatesWithThreshold] function. *)
 external add_scalar_repl_aggregation_with_threshold
   : int -> [< Llvm.PassManager.any ] Llvm.PassManager.t -> unit
   = "llvm_add_scalar_repl_aggregates_with_threshold"

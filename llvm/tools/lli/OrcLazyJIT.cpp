@@ -8,7 +8,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "OrcLazyJIT.h"
-#include "llvm/ExecutionEngine/Orc/OrcABISupport.h"
+#include "llvm/ExecutionEngine/Orc/OrcTargetSupport.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include <cstdio>
@@ -38,12 +38,24 @@ namespace {
                                              "Dump modules to the current "
                                              "working directory. (WARNING: "
                                              "will overwrite existing files)."),
-                                  clEnumValEnd),
-                                cl::Hidden);
+                                  clEnumValEnd));
+}
 
-  cl::opt<bool> OrcInlineStubs("orc-lazy-inline-stubs",
-                               cl::desc("Try to inline stubs"),
-                               cl::init(true), cl::Hidden);
+OrcLazyJIT::CallbackManagerBuilder
+OrcLazyJIT::createCallbackManagerBuilder(Triple T) {
+  switch (T.getArch()) {
+    default: return nullptr;
+
+    case Triple::x86_64: {
+      typedef orc::JITCompileCallbackManager<IRDumpLayerT,
+                                             orc::OrcX86_64> CCMgrT;
+      return [](IRDumpLayerT &IRDumpLayer, RuntimeDyld::MemoryManager &MemMgr,
+                LLVMContext &Context) {
+               return llvm::make_unique<CCMgrT>(IRDumpLayer, MemMgr, Context, 0,
+                                                64);
+             };
+    }
+  }
 }
 
 OrcLazyJIT::TransformFtor OrcLazyJIT::createDebugDumper() {
@@ -99,12 +111,6 @@ OrcLazyJIT::TransformFtor OrcLazyJIT::createDebugDumper() {
 // Defined in lli.cpp.
 CodeGenOpt::Level getOptLevel();
 
-
-template <typename PtrTy>
-static PtrTy fromTargetAddress(orc::TargetAddress Addr) {
-  return reinterpret_cast<PtrTy>(static_cast<uintptr_t>(Addr));
-}
-
 int llvm::runOrcLazyJIT(std::unique_ptr<Module> M, int ArgC, char* ArgV[]) {
   // Add the program's symbols into the JIT's search space.
   if (sys::DynamicLibrary::LoadLibraryPermanently(nullptr)) {
@@ -117,30 +123,20 @@ int llvm::runOrcLazyJIT(std::unique_ptr<Module> M, int ArgC, char* ArgV[]) {
   EngineBuilder EB;
   EB.setOptLevel(getOptLevel());
   auto TM = std::unique_ptr<TargetMachine>(EB.selectTarget());
-  Triple T(TM->getTargetTriple());
-  auto CompileCallbackMgr = orc::createLocalCompileCallbackManager(T, 0);
+  auto &Context = getGlobalContext();
+  auto CallbackMgrBuilder =
+    OrcLazyJIT::createCallbackManagerBuilder(Triple(TM->getTargetTriple()));
 
   // If we couldn't build the factory function then there must not be a callback
   // manager for this target. Bail out.
-  if (!CompileCallbackMgr) {
+  if (!CallbackMgrBuilder) {
     errs() << "No callback manager available for target '"
            << TM->getTargetTriple().str() << "'.\n";
     return 1;
   }
 
-  auto IndirectStubsMgrBuilder = orc::createLocalIndirectStubsManagerBuilder(T);
-
-  // If we couldn't build a stubs-manager-builder for this target then bail out.
-  if (!IndirectStubsMgrBuilder) {
-    errs() << "No indirect stubs manager available for target '"
-           << TM->getTargetTriple().str() << "'.\n";
-    return 1;
-  }
-
   // Everything looks good. Build the JIT.
-  OrcLazyJIT J(std::move(TM), std::move(CompileCallbackMgr),
-               std::move(IndirectStubsMgrBuilder),
-               OrcInlineStubs);
+  OrcLazyJIT J(std::move(TM), Context, CallbackMgrBuilder);
 
   // Add the module, look up main and run it.
   auto MainHandle = J.addModule(std::move(M));
@@ -152,7 +148,6 @@ int llvm::runOrcLazyJIT(std::unique_ptr<Module> M, int ArgC, char* ArgV[]) {
   }
 
   typedef int (*MainFnPtr)(int, char*[]);
-  auto Main = fromTargetAddress<MainFnPtr>(MainSym.getAddress());
+  auto Main = OrcLazyJIT::fromTargetAddress<MainFnPtr>(MainSym.getAddress());
   return Main(ArgC, ArgV);
 }
-

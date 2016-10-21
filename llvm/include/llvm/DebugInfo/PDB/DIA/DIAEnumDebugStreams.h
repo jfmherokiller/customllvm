@@ -14,7 +14,6 @@
 #include "llvm/DebugInfo/PDB/IPDBEnumChildren.h"
 
 namespace llvm {
-namespace pdb {
 
 class IPDBDataStream;
 
@@ -31,7 +30,6 @@ public:
 private:
   CComPtr<IDiaEnumDebugStreams> Enumerator;
 };
-}
 }
 
 #endif

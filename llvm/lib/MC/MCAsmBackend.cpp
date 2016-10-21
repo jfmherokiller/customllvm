@@ -12,13 +12,9 @@
 #include "llvm/MC/MCFixupKindInfo.h"
 using namespace llvm;
 
-MCAsmBackend::MCAsmBackend() {}
+MCAsmBackend::MCAsmBackend() : HasDataInCodeSupport(false) {}
 
 MCAsmBackend::~MCAsmBackend() {}
-
-Optional<MCFixupKind> MCAsmBackend::getFixupKind(StringRef Name) const {
-  return None;
-}
 
 const MCFixupKindInfo &MCAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
   static const MCFixupKindInfo Builtins[] = {

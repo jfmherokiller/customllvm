@@ -114,9 +114,6 @@
         gen_sections16384 b\x
 .endm
 
-        .section foo
-        .section bar
-
 gen_sections32768 a
 gen_sections16384 b
 gen_sections8192 c

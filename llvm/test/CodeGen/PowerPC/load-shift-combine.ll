@@ -1,5 +1,4 @@
 ; RUN: llc < %s
-; REQUIRES: default_triple
 
 ; This used to cause a crash.  A standard load is converted to a pre-increment
 ; load.  Later the pre-increment load is combined with a subsequent SRL to

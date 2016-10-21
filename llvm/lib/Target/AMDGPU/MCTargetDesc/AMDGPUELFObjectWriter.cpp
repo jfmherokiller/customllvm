@@ -18,56 +18,23 @@ namespace {
 
 class AMDGPUELFObjectWriter : public MCELFObjectTargetWriter {
 public:
-  AMDGPUELFObjectWriter(bool Is64Bit, bool HasRelocationAddend);
+  AMDGPUELFObjectWriter(bool Is64Bit);
 protected:
-  unsigned getRelocType(MCContext &Ctx, const MCValue &Target,
-                        const MCFixup &Fixup, bool IsPCRel) const override;
+  unsigned GetRelocType(const MCValue &Target, const MCFixup &Fixup,
+                        bool IsPCRel) const override {
+    return Fixup.getKind();
+  }
+
 };
 
 
 } // End anonymous namespace
 
-AMDGPUELFObjectWriter::AMDGPUELFObjectWriter(bool Is64Bit,
-                                             bool HasRelocationAddend)
-  : MCELFObjectTargetWriter(Is64Bit,
-                            ELF::ELFOSABI_AMDGPU_HSA,
-                            ELF::EM_AMDGPU,
-                            HasRelocationAddend) { }
+AMDGPUELFObjectWriter::AMDGPUELFObjectWriter(bool Is64Bit)
+  : MCELFObjectTargetWriter(Is64Bit, ELF::ELFOSABI_AMDGPU_HSA,
+                            ELF::EM_AMDGPU, false) { }
 
-unsigned AMDGPUELFObjectWriter::getRelocType(MCContext &Ctx,
-                                             const MCValue &Target,
-                                             const MCFixup &Fixup,
-                                             bool IsPCRel) const {
-  // SCRATCH_RSRC_DWORD[01] is a special global variable that represents
-  // the scratch buffer.
-  if (Target.getSymA()->getSymbol().getName() == "SCRATCH_RSRC_DWORD0")
-    return ELF::R_AMDGPU_ABS32_LO;
-  if (Target.getSymA()->getSymbol().getName() == "SCRATCH_RSRC_DWORD1")
-    return ELF::R_AMDGPU_ABS32_HI;
-
-  switch (Target.getAccessVariant()) {
-  default:
-    break;
-  case MCSymbolRefExpr::VK_GOTPCREL:
-    return ELF::R_AMDGPU_GOTPCREL;
-  }
-
-  switch (Fixup.getKind()) {
-  default: break;
-  case FK_PCRel_4:
-    return ELF::R_AMDGPU_REL32;
-  case FK_SecRel_4:
-    return ELF::R_AMDGPU_ABS32;
-  }
-
-  llvm_unreachable("unhandled relocation type");
-}
-
-
-MCObjectWriter *llvm::createAMDGPUELFObjectWriter(bool Is64Bit,
-                                                  bool HasRelocationAddend,
-                                                  raw_pwrite_stream &OS) {
-  MCELFObjectTargetWriter *MOTW =
-      new AMDGPUELFObjectWriter(Is64Bit, HasRelocationAddend);
+MCObjectWriter *llvm::createAMDGPUELFObjectWriter(bool Is64Bit, raw_pwrite_stream &OS) {
+  MCELFObjectTargetWriter *MOTW = new AMDGPUELFObjectWriter(Is64Bit);
   return createELFObjectWriter(MOTW, OS, true);
 }

@@ -662,8 +662,9 @@ void EHStreamer::emitTypeInfos(unsigned TTypeEncoding) {
     Entry = TypeInfos.size();
   }
 
-  for (const GlobalValue *GV : make_range(TypeInfos.rbegin(),
-                                          TypeInfos.rend())) {
+  for (std::vector<const GlobalValue *>::const_reverse_iterator
+         I = TypeInfos.rbegin(), E = TypeInfos.rend(); I != E; ++I) {
+    const GlobalValue *GV = *I;
     if (VerboseAsm)
       Asm->OutStreamer->AddComment("TypeInfo " + Twine(Entry--));
     Asm->EmitTTypeReference(GV, TTypeEncoding);

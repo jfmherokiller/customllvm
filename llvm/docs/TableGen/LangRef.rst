@@ -154,7 +154,7 @@ programmer.
 .. productionlist::
    Declaration: `Type` `TokIdentifier` ["=" `Value`]
 
-It assigns the value to the identifier.
+It assigns the value to the identifer.
 
 Types
 -----

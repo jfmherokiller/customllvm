@@ -60,13 +60,12 @@ representation.
    :hidden:
 
    CMake
-   CMakePrimer
-   AdvancedBuilds
    HowToBuildOnARM
    HowToCrossCompileLLVM
    CommandGuide/index
    GettingStarted
    GettingStartedVS
+   BuildingLLVMWithAutotools
    FAQ
    Lexicon
    HowToAddABuilder
@@ -82,9 +81,6 @@ representation.
    GetElementPtr
    Frontend/PerformanceTips
    MCJITDesignAndImplementation
-   CodeOfConduct
-   CompileCudaWithLLVM
-   ReportingGuide
 
 :doc:`GettingStarted`
    Discusses how to get up and running quickly with the LLVM infrastructure.
@@ -104,6 +100,10 @@ representation.
 :doc:`GettingStartedVS`
    An addendum to the main Getting Started guide for those using Visual Studio
    on Windows.
+
+:doc:`BuildingLLVMWithAutotools`
+   An addendum to the Getting Started guide with instructions for building LLVM
+   with the Autotools build system.
 
 :doc:`tutorial/index`
    Tutorials about using LLVM. Includes a tutorial about making a custom
@@ -173,7 +173,6 @@ For developers of applications which use LLVM as a library.
    ProgrammersManual
    Extensions
    LibFuzzer
-   ScudoHardenedAllocator
 
 :doc:`LLVM Language Reference Manual <LangRef>`
   Defines the LLVM intermediate representation and the assembly form of the
@@ -218,9 +217,6 @@ For developers of applications which use LLVM as a library.
 :doc:`LibFuzzer`
   A library for writing in-process guided fuzzers.
 
-:doc:`ScudoHardenedAllocator`
-  A library that implements a security-hardened `malloc()`.
-
 Subsystem Documentation
 =======================
 
@@ -258,9 +254,8 @@ For API clients and LLVM developers.
    CoverageMappingFormat
    Statepoints
    MergeFunctions
-   TypeMetadata
+   BitSets
    FaultMaps
-   MIRLangRef
 
 :doc:`WritingAnLLVMPass`
    Information on how to write LLVM transformations and analyses.
@@ -272,10 +267,6 @@ For API clients and LLVM developers.
    The design and implementation of the LLVM code generator.  Useful if you are
    working on retargetting LLVM to a new architecture, designing a new codegen
    pass, or enhancing existing components.
-
-:doc:`Machine IR (MIR) Format Reference Manual <MIRLangRef>`
-   A reference manual for the MIR serialization format, which is used to test
-   LLVM's code generation passes.
 
 :doc:`TableGen <TableGen/index>`
    Describes the TableGen tool, which is used heavily by the LLVM code
@@ -370,9 +361,6 @@ For API clients and LLVM developers.
 :doc:`FaultMaps`
   LLVM support for folding control flow into faulting machine instructions.
 
-:doc:`CompileCudaWithLLVM`
-  LLVM support for CUDA.
-
 Development Process Documentation
 =================================
 
@@ -382,6 +370,7 @@ Information about LLVM's development process.
    :hidden:
 
    DeveloperPolicy
+   MakefileGuide
    Projects
    LLVMBuild
    HowToReleaseLLVM
@@ -401,6 +390,9 @@ Information about LLVM's development process.
 :doc:`LLVMBuild`
   Describes the LLVMBuild organization and files used by LLVM to specify
   component descriptions.
+
+:doc:`MakefileGuide`
+  Describes how the LLVM makefiles work and how to use them.
 
 :doc:`HowToReleaseLLVM`
   This is a guide to preparing LLVM releases. Most developers can ignore it.

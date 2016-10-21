@@ -22,6 +22,7 @@
 #include <cctype>
 #include <functional>
 #include <map>
+#include <vector>
 
 namespace llvm {
 

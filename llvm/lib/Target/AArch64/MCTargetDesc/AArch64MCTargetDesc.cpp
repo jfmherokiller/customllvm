@@ -15,6 +15,7 @@
 #include "AArch64ELFStreamer.h"
 #include "AArch64MCAsmInfo.h"
 #include "InstPrinter/AArch64InstPrinter.h"
+#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
@@ -71,8 +72,10 @@ static MCAsmInfo *createAArch64MCAsmInfo(const MCRegisterInfo &MRI,
   return MAI;
 }
 
-static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
-                              CodeModel::Model &CM) {
+static MCCodeGenInfo *createAArch64MCCodeGenInfo(const Triple &TT,
+                                                 Reloc::Model RM,
+                                                 CodeModel::Model CM,
+                                                 CodeGenOpt::Level OL) {
   assert((TT.isOSBinFormatELF() || TT.isOSBinFormatMachO()) &&
          "Only expect Darwin and ELF targets");
 
@@ -86,6 +89,19 @@ static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
   else if (CM != CodeModel::Small && CM != CodeModel::Large)
     report_fatal_error(
         "Only small and large code models are allowed on AArch64");
+
+  // AArch64 Darwin is always PIC.
+  if (TT.isOSDarwin())
+    RM = Reloc::PIC_;
+  // On ELF platforms the default static relocation model has a smart enough
+  // linker to cope with referencing external symbols defined in a shared
+  // library. Hence DynamicNoPIC doesn't need to be promoted to PIC.
+  else if (RM == Reloc::Default || RM == Reloc::DynamicNoPIC)
+    RM = Reloc::Static;
+
+  MCCodeGenInfo *X = new MCCodeGenInfo();
+  X->initMCCodeGenInfo(RM, CM, OL);
+  return X;
 }
 
 static MCInstPrinter *createAArch64MCInstPrinter(const Triple &T,
@@ -124,7 +140,7 @@ extern "C" void LLVMInitializeAArch64TargetMC() {
     RegisterMCAsmInfoFn X(*T, createAArch64MCAsmInfo);
 
     // Register the MC codegen info.
-    TargetRegistry::registerMCAdjustCodeGenOpts(*T, adjustCodeGenOpts);
+    TargetRegistry::RegisterMCCodeGenInfo(*T, createAArch64MCCodeGenInfo);
 
     // Register the MC instruction info.
     TargetRegistry::RegisterMCInstrInfo(*T, createAArch64MCInstrInfo);

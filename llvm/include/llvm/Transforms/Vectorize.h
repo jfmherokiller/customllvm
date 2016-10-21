@@ -139,13 +139,6 @@ Pass *createSLPVectorizerPass();
 bool vectorizeBasicBlock(Pass *P, BasicBlock &BB,
                          const VectorizeConfig &C = VectorizeConfig());
 
-//===----------------------------------------------------------------------===//
-//
-// LoadStoreVectorizer - Create vector loads and stores, but leave scalar
-// operations.
-//
-Pass *createLoadStoreVectorizerPass();
-
 } // End llvm namespace
 
 #endif

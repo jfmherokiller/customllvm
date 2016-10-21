@@ -12,7 +12,6 @@
 #include "llvm/DebugInfo/PDB/DIA/DIASourceFile.h"
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 DIAEnumSourceFiles::DIAEnumSourceFiles(
     const DIASession &PDBSession, CComPtr<IDiaEnumSourceFiles> DiaEnumerator)

@@ -29,7 +29,7 @@ class SystemZTargetMachine : public LLVMTargetMachine {
 public:
   SystemZTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                        StringRef FS, const TargetOptions &Options,
-                       Optional<Reloc::Model> RM, CodeModel::Model CM,
+                       Reloc::Model RM, CodeModel::Model CM,
                        CodeGenOpt::Level OL);
   ~SystemZTargetMachine() override;
 
@@ -43,9 +43,6 @@ public:
   TargetLoweringObjectFile *getObjFileLowering() const override {
     return TLOF.get();
   }
-
-  bool targetSchedulesPostRAScheduling() const override { return true; };
-
 };
 
 } // end namespace llvm

@@ -544,7 +544,6 @@ def AtomModel : SchedMachineModel {
   // simple loops, expand by a small factor to hide the backedge cost.
   let LoopMicroOpBufferSize = 10;
   let PostRAScheduler = 1;
-  let CompleteModel = 0;
 
   let Itineraries = AtomItineraries;
 }

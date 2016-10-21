@@ -4,7 +4,7 @@ target triple = "x86_64-unknown-linux-gnu"
 
 ; RUN: opt -O2 -S < %s | FileCheck %s
 
-; CHECK-LABEL: main
+; CHECK_LABEL: main
 ; CHECK: if.end
 ; CHECK: store
 ; CHECK: memset

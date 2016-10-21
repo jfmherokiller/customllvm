@@ -10,7 +10,7 @@
 define i64 @f1(i64 %src1) {
 ; CHECK-LABEL: f1:
 ; CHECK: cgrl %r2, g
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl
 ; CHECK: br %r14
 entry:
   %src2 = load i64 , i64 *@g
@@ -28,7 +28,7 @@ exit:
 define i64 @f2(i64 %src1) {
 ; CHECK-LABEL: f2:
 ; CHECK: clgrl %r2, g
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl
 ; CHECK: br %r14
 entry:
   %src2 = load i64 , i64 *@g
@@ -46,7 +46,7 @@ exit:
 define i64 @f3(i64 %src1) {
 ; CHECK-LABEL: f3:
 ; CHECK: c{{l?}}grl %r2, g
-; CHECK-NEXT: ber %r14
+; CHECK-NEXT: je
 ; CHECK: br %r14
 entry:
   %src2 = load i64 , i64 *@g
@@ -64,7 +64,7 @@ exit:
 define i64 @f4(i64 %src1) {
 ; CHECK-LABEL: f4:
 ; CHECK: c{{l?}}grl %r2, g
-; CHECK-NEXT: blhr %r14
+; CHECK-NEXT: jlh
 ; CHECK: br %r14
 entry:
   %src2 = load i64 , i64 *@g
@@ -83,7 +83,7 @@ define i64 @f5(i64 %src1) {
 ; CHECK-LABEL: f5:
 ; CHECK: larl [[REG:%r[0-5]]], h
 ; CHECK: cg %r2, 0([[REG]])
-; CHECK-NEXT: blr %r14
+; CHECK-NEXT: jl
 ; CHECK: br %r14
 entry:
   %src2 = load i64 , i64 *@h, align 4
@@ -101,7 +101,7 @@ exit:
 define i64 @f6(i64 %src2) {
 ; CHECK-LABEL: f6:
 ; CHECK: cgrl %r2, g
-; CHECK-NEXT: bhr %r14
+; CHECK-NEXT: jh {{\.L.*}}
 ; CHECK: br %r14
 entry:
   %src1 = load i64 , i64 *@g

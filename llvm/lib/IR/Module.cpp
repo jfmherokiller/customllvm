@@ -13,13 +13,12 @@
 
 #include "llvm/IR/Module.h"
 #include "SymbolTableListTraitsImpl.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
-#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/GVMaterializer.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/LLVMContext.h"
@@ -30,7 +29,6 @@
 #include <algorithm>
 #include <cstdarg>
 #include <cstdlib>
-
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
@@ -39,17 +37,16 @@ using namespace llvm;
 
 // Explicit instantiations of SymbolTableListTraits since some of the methods
 // are not in the public header file.
-template class llvm::SymbolTableListTraits<Function>;
-template class llvm::SymbolTableListTraits<GlobalVariable>;
-template class llvm::SymbolTableListTraits<GlobalAlias>;
-template class llvm::SymbolTableListTraits<GlobalIFunc>;
+template class llvm::SymbolTableListTraits<Function, Module>;
+template class llvm::SymbolTableListTraits<GlobalVariable, Module>;
+template class llvm::SymbolTableListTraits<GlobalAlias, Module>;
 
 //===----------------------------------------------------------------------===//
 // Primitive Module methods.
 //
 
 Module::Module(StringRef MID, LLVMContext &C)
-    : Context(C), Materializer(), ModuleID(MID), SourceFileName(MID), DL("") {
+    : Context(C), Materializer(), ModuleID(MID), DL("") {
   ValSymTab = new ValueSymbolTable();
   NamedMDSymTab = new StringMap<NamedMDNode *>();
   Context.addModule(this);
@@ -61,7 +58,6 @@ Module::~Module() {
   GlobalList.clear();
   FunctionList.clear();
   AliasList.clear();
-  IFuncList.clear();
   NamedMDList.clear();
   delete ValSymTab;
   delete static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab);
@@ -85,6 +81,7 @@ RandomNumberGenerator *Module::createRNG(const Pass* P) const {
   return new RandomNumberGenerator(Salt);
 }
 
+
 /// getNamedValue - Return the first global value in the module with
 /// the specified name, of arbitrary type.  This method returns null
 /// if a global with the specified name is not found.
@@ -105,9 +102,6 @@ void Module::getMDKindNames(SmallVectorImpl<StringRef> &Result) const {
   return Context.getMDKindNames(Result);
 }
 
-void Module::getOperandBundleTags(SmallVectorImpl<StringRef> &Result) const {
-  return Context.getOperandBundleTags(Result);
-}
 
 //===----------------------------------------------------------------------===//
 // Methods for easy access to the functions in the module.
@@ -253,10 +247,6 @@ GlobalAlias *Module::getNamedAlias(StringRef Name) const {
   return dyn_cast_or_null<GlobalAlias>(getNamedValue(Name));
 }
 
-GlobalIFunc *Module::getNamedIFunc(StringRef Name) const {
-  return dyn_cast_or_null<GlobalIFunc>(getNamedValue(Name));
-}
-
 /// getNamedMetadata - Return the first NamedMDNode in the module with the
 /// specified name. This method returns null if a NamedMDNode with the
 /// specified name is not found.
@@ -284,7 +274,7 @@ NamedMDNode *Module::getOrInsertNamedMetadata(StringRef Name) {
 /// delete it.
 void Module::eraseNamedMetadata(NamedMDNode *NMD) {
   static_cast<StringMap<NamedMDNode *> *>(NamedMDSymTab)->erase(NMD->getName());
-  NamedMDList.erase(NMD->getIterator());
+  NamedMDList.erase(NMD);
 }
 
 bool Module::isValidModFlagBehavior(Metadata *MD, ModFlagBehavior &MFB) {
@@ -381,27 +371,20 @@ void Module::setDataLayout(const DataLayout &Other) { DL = Other; }
 
 const DataLayout &Module::getDataLayout() const { return DL; }
 
-DICompileUnit *Module::debug_compile_units_iterator::operator*() const {
-  return cast<DICompileUnit>(CUs->getOperand(Idx));
-}
-DICompileUnit *Module::debug_compile_units_iterator::operator->() const {
-  return cast<DICompileUnit>(CUs->getOperand(Idx));
-}
-
-void Module::debug_compile_units_iterator::SkipNoDebugCUs() {
-  while (CUs && (Idx < CUs->getNumOperands()) &&
-         ((*this)->getEmissionKind() == DICompileUnit::NoDebug))
-    ++Idx;
-}
-
 //===----------------------------------------------------------------------===//
 // Methods to control the materialization of GlobalValues in the Module.
 //
 void Module::setMaterializer(GVMaterializer *GVM) {
   assert(!Materializer &&
-         "Module already has a GVMaterializer.  Call materializeAll"
+         "Module already has a GVMaterializer.  Call MaterializeAllPermanently"
          " to clear it out before setting another one.");
   Materializer.reset(GVM);
+}
+
+bool Module::isDematerializable(const GlobalValue *GV) const {
+  if (Materializer)
+    return Materializer->isDematerializable(GV);
+  return false;
 }
 
 std::error_code Module::materialize(GlobalValue *GV) {
@@ -411,11 +394,23 @@ std::error_code Module::materialize(GlobalValue *GV) {
   return Materializer->materialize(GV);
 }
 
+void Module::dematerialize(GlobalValue *GV) {
+  if (Materializer)
+    return Materializer->dematerialize(GV);
+}
+
 std::error_code Module::materializeAll() {
   if (!Materializer)
     return std::error_code();
-  std::unique_ptr<GVMaterializer> M = std::move(Materializer);
-  return M->materializeModule();
+  return Materializer->materializeModule(this);
+}
+
+std::error_code Module::materializeAllPermanently() {
+  if (std::error_code EC = materializeAll())
+    return EC;
+
+  Materializer.reset();
+  return std::error_code();
 }
 
 std::error_code Module::materializeMetadata() {
@@ -458,22 +453,12 @@ void Module::dropAllReferences() {
 
   for (GlobalAlias &GA : aliases())
     GA.dropAllReferences();
-
-  for (GlobalIFunc &GIF : ifuncs())
-    GIF.dropAllReferences();
 }
 
 unsigned Module::getDwarfVersion() const {
   auto *Val = cast_or_null<ConstantAsMetadata>(getModuleFlag("Dwarf Version"));
   if (!Val)
-    return 0;
-  return cast<ConstantInt>(Val->getValue())->getZExtValue();
-}
-
-unsigned Module::getCodeViewFlag() const {
-  auto *Val = cast_or_null<ConstantAsMetadata>(getModuleFlag("CodeView"));
-  if (!Val)
-    return 0;
+    return dwarf::DWARF_VERSION;
   return cast<ConstantInt>(Val->getValue())->getZExtValue();
 }
 
@@ -486,8 +471,8 @@ Comdat *Module::getOrInsertComdat(StringRef Name) {
 PICLevel::Level Module::getPICLevel() const {
   auto *Val = cast_or_null<ConstantAsMetadata>(getModuleFlag("PIC Level"));
 
-  if (!Val)
-    return PICLevel::NotPIC;
+  if (Val == NULL)
+    return PICLevel::Default;
 
   return static_cast<PICLevel::Level>(
       cast<ConstantInt>(Val->getValue())->getZExtValue());
@@ -495,41 +480,4 @@ PICLevel::Level Module::getPICLevel() const {
 
 void Module::setPICLevel(PICLevel::Level PL) {
   addModuleFlag(ModFlagBehavior::Error, "PIC Level", PL);
-}
-
-PIELevel::Level Module::getPIELevel() const {
-  auto *Val = cast_or_null<ConstantAsMetadata>(getModuleFlag("PIE Level"));
-
-  if (!Val)
-    return PIELevel::Default;
-
-  return static_cast<PIELevel::Level>(
-      cast<ConstantInt>(Val->getValue())->getZExtValue());
-}
-
-void Module::setPIELevel(PIELevel::Level PL) {
-  addModuleFlag(ModFlagBehavior::Error, "PIE Level", PL);
-}
-
-void Module::setProfileSummary(Metadata *M) {
-  addModuleFlag(ModFlagBehavior::Error, "ProfileSummary", M);
-}
-
-Metadata *Module::getProfileSummary() {
-  return getModuleFlag("ProfileSummary");
-}
-
-GlobalVariable *llvm::collectUsedGlobalVariables(
-    const Module &M, SmallPtrSetImpl<GlobalValue *> &Set, bool CompilerUsed) {
-  const char *Name = CompilerUsed ? "llvm.compiler.used" : "llvm.used";
-  GlobalVariable *GV = M.getGlobalVariable(Name);
-  if (!GV || !GV->hasInitializer())
-    return GV;
-
-  const ConstantArray *Init = cast<ConstantArray>(GV->getInitializer());
-  for (Value *Op : Init->operands()) {
-    GlobalValue *G = cast<GlobalValue>(Op->stripPointerCastsNoFollowAliases());
-    Set.insert(G);
-  }
-  return GV;
 }

@@ -10,6 +10,7 @@
 #ifndef LLVM_LIB_EXECUTIONENGINE_MCJIT_MCJIT_H
 #define LLVM_LIB_EXECUTIONENGINE_MCJIT_MCJIT_H
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -85,7 +86,7 @@ class MCJIT : public ExecutionEngine {
     ModulePtrSet::iterator begin_added() { return AddedModules.begin(); }
     ModulePtrSet::iterator end_added() { return AddedModules.end(); }
     iterator_range<ModulePtrSet::iterator> added() {
-      return make_range(begin_added(), end_added());
+      return iterator_range<ModulePtrSet::iterator>(begin_added(), end_added());
     }
 
     ModulePtrSet::iterator begin_loaded() { return LoadedModules.begin(); }
@@ -222,13 +223,12 @@ public:
   /// FindFunctionNamed - Search all of the active modules to find the function that
   /// defines FnName.  This is very slow operation and shouldn't be used for
   /// general code.
-  Function *FindFunctionNamed(const char *FnName) override;
+  virtual Function *FindFunctionNamed(const char *FnName) override;
 
-  /// FindGlobalVariableNamed - Search all of the active modules to find the
-  /// global variable that defines Name.  This is very slow operation and
-  /// shouldn't be used for general code.
-  GlobalVariable *FindGlobalVariableNamed(const char *Name,
-                                          bool AllowInternal = false) override;
+  /// FindGlobalVariableNamed - Search all of the active modules to find the global variable
+  /// that defines Name.  This is very slow operation and shouldn't be used for
+  /// general code.
+  virtual GlobalVariable *FindGlobalVariableNamed(const char *Name, bool AllowInternal = false) override;
 
   /// Sets the object manager that MCJIT should use to avoid compilation.
   void setObjectCache(ObjectCache *manager) override;
@@ -335,6 +335,6 @@ protected:
                               bool CheckFunctionsOnly);
 };
 
-} // end llvm namespace
+} // End llvm namespace
 
-#endif // LLVM_LIB_EXECUTIONENGINE_MCJIT_MCJIT_H
+#endif

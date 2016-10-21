@@ -40,16 +40,13 @@ define i16 @test2_addrspacecast() {
   %r = load i16, i16 addrspace(1)* addrspacecast(i32* getelementptr ({{i32,i8},i32}, {{i32,i8},i32}* @g1, i32 0, i32 0, i32 0) to i16 addrspace(1)*)
   ret i16 %r
 
-; FIXME: Should be able to load through a constant addrspacecast.
 ; 0xBEEF
 ; LE-LABEL: @test2_addrspacecast(
-; XLE: ret i16 -16657
-; LE: load i16, i16 addrspace(1)* addrspacecast
+; LE: ret i16 -16657
 
 ; 0xDEAD
 ; BE-LABEL: @test2_addrspacecast(
-; XBE: ret i16 -8531
-; BE: load i16, i16 addrspace(1)* addrspacecast
+; BE: ret i16 -8531
 }
 
 ; Load of second 16 bits of 32-bit value.

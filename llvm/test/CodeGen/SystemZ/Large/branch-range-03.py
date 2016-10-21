@@ -70,8 +70,6 @@
 branch_blocks = 8
 main_size = 0xffcc
 
-print '@global = global i32 0'
-
 print 'define void @f1(i8 *%base, i8 *%stop, i32 %limit) {'
 print 'entry:'
 print '  br label %before0'
@@ -105,6 +103,5 @@ for i in xrange(branch_blocks):
     print ''
     print 'after%d:' % i
 
-print '  %dummy = load volatile i32, i32 *@global'
 print '  ret void'
 print '}'

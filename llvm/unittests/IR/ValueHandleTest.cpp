@@ -20,16 +20,16 @@ namespace {
 
 class ValueHandle : public testing::Test {
 protected:
-  LLVMContext Context;
   Constant *ConstantV;
   std::unique_ptr<BitCastInst> BitcastV;
 
-  ValueHandle()
-      : ConstantV(ConstantInt::get(Type::getInt32Ty(Context), 0)),
-        BitcastV(new BitCastInst(ConstantV, Type::getInt32Ty(Context))) {}
+  ValueHandle() :
+    ConstantV(ConstantInt::get(Type::getInt32Ty(getGlobalContext()), 0)),
+    BitcastV(new BitCastInst(ConstantV, Type::getInt32Ty(getGlobalContext()))) {
+  }
 };
 
-class ConcreteCallbackVH final : public CallbackVH {
+class ConcreteCallbackVH : public CallbackVH {
 public:
   ConcreteCallbackVH(Value *V) : CallbackVH(V) {}
 };
@@ -42,8 +42,8 @@ TEST_F(ValueHandle, WeakVH_BasicOperation) {
 
   // Make sure I can call a method on the underlying Value.  It
   // doesn't matter which method.
-  EXPECT_EQ(Type::getInt32Ty(Context), WVH->getType());
-  EXPECT_EQ(Type::getInt32Ty(Context), (*WVH).getType());
+  EXPECT_EQ(Type::getInt32Ty(getGlobalContext()), WVH->getType());
+  EXPECT_EQ(Type::getInt32Ty(getGlobalContext()), (*WVH).getType());
 }
 
 TEST_F(ValueHandle, WeakVH_Comparisons) {
@@ -197,8 +197,8 @@ TEST_F(ValueHandle, CallbackVH_BasicOperation) {
 
   // Make sure I can call a method on the underlying Value.  It
   // doesn't matter which method.
-  EXPECT_EQ(Type::getInt32Ty(Context), CVH->getType());
-  EXPECT_EQ(Type::getInt32Ty(Context), (*CVH).getType());
+  EXPECT_EQ(Type::getInt32Ty(getGlobalContext()), CVH->getType());
+  EXPECT_EQ(Type::getInt32Ty(getGlobalContext()), (*CVH).getType());
 }
 
 TEST_F(ValueHandle, CallbackVH_Comparisons) {
@@ -235,7 +235,7 @@ TEST_F(ValueHandle, CallbackVH_Comparisons) {
 }
 
 TEST_F(ValueHandle, CallbackVH_CallbackOnDeletion) {
-  class RecordingVH final : public CallbackVH {
+  class RecordingVH : public CallbackVH {
   public:
     int DeletedCalls;
     int AURWCalls;
@@ -261,7 +261,7 @@ TEST_F(ValueHandle, CallbackVH_CallbackOnDeletion) {
 }
 
 TEST_F(ValueHandle, CallbackVH_CallbackOnRAUW) {
-  class RecordingVH final : public CallbackVH {
+  class RecordingVH : public CallbackVH {
   public:
     int DeletedCalls;
     Value *AURWArgument;
@@ -291,23 +291,21 @@ TEST_F(ValueHandle, CallbackVH_CallbackOnRAUW) {
 }
 
 TEST_F(ValueHandle, CallbackVH_DeletionCanRAUW) {
-  class RecoveringVH final : public CallbackVH {
+  class RecoveringVH : public CallbackVH {
   public:
     int DeletedCalls;
     Value *AURWArgument;
     LLVMContext *Context;
 
-    RecoveringVH(LLVMContext &TheContext)
-        : DeletedCalls(0), AURWArgument(nullptr), Context(&TheContext) {}
-
-    RecoveringVH(LLVMContext &TheContext, Value *V)
-        : CallbackVH(V), DeletedCalls(0), AURWArgument(nullptr),
-          Context(&TheContext) {}
+    RecoveringVH() : DeletedCalls(0), AURWArgument(nullptr), 
+                     Context(&getGlobalContext()) {}
+    RecoveringVH(Value *V)
+      : CallbackVH(V), DeletedCalls(0), AURWArgument(nullptr), 
+        Context(&getGlobalContext()) {}
 
   private:
     void deleted() override {
-      getValPtr()->replaceAllUsesWith(
-          Constant::getNullValue(Type::getInt32Ty(*Context)));
+      getValPtr()->replaceAllUsesWith(Constant::getNullValue(Type::getInt32Ty(getGlobalContext())));
       setValPtr(nullptr);
     }
     void allUsesReplacedWith(Value *new_value) override {
@@ -320,15 +318,15 @@ TEST_F(ValueHandle, CallbackVH_DeletionCanRAUW) {
 
   // Normally, if a value has uses, deleting it will crash.  However, we can use
   // a CallbackVH to remove the uses before the check for no uses.
-  RecoveringVH RVH(Context);
-  RVH = RecoveringVH(Context, BitcastV.get());
-  std::unique_ptr<BinaryOperator> BitcastUser(BinaryOperator::CreateAdd(
-      RVH, Constant::getNullValue(Type::getInt32Ty(Context))));
+  RecoveringVH RVH;
+  RVH = BitcastV.get();
+  std::unique_ptr<BinaryOperator> BitcastUser(
+    BinaryOperator::CreateAdd(RVH, 
+                              Constant::getNullValue(Type::getInt32Ty(getGlobalContext()))));
   EXPECT_EQ(BitcastV.get(), BitcastUser->getOperand(0));
   BitcastV.reset();  // Would crash without the ValueHandler.
-  EXPECT_EQ(Constant::getNullValue(Type::getInt32Ty(Context)),
-            RVH.AURWArgument);
-  EXPECT_EQ(Constant::getNullValue(Type::getInt32Ty(Context)),
+  EXPECT_EQ(Constant::getNullValue(Type::getInt32Ty(getGlobalContext())), RVH.AURWArgument);
+  EXPECT_EQ(Constant::getNullValue(Type::getInt32Ty(getGlobalContext())),
             BitcastUser->getOperand(0));
 }
 
@@ -341,7 +339,7 @@ TEST_F(ValueHandle, DestroyingOtherVHOnSameValueDoesntBreakIteration) {
   // arrangement of other VHs so that the bad behavior would be
   // triggered in whichever order callbacks run.
 
-  class DestroyingVH final : public CallbackVH {
+  class DestroyingVH : public CallbackVH {
   public:
     std::unique_ptr<WeakVH> ToClear[2];
     DestroyingVH(Value *V) {
@@ -386,7 +384,7 @@ TEST_F(ValueHandle, AssertingVHCheckedLast) {
   // Value deletion, the CallbackVH should get a chance to do so
   // before the AssertingVHs assert.
 
-  class ClearingVH final : public CallbackVH {
+  class ClearingVH : public CallbackVH {
   public:
     AssertingVH<Value> *ToClear[2];
     ClearingVH(Value *V,

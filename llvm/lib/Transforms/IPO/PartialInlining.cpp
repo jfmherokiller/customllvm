@@ -12,14 +12,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/IPO/PartialInlining.h"
+#include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
-#include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/CodeExtractor.h"
 using namespace llvm;
@@ -29,36 +28,29 @@ using namespace llvm;
 STATISTIC(NumPartialInlined, "Number of functions partially inlined");
 
 namespace {
-struct PartialInlinerLegacyPass : public ModulePass {
-  static char ID; // Pass identification, replacement for typeid
-  PartialInlinerLegacyPass() : ModulePass(ID) {
-    initializePartialInlinerLegacyPassPass(*PassRegistry::getPassRegistry());
-  }
+  struct PartialInliner : public ModulePass {
+    void getAnalysisUsage(AnalysisUsage &AU) const override { }
+    static char ID; // Pass identification, replacement for typeid
+    PartialInliner() : ModulePass(ID) {
+      initializePartialInlinerPass(*PassRegistry::getPassRegistry());
+    }
 
-  bool runOnModule(Module &M) override {
-    if (skipModule(M))
-      return false;
-    ModuleAnalysisManager DummyMAM;
-    auto PA = Impl.run(M, DummyMAM);
-    return !PA.areAllPreserved();
-  }
+    bool runOnModule(Module& M) override;
 
-private:
-  PartialInlinerPass Impl;
+  private:
+    Function* unswitchFunction(Function* F);
   };
 }
 
-char PartialInlinerLegacyPass::ID = 0;
-INITIALIZE_PASS(PartialInlinerLegacyPass, "partial-inliner", "Partial Inliner",
-                false, false)
+char PartialInliner::ID = 0;
+INITIALIZE_PASS(PartialInliner, "partial-inliner",
+                "Partial Inliner", false, false)
 
-ModulePass *llvm::createPartialInliningPass() {
-  return new PartialInlinerLegacyPass();
-}
+ModulePass* llvm::createPartialInliningPass() { return new PartialInliner(); }
 
-Function *PartialInlinerPass::unswitchFunction(Function *F) {
+Function* PartialInliner::unswitchFunction(Function* F) {
   // First, verify that this function is an unswitching candidate...
-  BasicBlock *entryBlock = &F->front();
+  BasicBlock* entryBlock = F->begin();
   BranchInst *BR = dyn_cast<BranchInst>(entryBlock->getTerminator());
   if (!BR || BR->isUnconditional())
     return nullptr;
@@ -79,8 +71,10 @@ Function *PartialInlinerPass::unswitchFunction(Function *F) {
   
   // Clone the function, so that we can hack away on it.
   ValueToValueMapTy VMap;
-  Function* duplicateFunction = CloneFunction(F, VMap);
+  Function* duplicateFunction = CloneFunction(F, VMap,
+                                              /*ModuleLevelChanges=*/false);
   duplicateFunction->setLinkage(GlobalValue::InternalLinkage);
+  F->getParent()->getFunctionList().push_back(duplicateFunction);
   BasicBlock* newEntryBlock = cast<BasicBlock>(VMap[entryBlock]);
   BasicBlock* newReturnBlock = cast<BasicBlock>(VMap[returnBlock]);
   BasicBlock* newNonReturnBlock = cast<BasicBlock>(VMap[nonReturnBlock]);
@@ -95,18 +89,18 @@ Function *PartialInlinerPass::unswitchFunction(Function *F) {
   // of which will go outside.
   BasicBlock* preReturn = newReturnBlock;
   newReturnBlock = newReturnBlock->splitBasicBlock(
-      newReturnBlock->getFirstNonPHI()->getIterator());
+                                              newReturnBlock->getFirstNonPHI());
   BasicBlock::iterator I = preReturn->begin();
-  Instruction *Ins = &newReturnBlock->front();
+  BasicBlock::iterator Ins = newReturnBlock->begin();
   while (I != preReturn->end()) {
     PHINode* OldPhi = dyn_cast<PHINode>(I);
     if (!OldPhi) break;
-
-    PHINode *retPhi = PHINode::Create(OldPhi->getType(), 2, "", Ins);
+    
+    PHINode* retPhi = PHINode::Create(OldPhi->getType(), 2, "", Ins);
     OldPhi->replaceAllUsesWith(retPhi);
     Ins = newReturnBlock->getFirstNonPHI();
-
-    retPhi->addIncoming(&*I, preReturn);
+    
+    retPhi->addIncoming(I, preReturn);
     retPhi->addIncoming(OldPhi->getIncomingValueForBlock(newEntryBlock),
                         newEntryBlock);
     OldPhi->removeIncomingValue(newEntryBlock);
@@ -118,11 +112,12 @@ Function *PartialInlinerPass::unswitchFunction(Function *F) {
   // Gather up the blocks that we're going to extract.
   std::vector<BasicBlock*> toExtract;
   toExtract.push_back(newNonReturnBlock);
-  for (BasicBlock &BB : *duplicateFunction)
-    if (&BB != newEntryBlock && &BB != newReturnBlock &&
-        &BB != newNonReturnBlock)
-      toExtract.push_back(&BB);
-
+  for (Function::iterator FI = duplicateFunction->begin(),
+       FE = duplicateFunction->end(); FI != FE; ++FI)
+    if (&*FI != newEntryBlock && &*FI != newReturnBlock &&
+        &*FI != newNonReturnBlock)
+      toExtract.push_back(FI);
+      
   // The CodeExtractor needs a dominator tree.
   DominatorTree DT;
   DT.recalculate(*duplicateFunction);
@@ -136,10 +131,11 @@ Function *PartialInlinerPass::unswitchFunction(Function *F) {
   // Inline the top-level if test into all callers.
   std::vector<User *> Users(duplicateFunction->user_begin(),
                             duplicateFunction->user_end());
-  for (User *User : Users)
-    if (CallInst *CI = dyn_cast<CallInst>(User))
+  for (std::vector<User*>::iterator UI = Users.begin(), UE = Users.end();
+       UI != UE; ++UI)
+    if (CallInst *CI = dyn_cast<CallInst>(*UI))
       InlineFunction(CI, IFI);
-    else if (InvokeInst *II = dyn_cast<InvokeInst>(User))
+    else if (InvokeInst *II = dyn_cast<InvokeInst>(*UI))
       InlineFunction(II, IFI);
   
   // Ditch the duplicate, since we're done with it, and rewrite all remaining
@@ -152,13 +148,13 @@ Function *PartialInlinerPass::unswitchFunction(Function *F) {
   return extractedFunction;
 }
 
-PreservedAnalyses PartialInlinerPass::run(Module &M, ModuleAnalysisManager &) {
+bool PartialInliner::runOnModule(Module& M) {
   std::vector<Function*> worklist;
   worklist.reserve(M.size());
-  for (Function &F : M)
-    if (!F.use_empty() && !F.isDeclaration())
-      worklist.push_back(&F);
-
+  for (Module::iterator FI = M.begin(), FE = M.end(); FI != FE; ++FI)
+    if (!FI->use_empty() && !FI->isDeclaration())
+      worklist.push_back(&*FI);
+    
   bool changed = false;
   while (!worklist.empty()) {
     Function* currFunc = worklist.back();
@@ -182,8 +178,6 @@ PreservedAnalyses PartialInlinerPass::run(Module &M, ModuleAnalysisManager &) {
     }
     
   }
-
-  if (changed)
-    return PreservedAnalyses::none();
-  return PreservedAnalyses::all();
+  
+  return changed;
 }

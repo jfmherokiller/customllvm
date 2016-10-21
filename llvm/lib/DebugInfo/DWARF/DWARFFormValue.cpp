@@ -18,7 +18,7 @@
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
-#include <limits>
+#include <climits>
 using namespace llvm;
 using namespace dwarf;
 using namespace syntax;
@@ -110,7 +110,7 @@ static const DWARFFormValue::FormClass DWARF4FormClasses[] = {
 
 bool DWARFFormValue::isFormClass(DWARFFormValue::FormClass FC) const {
   // First, check DWARF4 form classes.
-  if (Form < makeArrayRef(DWARF4FormClasses).size() &&
+  if (Form < ArrayRef<FormClass>(DWARF4FormClasses).size() &&
       DWARF4FormClasses[Form] == FC)
     return true;
   // Check more forms from DWARF4 and DWARF5 proposals.
@@ -261,12 +261,6 @@ DWARFFormValue::skipValue(DataExtractor debug_info_data, uint32_t* offset_ptr,
 bool
 DWARFFormValue::skipValue(uint16_t form, DataExtractor debug_info_data,
                           uint32_t *offset_ptr, const DWARFUnit *cu) {
-  return skipValue(form, debug_info_data, offset_ptr, cu->getVersion(),
-                   cu->getAddressByteSize());
-}
-bool DWARFFormValue::skipValue(uint16_t form, DataExtractor debug_info_data,
-                               uint32_t *offset_ptr, uint16_t Version,
-                               uint8_t AddrSize) {
   bool indirect = false;
   do {
     switch (form) {
@@ -301,10 +295,10 @@ bool DWARFFormValue::skipValue(uint16_t form, DataExtractor debug_info_data,
 
     // Compile unit address sized values
     case DW_FORM_addr:
-      *offset_ptr += AddrSize;
+      *offset_ptr += cu->getAddressByteSize();
       return true;
     case DW_FORM_ref_addr:
-      *offset_ptr += getRefAddrSize(AddrSize, Version);
+      *offset_ptr += getRefAddrSize(cu->getAddressByteSize(), cu->getVersion());
       return true;
 
     // 0 byte values - implied from the form.
@@ -571,7 +565,7 @@ Optional<uint64_t> DWARFFormValue::getAsUnsignedConstant() const {
 
 Optional<int64_t> DWARFFormValue::getAsSignedConstant() const {
   if ((!isFormClass(FC_Constant) && !isFormClass(FC_Flag)) ||
-      (Form == DW_FORM_udata && uint64_t(std::numeric_limits<int64_t>::max()) < Value.uval))
+      (Form == DW_FORM_udata && uint64_t(LLONG_MAX) < Value.uval))
     return None;
   switch (Form) {
   case DW_FORM_data4:
@@ -590,6 +584,6 @@ Optional<int64_t> DWARFFormValue::getAsSignedConstant() const {
 Optional<ArrayRef<uint8_t>> DWARFFormValue::getAsBlock() const {
   if (!isFormClass(FC_Block) && !isFormClass(FC_Exprloc))
     return None;
-  return makeArrayRef(Value.data, Value.uval);
+  return ArrayRef<uint8_t>(Value.data, Value.uval);
 }
 

@@ -47,8 +47,7 @@ void MipsSEDAGToDAGISel::addDSPCtrlRegOperands(bool IsDef, MachineInstr &MI,
                                                MachineFunction &MF) {
   MachineInstrBuilder MIB(MF, &MI);
   unsigned Mask = MI.getOperand(1).getImm();
-  unsigned Flag =
-      IsDef ? RegState::ImplicitDefine : RegState::Implicit | RegState::Undef;
+  unsigned Flag = IsDef ? RegState::ImplicitDefine : RegState::Implicit;
 
   if (Mask & 1)
     MIB.addReg(Mips::DSPPos, Flag);
@@ -116,11 +115,6 @@ bool MipsSEDAGToDAGISel::replaceUsesWithZeroReg(MachineRegisterInfo *MRI,
     if (MI->isPHI() || MI->isRegTiedToDefOperand(OpNo) || MI->isPseudo())
       continue;
 
-    // Also, we have to check that the register class of the operand
-    // contains the zero register.
-    if (!MRI->getRegClass(MO.getReg())->contains(ZeroReg))
-      continue;
-
     MO.setReg(ZeroReg);
   }
 
@@ -137,7 +131,7 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
   MachineBasicBlock::iterator I = MBB.begin();
   MachineRegisterInfo &RegInfo = MF.getRegInfo();
   const TargetInstrInfo &TII = *Subtarget->getInstrInfo();
-  DebugLoc DL;
+  DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   unsigned V0, V1, GlobalBaseReg = MipsFI->getGlobalBaseReg();
   const TargetRegisterClass *RC;
   const MipsABIInfo &ABI = static_cast<const MipsTargetMachine &>(TM).getABI();
@@ -163,7 +157,7 @@ void MipsSEDAGToDAGISel::initGlobalBaseReg(MachineFunction &MF) {
     return;
   }
 
-  if (!MF.getTarget().isPositionIndependent()) {
+  if (MF.getTarget().getRelocationModel() == Reloc::Static) {
     // Set global register to __gnu_local_gp.
     //
     // lui   $v0, %hi(__gnu_local_gp)
@@ -221,25 +215,21 @@ void MipsSEDAGToDAGISel::processFunctionAfterISel(MachineFunction &MF) {
 
   MachineRegisterInfo *MRI = &MF.getRegInfo();
 
-  for (auto &MBB: MF) {
-    for (auto &MI: MBB) {
-      switch (MI.getOpcode()) {
-      case Mips::RDDSP:
-        addDSPCtrlRegOperands(false, MI, MF);
-        break;
-      case Mips::WRDSP:
-        addDSPCtrlRegOperands(true, MI, MF);
-        break;
-      default:
-        replaceUsesWithZeroReg(MRI, MI);
-      }
+  for (MachineFunction::iterator MFI = MF.begin(), MFE = MF.end(); MFI != MFE;
+       ++MFI)
+    for (MachineBasicBlock::iterator I = MFI->begin(); I != MFI->end(); ++I) {
+      if (I->getOpcode() == Mips::RDDSP)
+        addDSPCtrlRegOperands(false, *I, MF);
+      else if (I->getOpcode() == Mips::WRDSP)
+        addDSPCtrlRegOperands(true, *I, MF);
+      else
+        replaceUsesWithZeroReg(MRI, *I);
     }
-  }
 }
 
-void MipsSEDAGToDAGISel::selectAddESubE(unsigned MOp, SDValue InFlag,
-                                        SDValue CmpLHS, const SDLoc &DL,
-                                        SDNode *Node) const {
+SDNode *MipsSEDAGToDAGISel::selectAddESubE(unsigned MOp, SDValue InFlag,
+                                           SDValue CmpLHS, SDLoc DL,
+                                           SDNode *Node) const {
   unsigned Opc = InFlag.getOpcode(); (void)Opc;
 
   assert(((Opc == ISD::ADDC || Opc == ISD::ADDE) ||
@@ -276,7 +266,8 @@ void MipsSEDAGToDAGISel::selectAddESubE(unsigned MOp, SDValue InFlag,
   if (!C || C->getZExtValue())
     AddCarry = CurDAG->getMachineNode(ADDuOp, DL, VT, SDValue(Carry, 0), RHS);
 
-  CurDAG->SelectNodeTo(Node, MOp, VT, MVT::Glue, LHS, SDValue(AddCarry, 0));
+  return CurDAG->SelectNodeTo(Node, MOp, VT, MVT::Glue, LHS,
+                              SDValue(AddCarry, 0));
 }
 
 /// Match frameindex
@@ -331,7 +322,7 @@ bool MipsSEDAGToDAGISel::selectAddrRegImm(SDValue Addr, SDValue &Base,
     return true;
   }
 
-  if (!TM.isPositionIndependent()) {
+  if (TM.getRelocationModel() != Reloc::PIC_) {
     if ((Addr.getOpcode() == ISD::TargetExternalSymbol ||
         Addr.getOpcode() == ISD::TargetGlobalAddress))
       return false;
@@ -368,6 +359,18 @@ bool MipsSEDAGToDAGISel::selectAddrRegImm(SDValue Addr, SDValue &Base,
 
 /// ComplexPattern used on MipsInstrInfo
 /// Used on Mips Load/Store instructions
+bool MipsSEDAGToDAGISel::selectAddrRegReg(SDValue Addr, SDValue &Base,
+                                          SDValue &Offset) const {
+  // Operand is a result from an ADD.
+  if (Addr.getOpcode() == ISD::ADD) {
+    Base = Addr.getOperand(0);
+    Offset = Addr.getOperand(1);
+    return true;
+  }
+
+  return false;
+}
+
 bool MipsSEDAGToDAGISel::selectAddrDefault(SDValue Addr, SDValue &Base,
                                            SDValue &Offset) const {
   Base = Addr;
@@ -403,18 +406,6 @@ bool MipsSEDAGToDAGISel::selectAddrRegImm10(SDValue Addr, SDValue &Base,
   return false;
 }
 
-/// Used on microMIPS LWC2, LDC2, SWC2 and SDC2 instructions (11-bit offset)
-bool MipsSEDAGToDAGISel::selectAddrRegImm11(SDValue Addr, SDValue &Base,
-                                            SDValue &Offset) const {
-  if (selectAddrFrameIndex(Addr, Base, Offset))
-    return true;
-
-  if (selectAddrFrameIndexOffset(Addr, Base, Offset, 11))
-    return true;
-
-  return false;
-}
-
 /// Used on microMIPS Load/Store unaligned instructions (12-bit offset)
 bool MipsSEDAGToDAGISel::selectAddrRegImm12(SDValue Addr, SDValue &Base,
                                             SDValue &Offset) const {
@@ -438,21 +429,9 @@ bool MipsSEDAGToDAGISel::selectAddrRegImm16(SDValue Addr, SDValue &Base,
   return false;
 }
 
-bool MipsSEDAGToDAGISel::selectIntAddr11MM(SDValue Addr, SDValue &Base,
-                                         SDValue &Offset) const {
-  return selectAddrRegImm11(Addr, Base, Offset) ||
-    selectAddrDefault(Addr, Base, Offset);
-}
-
-bool MipsSEDAGToDAGISel::selectIntAddr12MM(SDValue Addr, SDValue &Base,
+bool MipsSEDAGToDAGISel::selectIntAddrMM(SDValue Addr, SDValue &Base,
                                          SDValue &Offset) const {
   return selectAddrRegImm12(Addr, Base, Offset) ||
-    selectAddrDefault(Addr, Base, Offset);
-}
-
-bool MipsSEDAGToDAGISel::selectIntAddr16MM(SDValue Addr, SDValue &Base,
-                                         SDValue &Offset) const {
-  return selectAddrRegImm16(Addr, Base, Offset) ||
     selectAddrDefault(Addr, Base, Offset);
 }
 
@@ -718,7 +697,7 @@ bool MipsSEDAGToDAGISel::selectVSplatUimmInvPow2(SDValue N,
   return false;
 }
 
-bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
+std::pair<bool, SDNode*> MipsSEDAGToDAGISel::selectNode(SDNode *Node) {
   unsigned Opcode = Node->getOpcode();
   SDLoc DL(Node);
 
@@ -726,14 +705,16 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
   // Instruction Selection not handled by the auto-generated
   // tablegen selection should be handled here.
   ///
+  SDNode *Result;
+
   switch(Opcode) {
   default: break;
 
   case ISD::SUBE: {
     SDValue InFlag = Node->getOperand(2);
     unsigned Opc = Subtarget->isGP64bit() ? Mips::DSUBu : Mips::SUBu;
-    selectAddESubE(Opc, InFlag, InFlag.getOperand(0), DL, Node);
-    return true;
+    Result = selectAddESubE(Opc, InFlag, InFlag.getOperand(0), DL, Node);
+    return std::make_pair(true, Result);
   }
 
   case ISD::ADDE: {
@@ -741,8 +722,8 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
       break;
     SDValue InFlag = Node->getOperand(2);
     unsigned Opc = Subtarget->isGP64bit() ? Mips::DADDu : Mips::ADDu;
-    selectAddESubE(Opc, InFlag, InFlag.getValue(0), DL, Node);
-    return true;
+    Result = selectAddESubE(Opc, InFlag, InFlag.getValue(0), DL, Node);
+    return std::make_pair(true, Result);
   }
 
   case ISD::ConstantFP: {
@@ -751,20 +732,20 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
       if (Subtarget->isGP64bit()) {
         SDValue Zero = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), DL,
                                               Mips::ZERO_64, MVT::i64);
-        ReplaceNode(Node,
-                    CurDAG->getMachineNode(Mips::DMTC1, DL, MVT::f64, Zero));
+        Result = CurDAG->getMachineNode(Mips::DMTC1, DL, MVT::f64, Zero);
       } else if (Subtarget->isFP64bit()) {
         SDValue Zero = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), DL,
                                               Mips::ZERO, MVT::i32);
-        ReplaceNode(Node, CurDAG->getMachineNode(Mips::BuildPairF64_64, DL,
-                                                 MVT::f64, Zero, Zero));
+        Result = CurDAG->getMachineNode(Mips::BuildPairF64_64, DL, MVT::f64,
+                                        Zero, Zero);
       } else {
         SDValue Zero = CurDAG->getCopyFromReg(CurDAG->getEntryNode(), DL,
                                               Mips::ZERO, MVT::i32);
-        ReplaceNode(Node, CurDAG->getMachineNode(Mips::BuildPairF64, DL,
-                                                 MVT::f64, Zero, Zero));
+        Result = CurDAG->getMachineNode(Mips::BuildPairF64, DL, MVT::f64, Zero,
+                                        Zero);
       }
-      return true;
+
+      return std::make_pair(true, Result);
     }
     break;
   }
@@ -807,8 +788,7 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
                                        SDValue(RegOpnd, 0), ImmOpnd);
     }
 
-    ReplaceNode(Node, RegOpnd);
-    return true;
+    return std::make_pair(true, RegOpnd);
   }
 
   case ISD::INTRINSIC_W_CHAIN: {
@@ -821,8 +801,7 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
       SDValue RegIdx = Node->getOperand(2);
       SDValue Reg = CurDAG->getCopyFromReg(ChainIn, DL,
                                            getMSACtrlReg(RegIdx), MVT::i32);
-      ReplaceNode(Node, Reg.getNode());
-      return true;
+      return std::make_pair(true, Reg.getNode());
     }
     }
     break;
@@ -836,10 +815,10 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     case Intrinsic::mips_move_v:
       // Like an assignment but will always produce a move.v even if
       // unnecessary.
-      ReplaceNode(Node, CurDAG->getMachineNode(Mips::MOVE_V, DL,
-                                               Node->getValueType(0),
-                                               Node->getOperand(1)));
-      return true;
+      return std::make_pair(true,
+                            CurDAG->getMachineNode(Mips::MOVE_V, DL,
+                                                   Node->getValueType(0),
+                                                   Node->getOperand(1)));
     }
     break;
   }
@@ -855,8 +834,7 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
       SDValue Value   = Node->getOperand(3);
       SDValue ChainOut = CurDAG->getCopyToReg(ChainIn, DL,
                                               getMSACtrlReg(RegIdx), Value);
-      ReplaceNode(Node, ChainOut.getNode());
-      return true;
+      return std::make_pair(true, ChainOut.getNode());
     }
     }
     break;
@@ -881,8 +859,8 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     SDValue Chain = CurDAG->getCopyToReg(CurDAG->getEntryNode(), DL, DestReg,
                                          SDValue(Rdhwr, 0));
     SDValue ResNode = CurDAG->getCopyFromReg(Chain, DL, DestReg, PtrVT);
-    ReplaceNode(Node, ResNode.getNode());
-    return true;
+    ReplaceUses(SDValue(Node, 0), ResNode);
+    return std::make_pair(true, ResNode.getNode());
   }
 
   case ISD::BUILD_VECTOR: {
@@ -907,16 +885,16 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     EVT ViaVecTy;
 
     if (!Subtarget->hasMSA() || !BVN->getValueType(0).is128BitVector())
-      return false;
+      return std::make_pair(false, nullptr);
 
     if (!BVN->isConstantSplat(SplatValue, SplatUndef, SplatBitSize,
                               HasAnyUndefs, 8,
                               !Subtarget->isLittle()))
-      return false;
+      return std::make_pair(false, nullptr);
 
     switch (SplatBitSize) {
     default:
-      return false;
+      return std::make_pair(false, nullptr);
     case 8:
       LdiOp = Mips::LDI_B;
       ViaVecTy = MVT::v16i8;
@@ -936,7 +914,7 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
     }
 
     if (!SplatValue.isSignedIntN(10))
-      return false;
+      return std::make_pair(false, nullptr);
 
     SDValue Imm = CurDAG->getTargetConstant(SplatValue, DL,
                                             ViaVecTy.getVectorElementType());
@@ -957,13 +935,12 @@ bool MipsSEDAGToDAGISel::trySelect(SDNode *Node) {
                                                              MVT::i32));
     }
 
-    ReplaceNode(Node, Res);
-    return true;
+    return std::make_pair(true, Res);
   }
 
   }
 
-  return false;
+  return std::make_pair(false, nullptr);
 }
 
 bool MipsSEDAGToDAGISel::
@@ -1033,7 +1010,6 @@ SelectInlineAsmMemoryOperand(const SDValue &Op, unsigned ConstraintID,
   return true;
 }
 
-FunctionPass *llvm::createMipsSEISelDag(MipsTargetMachine &TM,
-                                        CodeGenOpt::Level OptLevel) {
-  return new MipsSEDAGToDAGISel(TM, OptLevel);
+FunctionPass *llvm::createMipsSEISelDag(MipsTargetMachine &TM) {
+  return new MipsSEDAGToDAGISel(TM);
 }

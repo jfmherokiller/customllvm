@@ -11,8 +11,8 @@
 /// \brief Interface for the AMDGPU Implementation of the Intrinsic Info class.
 //
 //===-----------------------------------------------------------------------===//
-#ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUINTRINSICINFO_H
-#define LLVM_LIB_TARGET_AMDGPU_AMDGPUINTRINSICINFO_H
+#ifndef LLVM_LIB_TARGET_R600_AMDGPUINTRINSICINFO_H
+#define LLVM_LIB_TARGET_R600_AMDGPUINTRINSICINFO_H
 
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Target/TargetIntrinsicInfo.h"
@@ -31,26 +31,16 @@ enum ID {
 
 } // end namespace AMDGPUIntrinsic
 
-class AMDGPUIntrinsicInfo final : public TargetIntrinsicInfo {
+class AMDGPUIntrinsicInfo : public TargetIntrinsicInfo {
 public:
   AMDGPUIntrinsicInfo();
-
-  StringRef getName(unsigned IntrId, ArrayRef<Type *> Tys = None) const;
-
   std::string getName(unsigned IntrId, Type **Tys = nullptr,
-                      unsigned NumTys = 0) const override;
-
+                      unsigned numTys = 0) const override;
   unsigned lookupName(const char *Name, unsigned Len) const override;
   bool isOverloaded(unsigned IID) const override;
   Function *getDeclaration(Module *M, unsigned ID,
                            Type **Tys = nullptr,
-                           unsigned NumTys = 0) const override;
-
-  Function *getDeclaration(Module *M, unsigned ID,
-                           ArrayRef<Type *> = None) const;
-
-  FunctionType *getType(LLVMContext &Context, unsigned ID,
-                        ArrayRef<Type*> Tys = None) const;
+                           unsigned numTys = 0) const override;
 };
 
 } // end namespace llvm

@@ -15,6 +15,9 @@
 #include "llvm/ADT/StringMap.h"
 using namespace llvm;
 
+Comdat::Comdat(SelectionKind SK, StringMapEntry<Comdat> *Name)
+    : Name(Name), SK(SK) {}
+
 Comdat::Comdat(Comdat &&C) : Name(C.Name), SK(C.SK) {}
 
 Comdat::Comdat() : Name(nullptr), SK(Comdat::Any) {}

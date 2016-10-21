@@ -18,19 +18,18 @@
 
 #define AA_NAME "alignment-from-assumptions"
 #define DEBUG_TYPE AA_NAME
-#include "llvm/Transforms/Scalar/AlignmentFromAssumptions.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/Statistic.h"
-#include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/ScalarEvolutionExpressions.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Constant.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
@@ -55,18 +54,27 @@ struct AlignmentFromAssumptions : public FunctionPass {
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<AssumptionCacheTracker>();
-    AU.addRequired<ScalarEvolutionWrapperPass>();
+    AU.addRequired<ScalarEvolution>();
     AU.addRequired<DominatorTreeWrapperPass>();
 
     AU.setPreservesCFG();
-    AU.addPreserved<AAResultsWrapperPass>();
-    AU.addPreserved<GlobalsAAWrapperPass>();
     AU.addPreserved<LoopInfoWrapperPass>();
     AU.addPreserved<DominatorTreeWrapperPass>();
-    AU.addPreserved<ScalarEvolutionWrapperPass>();
+    AU.addPreserved<ScalarEvolution>();
   }
 
-  AlignmentFromAssumptionsPass Impl;
+  // For memory transfers, we need a common alignment for both the source and
+  // destination. If we have a new alignment for only one operand of a transfer
+  // instruction, save it in these maps.  If we reach the other operand through
+  // another assumption later, then we may change the alignment at that point.
+  DenseMap<MemTransferInst *, unsigned> NewDestAlignments, NewSrcAlignments;
+
+  ScalarEvolution *SE;
+  DominatorTree *DT;
+
+  bool extractAlignmentInfo(CallInst *I, Value *&AAPtr, const SCEV *&AlignSCEV,
+                            const SCEV *&OffSCEV);
+  bool processAssumption(CallInst *I);
 };
 }
 
@@ -76,7 +84,7 @@ INITIALIZE_PASS_BEGIN(AlignmentFromAssumptions, AA_NAME,
                       aip_name, false, false)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(ScalarEvolution)
 INITIALIZE_PASS_END(AlignmentFromAssumptions, AA_NAME,
                     aip_name, false, false)
 
@@ -197,10 +205,9 @@ static unsigned getNewAlignment(const SCEV *AASCEV, const SCEV *AlignSCEV,
   return 0;
 }
 
-bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
-                                                        Value *&AAPtr,
-                                                        const SCEV *&AlignSCEV,
-                                                        const SCEV *&OffSCEV) {
+bool AlignmentFromAssumptions::extractAlignmentInfo(CallInst *I,
+                                 Value *&AAPtr, const SCEV *&AlignSCEV,
+                                 const SCEV *&OffSCEV) {
   // An alignment assume must be a statement about the least-significant
   // bits of the pointer being zero, possibly with some offset.
   ICmpInst *ICI = dyn_cast<ICmpInst>(I->getArgOperand(0));
@@ -242,7 +249,8 @@ bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
 
   // The mask must have some trailing ones (otherwise the condition is
   // trivial and tells us nothing about the alignment of the left operand).
-  unsigned TrailingOnes = MaskSCEV->getAPInt().countTrailingOnes();
+  unsigned TrailingOnes =
+    MaskSCEV->getValue()->getValue().countTrailingOnes();
   if (!TrailingOnes)
     return false;
 
@@ -262,7 +270,7 @@ bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
   OffSCEV = nullptr;
   if (PtrToIntInst *PToI = dyn_cast<PtrToIntInst>(AndLHS)) {
     AAPtr = PToI->getPointerOperand();
-    OffSCEV = SE->getZero(Int64Ty);
+    OffSCEV = SE->getConstant(Int64Ty, 0);
   } else if (const SCEVAddExpr* AndLHSAddSCEV =
              dyn_cast<SCEVAddExpr>(AndLHSSCEV)) {
     // Try to find the ptrtoint; subtract it and the rest is the offset.
@@ -291,7 +299,7 @@ bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
   return true;
 }
 
-bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall) {
+bool AlignmentFromAssumptions::processAssumption(CallInst *ACall) {
   Value *AAPtr;
   const SCEV *AlignSCEV, *OffSCEV;
   if (!extractAlignmentInfo(ACall, AAPtr, AlignSCEV, OffSCEV))
@@ -400,26 +408,14 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall) {
 }
 
 bool AlignmentFromAssumptions::runOnFunction(Function &F) {
-  if (skipFunction(F))
-    return false;
-
+  bool Changed = false;
   auto &AC = getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
-  ScalarEvolution *SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
-  DominatorTree *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-
-  return Impl.runImpl(F, AC, SE, DT);
-}
-
-bool AlignmentFromAssumptionsPass::runImpl(Function &F, AssumptionCache &AC,
-                                           ScalarEvolution *SE_,
-                                           DominatorTree *DT_) {
-  SE = SE_;
-  DT = DT_;
+  SE = &getAnalysis<ScalarEvolution>();
+  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
 
   NewDestAlignments.clear();
   NewSrcAlignments.clear();
 
-  bool Changed = false;
   for (auto &AssumeVH : AC.assumptions())
     if (AssumeVH)
       Changed |= processAssumption(cast<CallInst>(AssumeVH));
@@ -427,20 +423,3 @@ bool AlignmentFromAssumptionsPass::runImpl(Function &F, AssumptionCache &AC,
   return Changed;
 }
 
-PreservedAnalyses
-AlignmentFromAssumptionsPass::run(Function &F, FunctionAnalysisManager &AM) {
-
-  AssumptionCache &AC = AM.getResult<AssumptionAnalysis>(F);
-  ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
-  DominatorTree &DT = AM.getResult<DominatorTreeAnalysis>(F);
-  bool Changed = runImpl(F, AC, &SE, &DT);
-  if (!Changed)
-    return PreservedAnalyses::all();
-  PreservedAnalyses PA;
-  PA.preserve<AAManager>();
-  PA.preserve<ScalarEvolutionAnalysis>();
-  PA.preserve<GlobalsAA>();
-  PA.preserve<LoopAnalysis>();
-  PA.preserve<DominatorTreeAnalysis>();
-  return PA;
-}

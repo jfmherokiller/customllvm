@@ -34,16 +34,13 @@ NVPTXMCAsmInfo::NVPTXMCAsmInfo(const Triple &TheTriple) {
 
   HasSingleParameterDotFile = false;
 
-  InlineAsmStart = " begin inline asm";
-  InlineAsmEnd = " end inline asm";
+  InlineAsmStart = " inline asm";
+  InlineAsmEnd = " inline asm";
 
   SupportsDebugInformation = CompileForDebugging;
   // PTX does not allow .align on functions.
   HasFunctionAlignment = false;
   HasDotTypeDotSizeDirective = false;
-  // PTX does not allow .hidden or .protected
-  HiddenDeclarationVisibilityAttr = HiddenVisibilityAttr = MCSA_Invalid;
-  ProtectedVisibilityAttr = MCSA_Invalid;
 
   Data8bitsDirective = " .b8 ";
   Data16bitsDirective = " .b16 ";

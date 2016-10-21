@@ -36,23 +36,8 @@ public:
   DOTGraphTraitsViewer(StringRef GraphName, char &ID)
       : FunctionPass(ID), Name(GraphName) {}
 
-  /// @brief Return true if this function should be processed.
-  ///
-  /// An implementation of this class my override this function to indicate that
-  /// only certain functions should be viewed.
-  ///
-  /// @param Analysis The current analysis result for this function.
-  virtual bool processFunction(Function &F, AnalysisT &Analysis) {
-    return true;
-  }
-
   bool runOnFunction(Function &F) override {
-    auto &Analysis = getAnalysis<AnalysisT>();
-
-    if (!processFunction(F, Analysis))
-      return false;
-
-    GraphT Graph = AnalysisGraphTraitsT::getGraph(&Analysis);
+    GraphT Graph = AnalysisGraphTraitsT::getGraph(&getAnalysis<AnalysisT>());
     std::string GraphName = DOTGraphTraits<GraphT>::getGraphName(Graph);
     std::string Title = GraphName + " for '" + F.getName().str() + "' function";
 
@@ -78,23 +63,8 @@ public:
   DOTGraphTraitsPrinter(StringRef GraphName, char &ID)
       : FunctionPass(ID), Name(GraphName) {}
 
-  /// @brief Return true if this function should be processed.
-  ///
-  /// An implementation of this class my override this function to indicate that
-  /// only certain functions should be printed.
-  ///
-  /// @param Analysis The current analysis result for this function.
-  virtual bool processFunction(Function &F, AnalysisT &Analysis) {
-    return true;
-  }
-
   bool runOnFunction(Function &F) override {
-    auto &Analysis = getAnalysis<AnalysisT>();
-
-    if (!processFunction(F, Analysis))
-      return false;
-
-    GraphT Graph = AnalysisGraphTraitsT::getGraph(&Analysis);
+    GraphT Graph = AnalysisGraphTraitsT::getGraph(&getAnalysis<AnalysisT>());
     std::string Filename = Name + "." + F.getName().str() + ".dot";
     std::error_code EC;
 

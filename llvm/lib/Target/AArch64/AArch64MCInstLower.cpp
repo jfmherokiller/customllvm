@@ -207,9 +207,9 @@ bool AArch64MCInstLower::lowerOperand(const MachineOperand &MO,
 void AArch64MCInstLower::Lower(const MachineInstr *MI, MCInst &OutMI) const {
   OutMI.setOpcode(MI->getOpcode());
 
-  for (const MachineOperand &MO : MI->operands()) {
+  for (unsigned i = 0, e = MI->getNumOperands(); i != e; ++i) {
     MCOperand MCOp;
-    if (lowerOperand(MO, MCOp))
+    if (lowerOperand(MI->getOperand(i), MCOp))
       OutMI.addOperand(MCOp);
   }
 }

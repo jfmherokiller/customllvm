@@ -320,25 +320,25 @@ void SparseSolver::Solve(Function &F) {
 
       // Notify all instructions in this basic block that they are newly
       // executable.
-      for (Instruction &I : *BB)
-        visitInst(I);
+      for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
+        visitInst(*I);
     }
   }
 }
 
 void SparseSolver::Print(Function &F, raw_ostream &OS) const {
   OS << "\nFUNCTION: " << F.getName() << "\n";
-  for (auto &BB : F) {
-    if (!BBExecutable.count(&BB))
+  for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
+    if (!BBExecutable.count(BB))
       OS << "INFEASIBLE: ";
     OS << "\t";
-    if (BB.hasName())
-      OS << BB.getName() << ":\n";
+    if (BB->hasName())
+      OS << BB->getName() << ":\n";
     else
       OS << "; anon bb\n";
-    for (auto &I : BB) {
-      LatticeFunc->PrintValue(getLatticeState(&I), OS);
-      OS << I << "\n";
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
+      LatticeFunc->PrintValue(getLatticeState(I), OS);
+      OS << *I << "\n";
     }
     
     OS << "\n";

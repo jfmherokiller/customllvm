@@ -52,6 +52,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstring>
+#include <iterator>
 #include <string>
 #include <utility>
 
@@ -631,8 +632,7 @@ inline hash_code hash_integer_value(uint64_t value) {
 template <typename T>
 typename std::enable_if<is_integral_or_enum<T>::value, hash_code>::type
 hash_value(T value) {
-  return ::llvm::hashing::detail::hash_integer_value(
-      static_cast<uint64_t>(value));
+  return ::llvm::hashing::detail::hash_integer_value(value);
 }
 
 // Declared and documented above, but defined here so that any of the hashing

@@ -36,6 +36,7 @@ class SIMCCodeEmitter : public  AMDGPUMCCodeEmitter {
   void operator=(const SIMCCodeEmitter &) = delete;
   const MCInstrInfo &MCII;
   const MCRegisterInfo &MRI;
+  MCContext &Ctx;
 
   /// \brief Can this operand also contain immediate values?
   bool isSrcOperand(const MCInstrDesc &Desc, unsigned OpNo) const;
@@ -46,7 +47,7 @@ class SIMCCodeEmitter : public  AMDGPUMCCodeEmitter {
 public:
   SIMCCodeEmitter(const MCInstrInfo &mcii, const MCRegisterInfo &mri,
                   MCContext &ctx)
-    : MCII(mcii), MRI(mri) { }
+    : MCII(mcii), MRI(mri), Ctx(ctx) { }
 
   ~SIMCCodeEmitter() override {}
 
@@ -162,30 +163,20 @@ static uint32_t getLit64Encoding(uint64_t Val) {
 
 uint32_t SIMCCodeEmitter::getLitEncoding(const MCOperand &MO,
                                          unsigned OpSize) const {
+  if (MO.isExpr())
+    return 255;
 
-  int64_t Imm;
-  if (MO.isExpr()) {
-    const MCConstantExpr *C = dyn_cast<MCConstantExpr>(MO.getExpr());
-    if (!C)
-      return 255;
+  assert(!MO.isFPImm());
 
-    Imm = C->getValue();
-  } else {
-
-    assert(!MO.isFPImm());
-
-    if (!MO.isImm())
-      return ~0;
-
-    Imm = MO.getImm();
-  }
+  if (!MO.isImm())
+    return ~0;
 
   if (OpSize == 4)
-    return getLit32Encoding(static_cast<uint32_t>(Imm));
+    return getLit32Encoding(static_cast<uint32_t>(MO.getImm()));
 
   assert(OpSize == 8);
 
-  return getLit64Encoding(static_cast<uint64_t>(Imm));
+  return getLit64Encoding(static_cast<uint64_t>(MO.getImm()));
 }
 
 void SIMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
@@ -223,11 +214,7 @@ void SIMCCodeEmitter::encodeInstruction(const MCInst &MI, raw_ostream &OS,
 
     if (Op.isImm())
       Imm = Op.getImm();
-    else if (Op.isExpr()) {
-      if (const MCConstantExpr *C = dyn_cast<MCConstantExpr>(Op.getExpr()))
-        Imm = C->getValue();
-
-    } else if (!Op.isExpr()) // Exprs will be replaced with a fixup value.
+    else if (!Op.isExpr()) // Exprs will be replaced with a fixup value.
       llvm_unreachable("Must be immediate or expr");
 
     for (unsigned j = 0; j < 4; j++) {
@@ -261,14 +248,20 @@ uint64_t SIMCCodeEmitter::getMachineOpValue(const MCInst &MI,
   if (MO.isReg())
     return MRI.getEncodingValue(MO.getReg());
 
-  if (MO.isExpr() && MO.getExpr()->getKind() != MCExpr::Constant) {
-    const MCSymbolRefExpr *Expr = dyn_cast<MCSymbolRefExpr>(MO.getExpr());
+  if (MO.isExpr()) {
+    const MCSymbolRefExpr *Expr = cast<MCSymbolRefExpr>(MO.getExpr());
     MCFixupKind Kind;
-    if (Expr && Expr->getSymbol().isExternal())
-      Kind = FK_Data_4;
-    else
-      Kind = FK_PCRel_4;
-    Fixups.push_back(MCFixup::create(4, MO.getExpr(), Kind, MI.getLoc()));
+    const MCSymbol *Sym =
+        Ctx.getOrCreateSymbol(StringRef(END_OF_TEXT_LABEL_NAME));
+
+    if (&Expr->getSymbol() == Sym) {
+      // Add the offset to the beginning of the constant values.
+      Kind = (MCFixupKind)AMDGPU::fixup_si_end_of_text;
+    } else {
+      // This is used for constant data stored in .rodata.
+     Kind = (MCFixupKind)AMDGPU::fixup_si_rodata;
+    }
+    Fixups.push_back(MCFixup::create(4, Expr, Kind, MI.getLoc()));
   }
 
   // Figure out the operand number, needed for isSrcOperand check

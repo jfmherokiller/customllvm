@@ -37,7 +37,9 @@ static cl::opt<unsigned>
 
 void HexagonMCELFStreamer::EmitInstruction(const MCInst &MCK,
                                            const MCSubtargetInfo &STI) {
-  MCInst HMI = HexagonMCInstrInfo::createBundle();
+  MCInst HMI;
+  HMI.setOpcode(Hexagon::BUNDLE);
+  HMI.addOperand(MCOperand::createImm(0));
   MCInst *MCB;
 
   if (MCK.getOpcode() != Hexagon::BUNDLE) {
@@ -48,7 +50,7 @@ void HexagonMCELFStreamer::EmitInstruction(const MCInst &MCK,
 
   // Examines packet and pad the packet, if needed, when an
   // end-loop is in the bundle.
-  HexagonMCInstrInfo::padEndloop(getContext(), *MCB);
+  HexagonMCInstrInfo::padEndloop(*MCB);
   HexagonMCShuffle(*MCII, STI, *MCB);
 
   assert(HexagonMCInstrInfo::bundleSize(*MCB) <= HEXAGON_PACKET_SIZE);
@@ -58,9 +60,9 @@ void HexagonMCELFStreamer::EmitInstruction(const MCInst &MCK,
     if (Extended) {
       if (HexagonMCInstrInfo::isDuplex(*MCII, *MCI)) {
         MCInst *SubInst = const_cast<MCInst *>(MCI->getOperand(1).getInst());
-        HexagonMCInstrInfo::clampExtended(*MCII, getContext(), *SubInst);
+        HexagonMCInstrInfo::clampExtended(*MCII, *SubInst);
       } else {
-        HexagonMCInstrInfo::clampExtended(*MCII, getContext(), *MCI);
+        HexagonMCInstrInfo::clampExtended(*MCII, *MCI);
       }
       Extended = false;
     } else {
@@ -107,20 +109,15 @@ void HexagonMCELFStreamer::HexagonMCEmitCommonSymbol(MCSymbol *Symbol,
         ((AccessSize == 0) || (Size == 0) || (Size > GPSize))
             ? ".bss"
             : sbss[(Log2_64(AccessSize))];
-    MCSection &Section = *getAssembler().getContext().getELFSection(
+
+    MCSection *CrntSection = getCurrentSection().first;
+    MCSection *Section = getAssembler().getContext().getELFSection(
         SectionName, ELF::SHT_NOBITS, ELF::SHF_WRITE | ELF::SHF_ALLOC);
-    MCSectionSubPair P = getCurrentSection();
-    SwitchSection(&Section);
+    SwitchSection(Section);
+    AssignSection(Symbol, Section);
 
-    EmitValueToAlignment(ByteAlignment, 0, 1, 0);
-    EmitLabel(Symbol);
-    EmitZeros(Size);
-
-    // Update the maximum alignment of the section if necessary.
-    if (ByteAlignment > Section.getAlignment())
-      Section.setAlignment(ByteAlignment);
-
-    SwitchSection(P.first, P.second);
+    MCELFStreamer::EmitCommonSymbol(Symbol, Size, ByteAlignment);
+    SwitchSection(CrntSection);
   } else {
     if (ELFSymbol->declareCommon(Size, ByteAlignment))
       report_fatal_error("Symbol: " + Symbol->getName() +

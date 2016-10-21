@@ -131,7 +131,7 @@ TEST_F(IRBuilderTest, GetIntTy) {
 TEST_F(IRBuilderTest, FastMathFlags) {
   IRBuilder<> Builder(BB);
   Value *F, *FC;
-  Instruction *FDiv, *FAdd, *FCmp, *FCall;
+  Instruction *FDiv, *FAdd, *FCmp;
 
   F = Builder.CreateLoad(GV);
   F = Builder.CreateFAdd(F, F);
@@ -142,13 +142,13 @@ TEST_F(IRBuilderTest, FastMathFlags) {
   EXPECT_FALSE(FAdd->hasNoNaNs());
 
   FastMathFlags FMF;
-  Builder.setFastMathFlags(FMF);
+  Builder.SetFastMathFlags(FMF);
 
   F = Builder.CreateFAdd(F, F);
   EXPECT_FALSE(Builder.getFastMathFlags().any());
 
   FMF.setUnsafeAlgebra();
-  Builder.setFastMathFlags(FMF);
+  Builder.SetFastMathFlags(FMF);
 
   F = Builder.CreateFAdd(F, F);
   EXPECT_TRUE(Builder.getFastMathFlags().any());
@@ -179,7 +179,7 @@ TEST_F(IRBuilderTest, FastMathFlags) {
 
   FMF.clear();
   FMF.setAllowReciprocal();
-  Builder.setFastMathFlags(FMF);
+  Builder.SetFastMathFlags(FMF);
 
   F = Builder.CreateFDiv(F, F);
   EXPECT_TRUE(Builder.getFastMathFlags().any());
@@ -197,7 +197,7 @@ TEST_F(IRBuilderTest, FastMathFlags) {
 
   FMF.clear();
   FMF.setAllowReciprocal();
-  Builder.setFastMathFlags(FMF);
+  Builder.SetFastMathFlags(FMF);
 
   FC = Builder.CreateFCmpOEQ(F, F);
   EXPECT_TRUE(Builder.getFastMathFlags().any());
@@ -205,36 +205,6 @@ TEST_F(IRBuilderTest, FastMathFlags) {
   ASSERT_TRUE(isa<Instruction>(FC));
   FCmp = cast<Instruction>(FC);
   EXPECT_TRUE(FCmp->hasAllowReciprocal());
-
-  Builder.clearFastMathFlags();
- 
-  // Test a call with FMF.
-  auto CalleeTy = FunctionType::get(Type::getFloatTy(Ctx),
-                                    /*isVarArg=*/false);
-  auto Callee =
-      Function::Create(CalleeTy, Function::ExternalLinkage, "", M.get());
-
-  FCall = Builder.CreateCall(Callee, None);
-  EXPECT_FALSE(FCall->hasNoNaNs());
-
-  Value *V = 
-      Function::Create(CalleeTy, Function::ExternalLinkage, "", M.get());
-  FCall = Builder.CreateCall(V, None);
-  EXPECT_FALSE(FCall->hasNoNaNs());
-
-  FMF.clear();
-  FMF.setNoNaNs();
-  Builder.setFastMathFlags(FMF);
-
-  FCall = Builder.CreateCall(Callee, None);
-  EXPECT_TRUE(Builder.getFastMathFlags().any());
-  EXPECT_TRUE(Builder.getFastMathFlags().NoNaNs);
-  EXPECT_TRUE(FCall->hasNoNaNs());
-
-  FCall = Builder.CreateCall(V, None);
-  EXPECT_TRUE(Builder.getFastMathFlags().any());
-  EXPECT_TRUE(Builder.getFastMathFlags().NoNaNs);
-  EXPECT_TRUE(FCall->hasNoNaNs());
 
   Builder.clearFastMathFlags();
 
@@ -252,7 +222,7 @@ TEST_F(IRBuilderTest, FastMathFlags) {
 }
 
 TEST_F(IRBuilderTest, WrapFlags) {
-  IRBuilder<NoFolder> Builder(BB);
+  IRBuilder<true, NoFolder> Builder(BB);
 
   // Test instructions.
   GlobalVariable *G = new GlobalVariable(*M, Builder.getInt32Ty(), true,
@@ -309,14 +279,14 @@ TEST_F(IRBuilderTest, RAIIHelpersTest) {
   MDNode *FPMathA = MDB.createFPMath(0.01f);
   MDNode *FPMathB = MDB.createFPMath(0.1f);
 
-  Builder.setDefaultFPMathTag(FPMathA);
+  Builder.SetDefaultFPMathTag(FPMathA);
 
   {
     IRBuilder<>::FastMathFlagGuard Guard(Builder);
     FastMathFlags FMF;
     FMF.setAllowReciprocal();
-    Builder.setFastMathFlags(FMF);
-    Builder.setDefaultFPMathTag(FPMathB);
+    Builder.SetFastMathFlags(FMF);
+    Builder.SetDefaultFPMathTag(FPMathB);
     EXPECT_TRUE(Builder.getFastMathFlags().allowReciprocal());
     EXPECT_EQ(FPMathB, Builder.getDefaultFPMathTag());
   }
@@ -329,7 +299,7 @@ TEST_F(IRBuilderTest, RAIIHelpersTest) {
   {
     IRBuilder<>::InsertPointGuard Guard(Builder);
     Builder.SetInsertPoint(cast<Instruction>(F));
-    EXPECT_EQ(F, &*Builder.GetInsertPoint());
+    EXPECT_EQ(F, Builder.GetInsertPoint());
   }
 
   EXPECT_EQ(BB->end(), Builder.GetInsertPoint());
@@ -342,13 +312,11 @@ TEST_F(IRBuilderTest, DIBuilder) {
   auto File = DIB.createFile("F.CBL", "/");
   auto CU = DIB.createCompileUnit(dwarf::DW_LANG_Cobol74, "F.CBL", "/",
                                   "llvm-cobol74", true, "", 0);
-  auto Type = DIB.createSubroutineType(DIB.getOrCreateTypeArray(None));
-  auto SP =
-      DIB.createFunction(CU, "foo", "", File, 1, Type, false, true, 1, 0, true);
-  F->setSubprogram(SP);
+  auto Type = DIB.createSubroutineType(File, DIB.getOrCreateTypeArray(None));
+  DIB.createFunction(CU, "foo", "", File, 1, Type, false, true, 1, 0, true, F);
   AllocaInst *I = Builder.CreateAlloca(Builder.getInt8Ty());
-  auto BarSP =
-      DIB.createFunction(CU, "bar", "", File, 1, Type, false, true, 1, 0, true);
+  auto BarSP = DIB.createFunction(CU, "bar", "", File, 1, Type, false, true, 1,
+                                  0, true, nullptr);
   auto BadScope = DIB.createLexicalBlockFile(BarSP, File, 0);
   I->setDebugLoc(DebugLoc::get(2, 0, BadScope));
   DIB.finalize();
@@ -394,7 +362,7 @@ TEST_F(IRBuilderTest, DebugLoc) {
   auto File = DIB.createFile("tmp.cpp", "/");
   auto CU = DIB.createCompileUnit(dwarf::DW_LANG_C_plus_plus_11, "tmp.cpp", "/",
                                   "", true, "", 0);
-  auto SPType = DIB.createSubroutineType(DIB.getOrCreateTypeArray(None));
+  auto SPType = DIB.createSubroutineType(File, DIB.getOrCreateTypeArray(None));
   auto SP =
       DIB.createFunction(CU, "foo", "foo", File, 1, SPType, false, true, 1);
   DebugLoc DL1 = DILocation::get(Ctx, 2, 0, SP);
@@ -411,25 +379,11 @@ TEST_F(IRBuilderTest, DebugLoc) {
   EXPECT_EQ(DL1, Call1->getDebugLoc());
 
   Call1->setDebugLoc(DL2);
-  Builder.SetInsertPoint(Call1->getParent(), Call1->getIterator());
+  Builder.SetInsertPoint(Call1->getParent(), Call1);
   EXPECT_EQ(DL2, Builder.getCurrentDebugLocation());
   auto Call2 = Builder.CreateCall(Callee, None);
   EXPECT_EQ(DL2, Call2->getDebugLoc());
 
   DIB.finalize();
-}
-
-TEST_F(IRBuilderTest, DIImportedEntity) {
-  IRBuilder<> Builder(BB);
-  DIBuilder DIB(*M);
-  auto CU = DIB.createCompileUnit(dwarf::DW_LANG_Cobol74, "F.CBL", "/",
-    "llvm-cobol74", true, "", 0);
-  DIB.createImportedDeclaration(CU, nullptr, 1);
-  DIB.createImportedDeclaration(CU, nullptr, 1);
-  DIB.createImportedModule(CU, (DIImportedEntity *)nullptr, 2);
-  DIB.createImportedModule(CU, (DIImportedEntity *)nullptr, 2);
-  DIB.finalize();
-  EXPECT_TRUE(verifyModule(*M));
-  EXPECT_TRUE(CU->getImportedEntities().size() == 2);
 }
 }

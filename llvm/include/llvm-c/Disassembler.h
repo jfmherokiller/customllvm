@@ -16,11 +16,7 @@
 #define LLVM_C_DISASSEMBLER_H
 
 #include "llvm/Support/DataTypes.h"
-#ifdef __cplusplus
-#include <cstddef>
-#else
 #include <stddef.h>
-#endif
 
 /**
  * @defgroup LLVMCDisassembler Disassembler
@@ -255,4 +251,4 @@ size_t LLVMDisasmInstruction(LLVMDisasmContextRef DC, uint8_t *Bytes,
 }
 #endif /* !defined(__cplusplus) */
 
-#endif /* LLVM_C_DISASSEMBLER_H */
+#endif /* !defined(LLVM_C_DISASSEMBLER_H) */

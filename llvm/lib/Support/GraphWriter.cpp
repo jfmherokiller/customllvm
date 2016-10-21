@@ -103,7 +103,7 @@ struct GraphSession {
   bool TryFindProgram(StringRef Names, std::string &ProgramPath) {
     raw_string_ostream Log(LogBuffer);
     SmallVector<StringRef, 8> parts;
-    Names.split(parts, '|');
+    Names.split(parts, "|");
     for (auto Name : parts) {
       if (ErrorOr<std::string> P = sys::findProgramByName(Name)) {
         ProgramPath = *P;
@@ -189,87 +189,61 @@ bool llvm::DisplayGraph(StringRef FilenameRef, bool wait,
     return ExecGraphViewer(ViewerPath, args, Filename, wait, ErrMsg);
   }
 
-  enum ViewerKind {
-    VK_None,
-    VK_OSXOpen,
-    VK_XDGOpen,
-    VK_Ghostview,
-    VK_CmdStart
-  };
-  ViewerKind Viewer = VK_None;
+  enum PSViewerKind { PSV_None, PSV_OSXOpen, PSV_XDGOpen, PSV_Ghostview };
+  PSViewerKind PSViewer = PSV_None;
 #ifdef __APPLE__
-  if (!Viewer && S.TryFindProgram("open", ViewerPath))
-    Viewer = VK_OSXOpen;
+  if (!PSViewer && S.TryFindProgram("open", ViewerPath))
+    PSViewer = PSV_OSXOpen;
 #endif
-  if (!Viewer && S.TryFindProgram("gv", ViewerPath))
-    Viewer = VK_Ghostview;
-  if (!Viewer && S.TryFindProgram("xdg-open", ViewerPath))
-    Viewer = VK_XDGOpen;
-#ifdef LLVM_ON_WIN32
-  if (!Viewer && S.TryFindProgram("cmd", ViewerPath)) {
-    Viewer = VK_CmdStart;
-  }
-#endif
+  if (!PSViewer && S.TryFindProgram("gv", ViewerPath))
+    PSViewer = PSV_Ghostview;
+  if (!PSViewer && S.TryFindProgram("xdg-open", ViewerPath))
+    PSViewer = PSV_XDGOpen;
 
-  // PostScript or PDF graph generator + PostScript/PDF viewer
+  // PostScript graph generator + PostScript viewer
   std::string GeneratorPath;
-  if (Viewer &&
+  if (PSViewer &&
       (S.TryFindProgram(getProgramName(program), GeneratorPath) ||
        S.TryFindProgram("dot|fdp|neato|twopi|circo", GeneratorPath))) {
-    std::string OutputFilename =
-        Filename + (Viewer == VK_CmdStart ? ".pdf" : ".ps");
+    std::string PSFilename = Filename + ".ps";
 
     std::vector<const char *> args;
     args.push_back(GeneratorPath.c_str());
-    if (Viewer == VK_CmdStart)
-      args.push_back("-Tpdf");
-    else
-      args.push_back("-Tps");
+    args.push_back("-Tps");
     args.push_back("-Nfontname=Courier");
     args.push_back("-Gsize=7.5,10");
     args.push_back(Filename.c_str());
     args.push_back("-o");
-    args.push_back(OutputFilename.c_str());
+    args.push_back(PSFilename.c_str());
     args.push_back(nullptr);
 
     errs() << "Running '" << GeneratorPath << "' program... ";
 
-    if (ExecGraphViewer(GeneratorPath, args, Filename, true, ErrMsg))
+    if (ExecGraphViewer(GeneratorPath, args, Filename, wait, ErrMsg))
       return true;
-
-    // The lifetime of StartArg must include the call of ExecGraphViewer
-    // because the args are passed as vector of char*.
-    std::string StartArg;
 
     args.clear();
     args.push_back(ViewerPath.c_str());
-    switch (Viewer) {
-    case VK_OSXOpen:
+    switch (PSViewer) {
+    case PSV_OSXOpen:
       args.push_back("-W");
-      args.push_back(OutputFilename.c_str());
+      args.push_back(PSFilename.c_str());
       break;
-    case VK_XDGOpen:
+    case PSV_XDGOpen:
       wait = false;
-      args.push_back(OutputFilename.c_str());
+      args.push_back(PSFilename.c_str());
       break;
-    case VK_Ghostview:
+    case PSV_Ghostview:
       args.push_back("--spartan");
-      args.push_back(OutputFilename.c_str());
+      args.push_back(PSFilename.c_str());
       break;
-    case VK_CmdStart:
-      args.push_back("/S");
-      args.push_back("/C");
-      StartArg =
-          (StringRef("start ") + (wait ? "/WAIT " : "") + OutputFilename).str();
-      args.push_back(StartArg.c_str());
-      break;
-    case VK_None:
+    case PSV_None:
       llvm_unreachable("Invalid viewer");
     }
     args.push_back(nullptr);
 
     ErrMsg.clear();
-    return ExecGraphViewer(ViewerPath, args, OutputFilename, wait, ErrMsg);
+    return ExecGraphViewer(ViewerPath, args, PSFilename, wait, ErrMsg);
   }
 
   // dotty

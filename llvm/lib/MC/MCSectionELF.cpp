@@ -27,7 +27,12 @@ bool MCSectionELF::ShouldOmitSectionDirective(StringRef Name,
   if (isUnique())
     return false;
 
-  return MAI.shouldOmitSectionDirective(Name);
+  // FIXME: Does .section .bss/.data/.text work everywhere??
+  if (Name == ".text" || Name == ".data" ||
+      (Name == ".bss" && !MAI.usesELFSectionDirectiveForBSS()))
+    return true;
+
+  return false;
 }
 
 static void printName(raw_ostream &OS, StringRef Name) {
@@ -133,8 +138,6 @@ void MCSectionELF::PrintSwitchToSection(const MCAsmInfo &MAI,
     OS << "note";
   else if (Type == ELF::SHT_PROGBITS)
     OS << "progbits";
-  else if (Type == ELF::SHT_X86_64_UNWIND)
-    OS << "unwind";
 
   if (EntrySize) {
     assert(Flags & ELF::SHF_MERGE);

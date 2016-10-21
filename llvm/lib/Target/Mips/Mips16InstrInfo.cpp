@@ -15,10 +15,12 @@
 #include "MipsMachineFunction.h"
 #include "MipsTargetMachine.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -41,7 +43,7 @@ const MipsRegisterInfo &Mips16InstrInfo::getRegisterInfo() const {
 /// the destination along with the FrameIndex of the loaded stack slot.  If
 /// not, return 0.  This predicate must return 0 if the instruction has
 /// any side effects other than loading from the stack slot.
-unsigned Mips16InstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
+unsigned Mips16InstrInfo::isLoadFromStackSlot(const MachineInstr *MI,
                                               int &FrameIndex) const {
   return 0;
 }
@@ -51,15 +53,15 @@ unsigned Mips16InstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
 /// the source reg along with the FrameIndex of the loaded stack slot.  If
 /// not, return 0.  This predicate must return 0 if the instruction has
 /// any side effects other than storing to the stack slot.
-unsigned Mips16InstrInfo::isStoreToStackSlot(const MachineInstr &MI,
+unsigned Mips16InstrInfo::isStoreToStackSlot(const MachineInstr *MI,
                                              int &FrameIndex) const {
   return 0;
 }
 
 void Mips16InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
-                                  MachineBasicBlock::iterator I,
-                                  const DebugLoc &DL, unsigned DestReg,
-                                  unsigned SrcReg, bool KillSrc) const {
+                                  MachineBasicBlock::iterator I, DebugLoc DL,
+                                  unsigned DestReg, unsigned SrcReg,
+                                  bool KillSrc) const {
   unsigned Opc = 0;
 
   if (Mips::CPU16RegsRegClass.contains(DestReg) &&
@@ -124,9 +126,9 @@ void Mips16InstrInfo::loadRegFromStack(MachineBasicBlock &MBB,
     .addMemOperand(MMO);
 }
 
-bool Mips16InstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
-  MachineBasicBlock &MBB = *MI.getParent();
-  switch (MI.getDesc().getOpcode()) {
+bool Mips16InstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI) const {
+  MachineBasicBlock &MBB = *MI->getParent();
+  switch(MI->getDesc().getOpcode()) {
   default:
     return false;
   case Mips::RetRA16:
@@ -134,7 +136,7 @@ bool Mips16InstrInfo::expandPostRAPseudo(MachineInstr &MI) const {
     break;
   }
 
-  MBB.erase(MI.getIterator());
+  MBB.erase(MI);
   return true;
 }
 
@@ -194,7 +196,7 @@ static void addSaveRestoreRegs(MachineInstrBuilder &MIB,
 void Mips16InstrInfo::makeFrame(unsigned SP, int64_t FrameSize,
                                 MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator I) const {
-  DebugLoc DL;
+  DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   MachineFunction &MF = *MBB.getParent();
   MachineFrameInfo *MFI    = MF.getFrameInfo();
   const BitVector Reserved = RI.getReservedRegs(MF);
@@ -261,7 +263,7 @@ void Mips16InstrInfo::adjustStackPtrBig(unsigned SP, int64_t Amount,
                                         MachineBasicBlock &MBB,
                                         MachineBasicBlock::iterator I,
                                         unsigned Reg1, unsigned Reg2) const {
-  DebugLoc DL;
+  DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   //
   // li reg1, constant
   // move reg2, sp
@@ -305,8 +307,7 @@ void Mips16InstrInfo::adjustStackPtr(unsigned SP, int64_t Amount,
 unsigned Mips16InstrInfo::loadImmediate(unsigned FrameReg, int64_t Imm,
                                         MachineBasicBlock &MBB,
                                         MachineBasicBlock::iterator II,
-                                        const DebugLoc &DL,
-                                        unsigned &NewImm) const {
+                                        DebugLoc DL, unsigned &NewImm) const {
   //
   // given original instruction is:
   // Instr rx, T[offset] where offset is too big.
@@ -325,7 +326,7 @@ unsigned Mips16InstrInfo::loadImmediate(unsigned FrameReg, int64_t Imm,
   int Reg =0;
   int SpReg = 0;
 
-  rs.enterBasicBlock(MBB);
+  rs.enterBasicBlock(&MBB);
   rs.forward(II);
   //
   // We need to know which registers can be used, in the case where there
@@ -445,7 +446,7 @@ const MCInstrDesc &Mips16InstrInfo::AddiuSpImm(int64_t Imm) const {
 
 void Mips16InstrInfo::BuildAddiuSpImm
   (MachineBasicBlock &MBB, MachineBasicBlock::iterator I, int64_t Imm) const {
-  DebugLoc DL;
+  DebugLoc DL = I != MBB.end() ? I->getDebugLoc() : DebugLoc();
   BuildMI(MBB, I, DL, AddiuSpImm(Imm)).addImm(Imm);
 }
 

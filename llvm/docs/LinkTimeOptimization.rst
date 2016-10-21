@@ -87,9 +87,9 @@ To compile, run:
 
 .. code-block:: console
 
-  % clang -flto -c a.c -o a.o        # <-- a.o is LLVM bitcode file
+  % clang -emit-llvm -c a.c -o a.o   # <-- a.o is LLVM bitcode file
   % clang -c main.c -o main.o        # <-- main.o is native object file
-  % clang -flto a.o main.o -o main   # <-- standard link command with -flto
+  % clang a.o main.o -o main         # <-- standard link command without modifications
 
 * In this example, the linker recognizes that ``foo2()`` is an externally
   visible symbol defined in LLVM bitcode file. The linker completes its usual

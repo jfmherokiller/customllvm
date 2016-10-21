@@ -45,12 +45,6 @@ BCCDisplacementBits("aarch64-bcc-offset-bits", cl::Hidden, cl::init(19),
 STATISTIC(NumSplit, "Number of basic blocks split");
 STATISTIC(NumRelaxed, "Number of conditional branches relaxed");
 
-namespace llvm {
-void initializeAArch64BranchRelaxationPass(PassRegistry &);
-}
-
-#define AARCH64_BR_RELAX_NAME "AArch64 branch relaxation pass"
-
 namespace {
 class AArch64BranchRelaxation : public MachineFunctionPass {
   /// BasicBlockInfo - Information about the offset and size of a single
@@ -99,21 +93,16 @@ class AArch64BranchRelaxation : public MachineFunctionPass {
 
 public:
   static char ID;
-  AArch64BranchRelaxation() : MachineFunctionPass(ID) {
-    initializeAArch64BranchRelaxationPass(*PassRegistry::getPassRegistry());
-  }
+  AArch64BranchRelaxation() : MachineFunctionPass(ID) {}
 
   bool runOnMachineFunction(MachineFunction &MF) override;
 
   const char *getPassName() const override {
-    return AARCH64_BR_RELAX_NAME;
+    return "AArch64 branch relaxation pass";
   }
 };
 char AArch64BranchRelaxation::ID = 0;
 }
-
-INITIALIZE_PASS(AArch64BranchRelaxation, "aarch64-branch-relax",
-                AARCH64_BR_RELAX_NAME, false, false)
 
 /// verify - check BBOffsets, BBSizes, alignment of islands
 void AArch64BranchRelaxation::verify() {
@@ -142,14 +131,14 @@ void AArch64BranchRelaxation::dumpBBs() {
 /// into the block immediately after it.
 static bool BBHasFallthrough(MachineBasicBlock *MBB) {
   // Get the next machine basic block in the function.
-  MachineFunction::iterator MBBI(MBB);
+  MachineFunction::iterator MBBI = MBB;
   // Can't fall off end of function.
-  auto NextBB = std::next(MBBI);
+  MachineBasicBlock *NextBB = std::next(MBBI);
   if (NextBB == MBB->getParent()->end())
     return false;
 
   for (MachineBasicBlock *S : MBB->successors())
-    if (S == &*NextBB)
+    if (S == NextBB)
       return true;
 
   return false;
@@ -177,7 +166,7 @@ void AArch64BranchRelaxation::scanFunction() {
 void AArch64BranchRelaxation::computeBlockSize(const MachineBasicBlock &MBB) {
   unsigned Size = 0;
   for (const MachineInstr &MI : MBB)
-    Size += TII->GetInstSizeInBytes(MI);
+    Size += TII->GetInstSizeInBytes(&MI);
   BlockInfo[MBB.getNumber()].Size = Size;
 }
 
@@ -195,7 +184,7 @@ unsigned AArch64BranchRelaxation::getInstrOffset(MachineInstr *MI) const {
   // Sum instructions before MI in MBB.
   for (MachineBasicBlock::iterator I = MBB->begin(); &*I != MI; ++I) {
     assert(I != MBB->end() && "Didn't find MI in its own basic block?");
-    Offset += TII->GetInstSizeInBytes(*I);
+    Offset += TII->GetInstSizeInBytes(I);
   }
   return Offset;
 }
@@ -227,7 +216,9 @@ AArch64BranchRelaxation::splitBlockBeforeInstr(MachineInstr *MI) {
   // Create a new MBB for the code after the OrigBB.
   MachineBasicBlock *NewBB =
       MF->CreateMachineBasicBlock(OrigBB->getBasicBlock());
-  MF->insert(++OrigBB->getIterator(), NewBB);
+  MachineFunction::iterator MBBI = OrigBB;
+  ++MBBI;
+  MF->insert(MBBI, NewBB);
 
   // Splice the instructions starting with MI over to NewBB.
   NewBB->splice(NewBB->end(), OrigBB, MI, OrigBB->end());
@@ -415,12 +406,12 @@ bool AArch64BranchRelaxation::fixupConditionalBranch(MachineInstr *MI) {
     // Analyze the branch so we know how to update the successor lists.
     MachineBasicBlock *TBB, *FBB;
     SmallVector<MachineOperand, 2> Cond;
-    TII->analyzeBranch(*MBB, TBB, FBB, Cond, false);
+    TII->AnalyzeBranch(*MBB, TBB, FBB, Cond, false);
 
     MachineBasicBlock *NewBB = splitBlockBeforeInstr(MI);
     // No need for the branch to the next block. We're adding an unconditional
     // branch to the destination.
-    int delta = TII->GetInstSizeInBytes(MBB->back());
+    int delta = TII->GetInstSizeInBytes(&MBB->back());
     BlockInfo[MBB->getNumber()].Size -= delta;
     MBB->back().eraseFromParent();
     // BlockInfo[SplitBB].Offset is wrong temporarily, fixed below
@@ -430,7 +421,7 @@ bool AArch64BranchRelaxation::fixupConditionalBranch(MachineInstr *MI) {
     MBB->replaceSuccessor(FBB, NewBB);
     NewBB->addSuccessor(FBB);
   }
-  MachineBasicBlock *NextBB = &*std::next(MachineFunction::iterator(MBB));
+  MachineBasicBlock *NextBB = std::next(MachineFunction::iterator(MBB));
 
   DEBUG(dbgs() << "  Insert B to BB#" << DestBB->getNumber()
                << ", invert condition and change dest. to BB#"
@@ -446,12 +437,12 @@ bool AArch64BranchRelaxation::fixupConditionalBranch(MachineInstr *MI) {
   if (MI->getOpcode() == AArch64::Bcc)
     invertBccCondition(MIB);
   MIB.addMBB(NextBB);
-  BlockInfo[MBB->getNumber()].Size += TII->GetInstSizeInBytes(MBB->back());
+  BlockInfo[MBB->getNumber()].Size += TII->GetInstSizeInBytes(&MBB->back());
   BuildMI(MBB, DebugLoc(), TII->get(AArch64::B)).addMBB(DestBB);
-  BlockInfo[MBB->getNumber()].Size += TII->GetInstSizeInBytes(MBB->back());
+  BlockInfo[MBB->getNumber()].Size += TII->GetInstSizeInBytes(&MBB->back());
 
   // Remove the old conditional branch.  It may or may not still be in MBB.
-  BlockInfo[MI->getParent()->getNumber()].Size -= TII->GetInstSizeInBytes(*MI);
+  BlockInfo[MI->getParent()->getNumber()].Size -= TII->GetInstSizeInBytes(MI);
   MI->eraseFromParent();
 
   // Finally, keep the block offsets up to date.
@@ -463,13 +454,12 @@ bool AArch64BranchRelaxation::relaxBranchInstructions() {
   bool Changed = false;
   // Relaxing branches involves creating new basic blocks, so re-eval
   // end() for termination.
-  for (MachineFunction::iterator I = MF->begin(); I != MF->end(); ++I) {
-    MachineBasicBlock &MBB = *I;
-    MachineInstr &MI = *MBB.getFirstTerminator();
-    if (isConditionalBranch(MI.getOpcode()) &&
-        !isBlockInRange(&MI, getDestBlock(&MI),
-                        getBranchDisplacementBits(MI.getOpcode()))) {
-      fixupConditionalBranch(&MI);
+  for (auto &MBB : *MF) {
+    MachineInstr *MI = MBB.getFirstTerminator();
+    if (isConditionalBranch(MI->getOpcode()) &&
+        !isBlockInRange(MI, getDestBlock(MI),
+                        getBranchDisplacementBits(MI->getOpcode()))) {
+      fixupConditionalBranch(MI);
       ++NumRelaxed;
       Changed = true;
     }
@@ -514,7 +504,8 @@ bool AArch64BranchRelaxation::runOnMachineFunction(MachineFunction &mf) {
   return MadeChange;
 }
 
-/// Returns an instance of the AArch64 Branch Relaxation pass.
+/// createAArch64BranchRelaxation - returns an instance of the constpool
+/// island pass.
 FunctionPass *llvm::createAArch64BranchRelaxation() {
   return new AArch64BranchRelaxation();
 }

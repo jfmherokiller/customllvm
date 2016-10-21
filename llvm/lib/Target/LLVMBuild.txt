@@ -22,13 +22,13 @@ subdirectories =
  AMDGPU
  ARM
  AArch64
- AVR
  BPF
- Lanai
+ CppBackend
  Hexagon
  MSP430
  NVPTX
  Mips
+ ZCPU
  PowerPC
  Sparc
  SystemZ

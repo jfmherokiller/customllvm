@@ -1,7 +1,7 @@
-; RUN: opt < %s -globalopt -S | FileCheck %s
+; RUN: opt < %s -globalopt -S | not grep internal
+
 ; This is a harder case to delete as the GEP has a variable index.
 
-; CHECK-NOT: internal
 @G = internal global [4 x i32] zeroinitializer
 
 define void @foo(i32 %X) {

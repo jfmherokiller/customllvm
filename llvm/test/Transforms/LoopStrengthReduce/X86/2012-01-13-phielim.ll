@@ -102,7 +102,7 @@ while.end:                                        ; preds = %entry
 ; CHECK-NEXT: %for.body3.us.i
 ; CHECK-NEXT: Inner Loop
 ; CHECK: testb
-; CHECK: je
+; CHECK: jne
 ; CHECK: jmp
 define fastcc void @test3(double* nocapture %u) nounwind uwtable ssp {
 entry:

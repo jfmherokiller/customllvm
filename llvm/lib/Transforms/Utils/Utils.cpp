@@ -21,20 +21,17 @@ using namespace llvm;
 /// initializeTransformUtils - Initialize all passes in the TransformUtils
 /// library.
 void llvm::initializeTransformUtils(PassRegistry &Registry) {
-  initializeAddDiscriminatorsLegacyPassPass(Registry);
+  initializeAddDiscriminatorsPass(Registry);
   initializeBreakCriticalEdgesPass(Registry);
   initializeInstNamerPass(Registry);
-  initializeLCSSAWrapperPassPass(Registry);
+  initializeLCSSAPass(Registry);
   initializeLoopSimplifyPass(Registry);
   initializeLowerInvokePass(Registry);
   initializeLowerSwitchPass(Registry);
-  initializeNameAnonFunctionPass(Registry);
-  initializePromoteLegacyPassPass(Registry);
+  initializePromotePassPass(Registry);
   initializeUnifyFunctionExitNodesPass(Registry);
   initializeInstSimplifierPass(Registry);
   initializeMetaRenamerPass(Registry);
-  initializeMemorySSAWrapperPassPass(Registry);
-  initializeMemorySSAPrinterLegacyPassPass(Registry);
 }
 
 /// LLVMInitializeTransformUtils - C binding for initializeTransformUtilsPasses.

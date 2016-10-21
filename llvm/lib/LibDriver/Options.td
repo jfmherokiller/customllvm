@@ -12,8 +12,6 @@ class P<string name, string help> :
 def libpath: P<"libpath", "Object file search path">;
 def out    : P<"out", "Path to file to write output">;
 
-def llvmlibthin : F<"llvmlibthin">;
-
 //==============================================================================
 // The flags below do nothing. They are defined only for lib.exe compatibility.
 //==============================================================================

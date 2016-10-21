@@ -8,12 +8,14 @@
 //===----------------------------------------------------------------------===//
 //
 /// \file
-/// \brief Interface to describe a layout of a stack frame on an AMDGPU target.
+/// \brief Interface to describe a layout of a stack frame on a AMDIL target
+/// machine.
 //
 //===----------------------------------------------------------------------===//
-#ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUFRAMELOWERING_H
-#define LLVM_LIB_TARGET_AMDGPU_AMDGPUFRAMELOWERING_H
+#ifndef LLVM_LIB_TARGET_R600_AMDGPUFRAMELOWERING_H
+#define LLVM_LIB_TARGET_R600_AMDGPUFRAMELOWERING_H
 
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/Target/TargetFrameLowering.h"
 
 namespace llvm {
@@ -32,13 +34,12 @@ public:
   /// \returns The number of 32-bit sub-registers that are used when storing
   /// values to the stack.
   unsigned getStackWidth(const MachineFunction &MF) const;
-
-  int getFrameIndexReference(const MachineFunction &MF, int FI,
-                             unsigned &FrameReg) const override;
-
-  bool hasFP(const MachineFunction &MF) const override {
-    return false;
-  }
+  int getFrameIndexOffset(const MachineFunction &MF, int FI) const override;
+  const SpillSlot *
+    getCalleeSavedSpillSlots(unsigned &NumEntries) const override;
+  void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+  bool hasFP(const MachineFunction &MF) const override;
 };
 } // namespace llvm
 #endif

@@ -84,9 +84,11 @@ static inline bool operator<(const OptTable::Info &I, const char *Name) {
 
 OptSpecifier::OptSpecifier(const Option *Opt) : ID(Opt->getID()) {}
 
-OptTable::OptTable(ArrayRef<Info> OptionInfos, bool IgnoreCase)
-    : OptionInfos(OptionInfos), IgnoreCase(IgnoreCase), TheInputOptionID(0),
-      TheUnknownOptionID(0), FirstSearchableIndex(0) {
+OptTable::OptTable(const Info *OptionInfos, unsigned NumOptionInfos,
+                   bool IgnoreCase)
+    : OptionInfos(OptionInfos), NumOptionInfos(NumOptionInfos),
+      IgnoreCase(IgnoreCase), TheInputOptionID(0), TheUnknownOptionID(0),
+      FirstSearchableIndex(0) {
   // Explicitly zero initialize the error to work around a bug in array
   // value-initialization on MinGW with gcc 4.3.5.
 
@@ -197,8 +199,8 @@ Arg *OptTable::ParseOneArg(const ArgList &Args, unsigned &Index,
   if (isInput(PrefixesUnion, Str))
     return new Arg(getOption(TheInputOptionID), Str, Index++, Str);
 
-  const Info *Start = OptionInfos.begin() + FirstSearchableIndex;
-  const Info *End = OptionInfos.end();
+  const Info *Start = OptionInfos + FirstSearchableIndex;
+  const Info *End = OptionInfos + getNumOptions();
   StringRef Name = StringRef(Str).ltrim(PrefixChars);
 
   // Search for the first next option which could be a prefix.
@@ -315,7 +317,7 @@ static std::string getOptionHelpName(const OptTable &Opts, OptSpecifier Id) {
     break;
 
   case Option::SeparateClass: case Option::JoinedOrSeparateClass:
-  case Option::RemainingArgsClass: case Option::RemainingArgsJoinedClass:
+  case Option::RemainingArgsClass:
     Name += ' ';
     // FALLTHROUGH
   case Option::JoinedClass: case Option::CommaJoinedClass:

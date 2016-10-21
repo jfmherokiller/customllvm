@@ -39,10 +39,8 @@ TEST(FileOutputBuffer, Test) {
   SmallString<128> File1(TestDirectory);
 	File1.append("/file1");
   {
-    ErrorOr<std::unique_ptr<FileOutputBuffer>> BufferOrErr =
-        FileOutputBuffer::create(File1, 8192);
-    ASSERT_NO_ERROR(BufferOrErr.getError());
-    std::unique_ptr<FileOutputBuffer> &Buffer = *BufferOrErr;
+    std::unique_ptr<FileOutputBuffer> Buffer;
+    ASSERT_NO_ERROR(FileOutputBuffer::create(File1, 8192, Buffer));
     // Start buffer with special header.
     memcpy(Buffer->getBufferStart(), "AABBCCDDEEFFGGHHIIJJ", 20);
     // Write to end of buffer to verify it is writable.
@@ -61,10 +59,8 @@ TEST(FileOutputBuffer, Test) {
   SmallString<128> File2(TestDirectory);
 	File2.append("/file2");
   {
-    ErrorOr<std::unique_ptr<FileOutputBuffer>> Buffer2OrErr =
-        FileOutputBuffer::create(File2, 8192);
-    ASSERT_NO_ERROR(Buffer2OrErr.getError());
-    std::unique_ptr<FileOutputBuffer> &Buffer2 = *Buffer2OrErr;
+    std::unique_ptr<FileOutputBuffer> Buffer2;
+    ASSERT_NO_ERROR(FileOutputBuffer::create(File2, 8192, Buffer2));
     // Fill buffer with special header.
     memcpy(Buffer2->getBufferStart(), "AABBCCDDEEFFGGHHIIJJ", 20);
     // Do *not* commit buffer.
@@ -78,10 +74,8 @@ TEST(FileOutputBuffer, Test) {
   SmallString<128> File3(TestDirectory);
 	File3.append("/file3");
   {
-    ErrorOr<std::unique_ptr<FileOutputBuffer>> BufferOrErr =
-        FileOutputBuffer::create(File3, 8192000);
-    ASSERT_NO_ERROR(BufferOrErr.getError());
-    std::unique_ptr<FileOutputBuffer> &Buffer = *BufferOrErr;
+    std::unique_ptr<FileOutputBuffer> Buffer;
+    ASSERT_NO_ERROR(FileOutputBuffer::create(File3, 8192000, Buffer));
     // Start buffer with special header.
     memcpy(Buffer->getBufferStart(), "AABBCCDDEEFFGGHHIIJJ", 20);
     // Write to end of buffer to verify it is writable.
@@ -99,10 +93,9 @@ TEST(FileOutputBuffer, Test) {
   SmallString<128> File4(TestDirectory);
 	File4.append("/file4");
   {
-    ErrorOr<std::unique_ptr<FileOutputBuffer>> BufferOrErr =
-        FileOutputBuffer::create(File4, 8192, FileOutputBuffer::F_executable);
-    ASSERT_NO_ERROR(BufferOrErr.getError());
-    std::unique_ptr<FileOutputBuffer> &Buffer = *BufferOrErr;
+    std::unique_ptr<FileOutputBuffer> Buffer;
+    ASSERT_NO_ERROR(FileOutputBuffer::create(File4, 8192, Buffer,
+                                              FileOutputBuffer::F_executable));
     // Start buffer with special header.
     memcpy(Buffer->getBufferStart(), "AABBCCDDEEFFGGHHIIJJ", 20);
     // Commit buffer.

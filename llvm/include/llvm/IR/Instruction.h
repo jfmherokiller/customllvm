@@ -30,11 +30,25 @@ class BasicBlock;
 struct AAMDNodes;
 
 template <>
-struct SymbolTableListSentinelTraits<Instruction>
-    : public ilist_half_embedded_sentinel_traits<Instruction> {};
+struct ilist_traits<Instruction>
+    : public SymbolTableListTraits<Instruction, BasicBlock> {
 
-class Instruction : public User,
-                    public ilist_node_with_parent<Instruction, BasicBlock> {
+  /// \brief Return a node that marks the end of a list.
+  ///
+  /// The sentinel is relative to this instance, so we use a non-static
+  /// method.
+  Instruction *createSentinel() const;
+  static void destroySentinel(Instruction *) {}
+
+  Instruction *provideInitialHead() const { return createSentinel(); }
+  Instruction *ensureHead(Instruction *) const { return createSentinel(); }
+  static void noteHead(Instruction *, Instruction *) {}
+
+private:
+  mutable ilist_half_node<Instruction> Sentinel;
+};
+
+class Instruction : public User, public ilist_node<Instruction> {
   void operator=(const Instruction &) = delete;
   Instruction(const Instruction &) = delete;
 
@@ -42,23 +56,23 @@ class Instruction : public User,
   DebugLoc DbgLoc;                         // 'dbg' Metadata cache.
 
   enum {
-    /// This is a bit stored in the SubClassData field which indicates whether
-    /// this instruction has metadata attached to it or not.
+    /// HasMetadataBit - This is a bit stored in the SubClassData field which
+    /// indicates whether this instruction has metadata attached to it or not.
     HasMetadataBit = 1 << 15
   };
 public:
   // Out of line virtual method, so the vtable, etc has a home.
   ~Instruction() override;
 
-  /// Specialize the methods defined in Value, as we know that an instruction
-  /// can only be used by other instructions.
+  /// user_back - Specialize the methods defined in Value, as we know that an
+  /// instruction can only be used by other instructions.
   Instruction       *user_back()       { return cast<Instruction>(*user_begin());}
   const Instruction *user_back() const { return cast<Instruction>(*user_begin());}
 
   inline const BasicBlock *getParent() const { return Parent; }
   inline       BasicBlock *getParent()       { return Parent; }
 
-  /// Return the module owning the function this instruction belongs to
+  /// \brief Return the module owning the function this instruction belongs to
   /// or nullptr it the function does not have a module.
   ///
   /// Note: this is undefined behavior if the instruction does not have a
@@ -66,21 +80,16 @@ public:
   const Module *getModule() const;
   Module *getModule();
 
-  /// Return the function this instruction belongs to.
+  /// removeFromParent - This method unlinks 'this' from the containing basic
+  /// block, but does not delete it.
   ///
-  /// Note: it is undefined behavior to call this on an instruction not
-  /// currently inserted into a function.
-  const Function *getFunction() const;
-  Function *getFunction();
-
-  /// This method unlinks 'this' from the containing basic block, but does not
-  /// delete it.
   void removeFromParent();
 
-  /// This method unlinks 'this' from the containing basic block and deletes it.
+  /// eraseFromParent - This method unlinks 'this' from the containing basic
+  /// block and deletes it.
   ///
   /// \returns an iterator pointing to the element after the erased one
-  SymbolTableList<Instruction>::iterator eraseFromParent();
+  iplist<Instruction>::iterator eraseFromParent();
 
   /// Insert an unlinked instruction into a basic block immediately before
   /// the specified instruction.
@@ -90,15 +99,16 @@ public:
   /// specified instruction.
   void insertAfter(Instruction *InsertPos);
 
-  /// Unlink this instruction from its current basic block and insert it into
-  /// the basic block that MovePos lives in, right before MovePos.
+  /// moveBefore - Unlink this instruction from its current basic block and
+  /// insert it into the basic block that MovePos lives in, right before
+  /// MovePos.
   void moveBefore(Instruction *MovePos);
 
   //===--------------------------------------------------------------------===//
   // Subclass classification.
   //===--------------------------------------------------------------------===//
 
-  /// Returns a member of one of the enums like Instruction::Add.
+  /// getOpcode() returns a member of one of the enums like Instruction::Add.
   unsigned getOpcode() const { return getValueID() - InstructionVal; }
 
   const char *getOpcodeName() const { return getOpcodeName(getOpcode()); }
@@ -106,7 +116,6 @@ public:
   bool isBinaryOp() const { return isBinaryOp(getOpcode()); }
   bool isShift() { return isShift(getOpcode()); }
   bool isCast() const { return isCast(getOpcode()); }
-  bool isFuncletPad() const { return isFuncletPad(getOpcode()); }
 
   static const char* getOpcodeName(unsigned OpCode);
 
@@ -118,141 +127,107 @@ public:
     return Opcode >= BinaryOpsBegin && Opcode < BinaryOpsEnd;
   }
 
-  /// Determine if the Opcode is one of the shift instructions.
+  /// @brief Determine if the Opcode is one of the shift instructions.
   static inline bool isShift(unsigned Opcode) {
     return Opcode >= Shl && Opcode <= AShr;
   }
 
-  /// Return true if this is a logical shift left or a logical shift right.
+  /// isLogicalShift - Return true if this is a logical shift left or a logical
+  /// shift right.
   inline bool isLogicalShift() const {
     return getOpcode() == Shl || getOpcode() == LShr;
   }
 
-  /// Return true if this is an arithmetic shift right.
+  /// isArithmeticShift - Return true if this is an arithmetic shift right.
   inline bool isArithmeticShift() const {
     return getOpcode() == AShr;
   }
 
-  /// Determine if the OpCode is one of the CastInst instructions.
+  /// @brief Determine if the OpCode is one of the CastInst instructions.
   static inline bool isCast(unsigned OpCode) {
     return OpCode >= CastOpsBegin && OpCode < CastOpsEnd;
-  }
-
-  /// Determine if the OpCode is one of the FuncletPadInst instructions.
-  static inline bool isFuncletPad(unsigned OpCode) {
-    return OpCode >= FuncletPadOpsBegin && OpCode < FuncletPadOpsEnd;
   }
 
   //===--------------------------------------------------------------------===//
   // Metadata manipulation.
   //===--------------------------------------------------------------------===//
 
-  /// Return true if this instruction has any metadata attached to it.
+  /// hasMetadata() - Return true if this instruction has any metadata attached
+  /// to it.
   bool hasMetadata() const { return DbgLoc || hasMetadataHashEntry(); }
 
-  /// Return true if this instruction has metadata attached to it other than a
-  /// debug location.
+  /// hasMetadataOtherThanDebugLoc - Return true if this instruction has
+  /// metadata attached to it other than a debug location.
   bool hasMetadataOtherThanDebugLoc() const {
     return hasMetadataHashEntry();
   }
 
-  /// Get the metadata of given kind attached to this Instruction.
+  /// getMetadata - Get the metadata of given kind attached to this Instruction.
   /// If the metadata is not found then return null.
   MDNode *getMetadata(unsigned KindID) const {
     if (!hasMetadata()) return nullptr;
     return getMetadataImpl(KindID);
   }
 
-  /// Get the metadata of given kind attached to this Instruction.
+  /// getMetadata - Get the metadata of given kind attached to this Instruction.
   /// If the metadata is not found then return null.
   MDNode *getMetadata(StringRef Kind) const {
     if (!hasMetadata()) return nullptr;
     return getMetadataImpl(Kind);
   }
 
-  /// Get all metadata attached to this Instruction. The first element of each
-  /// pair returned is the KindID, the second element is the metadata value.
-  /// This list is returned sorted by the KindID.
+  /// getAllMetadata - Get all metadata attached to this Instruction.  The first
+  /// element of each pair returned is the KindID, the second element is the
+  /// metadata value.  This list is returned sorted by the KindID.
   void
   getAllMetadata(SmallVectorImpl<std::pair<unsigned, MDNode *>> &MDs) const {
     if (hasMetadata())
       getAllMetadataImpl(MDs);
   }
 
-  /// This does the same thing as getAllMetadata, except that it filters out the
-  /// debug location.
+  /// getAllMetadataOtherThanDebugLoc - This does the same thing as
+  /// getAllMetadata, except that it filters out the debug location.
   void getAllMetadataOtherThanDebugLoc(
       SmallVectorImpl<std::pair<unsigned, MDNode *>> &MDs) const {
     if (hasMetadataOtherThanDebugLoc())
       getAllMetadataOtherThanDebugLocImpl(MDs);
   }
 
-  /// Fills the AAMDNodes structure with AA metadata from this instruction.
-  /// When Merge is true, the existing AA metadata is merged with that from this
-  /// instruction providing the most-general result.
+  /// getAAMetadata - Fills the AAMDNodes structure with AA metadata from
+  /// this instruction. When Merge is true, the existing AA metadata is
+  /// merged with that from this instruction providing the most-general result.
   void getAAMetadata(AAMDNodes &N, bool Merge = false) const;
 
-  /// Set the metadata of the specified kind to the specified node. This updates
-  /// or replaces metadata if already present, or removes it if Node is null.
+  /// setMetadata - Set the metadata of the specified kind to the specified
+  /// node.  This updates/replaces metadata if already present, or removes it if
+  /// Node is null.
   void setMetadata(unsigned KindID, MDNode *Node);
   void setMetadata(StringRef Kind, MDNode *Node);
 
-  /// Drop all unknown metadata except for debug locations.
-  /// @{
+  /// \brief Drop unknown metadata.
   /// Passes are required to drop metadata they don't understand. This is a
   /// convenience method for passes to do so.
-  void dropUnknownNonDebugMetadata(ArrayRef<unsigned> KnownIDs);
-  void dropUnknownNonDebugMetadata() {
-    return dropUnknownNonDebugMetadata(None);
+  void dropUnknownMetadata(ArrayRef<unsigned> KnownIDs);
+  void dropUnknownMetadata() {
+    return dropUnknownMetadata(None);
   }
-  void dropUnknownNonDebugMetadata(unsigned ID1) {
-    return dropUnknownNonDebugMetadata(makeArrayRef(ID1));
+  void dropUnknownMetadata(unsigned ID1) {
+    return dropUnknownMetadata(makeArrayRef(ID1));
   }
-  void dropUnknownNonDebugMetadata(unsigned ID1, unsigned ID2) {
+  void dropUnknownMetadata(unsigned ID1, unsigned ID2) {
     unsigned IDs[] = {ID1, ID2};
-    return dropUnknownNonDebugMetadata(IDs);
+    return dropUnknownMetadata(IDs);
   }
-  /// @}
 
-  /// Sets the metadata on this instruction from the AAMDNodes structure.
+  /// setAAMetadata - Sets the metadata on this instruction from the
+  /// AAMDNodes structure.
   void setAAMetadata(const AAMDNodes &N);
 
-  /// Retrieve the raw weight values of a conditional branch or select.
-  /// Returns true on success with profile weights filled in.
-  /// Returns false if no metadata or invalid metadata was found.
-  bool extractProfMetadata(uint64_t &TrueVal, uint64_t &FalseVal);
-
-  /// Retrieve total raw weight values of a branch.
-  /// Returns true on success with profile total weights filled in.
-  /// Returns false if no metadata was found.
-  bool extractProfTotalWeight(uint64_t &TotalVal);
-
-  /// Set the debug location information for this instruction.
+  /// setDebugLoc - Set the debug location information for this instruction.
   void setDebugLoc(DebugLoc Loc) { DbgLoc = std::move(Loc); }
 
-  /// Return the debug location for this node as a DebugLoc.
+  /// getDebugLoc - Return the debug location for this node as a DebugLoc.
   const DebugLoc &getDebugLoc() const { return DbgLoc; }
-
-  /// Set or clear the nsw flag on this instruction, which must be an operator
-  /// which supports this flag. See LangRef.html for the meaning of this flag.
-  void setHasNoUnsignedWrap(bool b = true);
-
-  /// Set or clear the nsw flag on this instruction, which must be an operator
-  /// which supports this flag. See LangRef.html for the meaning of this flag.
-  void setHasNoSignedWrap(bool b = true);
-
-  /// Set or clear the exact flag on this instruction, which must be an operator
-  /// which supports this flag. See LangRef.html for the meaning of this flag.
-  void setIsExact(bool b = true);
-
-  /// Determine whether the no unsigned wrap flag is set.
-  bool hasNoUnsignedWrap() const;
-
-  /// Determine whether the no signed wrap flag is set.
-  bool hasNoSignedWrap() const;
-
-  /// Determine whether the exact flag is set.
-  bool isExact() const;
 
   /// Set or clear the unsafe-algebra flag on this instruction, which must be an
   /// operator which supports this flag. See LangRef.html for the meaning of
@@ -312,16 +287,9 @@ public:
   /// Copy I's fast-math flags
   void copyFastMathFlags(const Instruction *I);
 
-  /// Convenience method to copy supported wrapping, exact, and fast-math flags
-  /// from V to this instruction.
-  void copyIRFlags(const Value *V);
-
-  /// Logical 'and' of any supported wrapping, exact, and fast-math flags of
-  /// V and this instruction.
-  void andIRFlags(const Value *V);
-
 private:
-  /// Return true if we have an entry in the on-the-side metadata hash.
+  /// hasMetadataHashEntry - Return true if we have an entry in the on-the-side
+  /// metadata hash.
   bool hasMetadataHashEntry() const {
     return (getSubclassDataFromValue() & HasMetadataBit) != 0;
   }
@@ -333,7 +301,6 @@ private:
   getAllMetadataImpl(SmallVectorImpl<std::pair<unsigned, MDNode *>> &) const;
   void getAllMetadataOtherThanDebugLocImpl(
       SmallVectorImpl<std::pair<unsigned, MDNode *>> &) const;
-  /// Clear all hashtable-based metadata from this instruction.
   void clearMetadataHashEntries();
 public:
   //===--------------------------------------------------------------------===//
@@ -341,7 +308,7 @@ public:
   //===--------------------------------------------------------------------===//
 
 
-  /// Return true if the instruction is associative:
+  /// isAssociative - Return true if the instruction is associative:
   ///
   ///   Associative operators satisfy:  x op (y op z) === (x op y) op z
   ///
@@ -350,7 +317,7 @@ public:
   bool isAssociative() const;
   static bool isAssociative(unsigned op);
 
-  /// Return true if the instruction is commutative:
+  /// isCommutative - Return true if the instruction is commutative:
   ///
   ///   Commutative operators satisfy: (x op y) === (y op x)
   ///
@@ -360,7 +327,7 @@ public:
   bool isCommutative() const { return isCommutative(getOpcode()); }
   static bool isCommutative(unsigned op);
 
-  /// Return true if the instruction is idempotent:
+  /// isIdempotent - Return true if the instruction is idempotent:
   ///
   ///   Idempotent operators satisfy:  x op x === x
   ///
@@ -369,7 +336,7 @@ public:
   bool isIdempotent() const { return isIdempotent(getOpcode()); }
   static bool isIdempotent(unsigned op);
 
-  /// Return true if the instruction is nilpotent:
+  /// isNilpotent - Return true if the instruction is nilpotent:
   ///
   ///   Nilpotent operators satisfy:  x op x === Id,
   ///
@@ -381,77 +348,61 @@ public:
   bool isNilpotent() const { return isNilpotent(getOpcode()); }
   static bool isNilpotent(unsigned op);
 
-  /// Return true if this instruction may modify memory.
+  /// mayWriteToMemory - Return true if this instruction may modify memory.
+  ///
   bool mayWriteToMemory() const;
 
-  /// Return true if this instruction may read memory.
+  /// mayReadFromMemory - Return true if this instruction may read memory.
+  ///
   bool mayReadFromMemory() const;
 
-  /// Return true if this instruction may read or write memory.
+  /// mayReadOrWriteMemory - Return true if this instruction may read or
+  /// write memory.
+  ///
   bool mayReadOrWriteMemory() const {
     return mayReadFromMemory() || mayWriteToMemory();
   }
 
-  /// Return true if this instruction has an AtomicOrdering of unordered or
-  /// higher.
+  /// isAtomic - Return true if this instruction has an
+  /// AtomicOrdering of unordered or higher.
+  ///
   bool isAtomic() const;
 
-  /// Return true if this instruction may throw an exception.
+  /// mayThrow - Return true if this instruction may throw an exception.
+  ///
   bool mayThrow() const;
 
-  /// Return true if this instruction behaves like a memory fence: it can load
-  /// or store to memory location without being given a memory location.
-  bool isFenceLike() const {
-    switch (getOpcode()) {
-    default:
-      return false;
-    // This list should be kept in sync with the list in mayWriteToMemory for
-    // all opcodes which don't have a memory location.
-    case Instruction::Fence:
-    case Instruction::CatchPad:
-    case Instruction::CatchRet:
-    case Instruction::Call:
-    case Instruction::Invoke:
-      return true;
-    }
-  }
+  /// mayReturn - Return true if this is a function that may return.
+  /// this is true for all normal instructions. The only exception
+  /// is functions that are marked with the 'noreturn' attribute.
+  ///
+  bool mayReturn() const;
 
-  /// Return true if the instruction may have side effects.
+  /// mayHaveSideEffects - Return true if the instruction may have side effects.
   ///
   /// Note that this does not consider malloc and alloca to have side
   /// effects because the newly allocated memory is completely invisible to
   /// instructions which don't use the returned value.  For cases where this
   /// matters, isSafeToSpeculativelyExecute may be more appropriate.
-  bool mayHaveSideEffects() const { return mayWriteToMemory() || mayThrow(); }
-
-  /// Return true if the instruction is a variety of EH-block.
-  bool isEHPad() const {
-    switch (getOpcode()) {
-    case Instruction::CatchSwitch:
-    case Instruction::CatchPad:
-    case Instruction::CleanupPad:
-    case Instruction::LandingPad:
-      return true;
-    default:
-      return false;
-    }
+  bool mayHaveSideEffects() const {
+    return mayWriteToMemory() || mayThrow() || !mayReturn();
   }
 
-  /// Create a copy of 'this' instruction that is identical in all ways except
-  /// the following:
+  /// clone() - Create a copy of 'this' instruction that is identical in all
+  /// ways except the following:
   ///   * The instruction has no parent
   ///   * The instruction has no name
   ///
   Instruction *clone() const;
 
-  /// Return true if the specified instruction is exactly identical to the
-  /// current one. This means that all operands match and any extra information
-  /// (e.g. load is volatile) agree.
+  /// isIdenticalTo - Return true if the specified instruction is exactly
+  /// identical to the current one.  This means that all operands match and any
+  /// extra information (e.g. load is volatile) agree.
   bool isIdenticalTo(const Instruction *I) const;
 
-  /// This is like isIdenticalTo, except that it ignores the
-  /// SubclassOptionalData flags, which specify conditions under which the
-  /// instruction's result is undefined.
+  /// isIdenticalToWhenDefined - This is like isIdenticalTo, except that it
+  /// ignores the SubclassOptionalData flags, which specify conditions
+  /// under which the instruction's result is undefined.
   bool isIdenticalToWhenDefined(const Instruction *I) const;
 
   /// When checking for operation equivalence (using isSameOperationAs) it is
@@ -474,9 +425,10 @@ public:
   /// @brief Determine if one instruction is the same operation as another.
   bool isSameOperationAs(const Instruction *I, unsigned flags = 0) const;
 
-  /// Return true if there are any uses of this instruction in blocks other than
-  /// the specified block. Note that PHI nodes are considered to evaluate their
-  /// operands in the corresponding predecessor block.
+  /// isUsedOutsideOfBlock - Return true if there are any uses of this
+  /// instruction in blocks other than the specified block.  Note that PHI nodes
+  /// are considered to evaluate their operands in the corresponding predecessor
+  /// block.
   bool isUsedOutsideOfBlock(const BasicBlock *BB) const;
 
 
@@ -516,13 +468,6 @@ public:
 #include "llvm/IR/Instruction.def"
   };
 
-  enum FuncletPadOps {
-#define  FIRST_FUNCLETPAD_INST(N)             FuncletPadOpsBegin = N,
-#define HANDLE_FUNCLETPAD_INST(N, OPC, CLASS) OPC = N,
-#define   LAST_FUNCLETPAD_INST(N)             FuncletPadOpsEnd = N+1
-#include "llvm/IR/Instruction.def"
-  };
-
   enum OtherOps {
 #define  FIRST_OTHER_INST(N)             OtherOpsBegin = N,
 #define HANDLE_OTHER_INST(N, OPC, CLASS) OPC = N,
@@ -544,7 +489,7 @@ private:
                          (V ? HasMetadataBit : 0));
   }
 
-  friend class SymbolTableListTraits<Instruction>;
+  friend class SymbolTableListTraits<Instruction, BasicBlock>;
   void setParent(BasicBlock *P);
 protected:
   // Instruction subclasses can stick up to 15 bits of stuff into the
@@ -569,6 +514,17 @@ private:
   /// Create a copy of this instruction.
   Instruction *cloneImpl() const;
 };
+
+inline Instruction *ilist_traits<Instruction>::createSentinel() const {
+  // Since i(p)lists always publicly derive from their corresponding traits,
+  // placing a data member in this class will augment the i(p)list.  But since
+  // the NodeTy is expected to be publicly derive from ilist_node<NodeTy>,
+  // there is a legal viable downcast from it to NodeTy. We use this trick to
+  // superimpose an i(p)list with a "ghostly" NodeTy, which becomes the
+  // sentinel. Dereferencing the sentinel is forbidden (save the
+  // ilist_node<NodeTy>), so no one will ever notice the superposition.
+  return static_cast<Instruction *>(&Sentinel);
+}
 
 // Instruction* is only 4-byte aligned.
 template<>

@@ -15,6 +15,7 @@
 #include "InstPrinter/PPCInstPrinter.h"
 #include "PPCMCAsmInfo.h"
 #include "PPCTargetStreamer.h"
+#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCExpr.h"
@@ -86,13 +87,24 @@ static MCAsmInfo *createPPCMCAsmInfo(const MCRegisterInfo &MRI,
   return MAI;
 }
 
-static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
-                              CodeModel::Model &CM) {
+static MCCodeGenInfo *createPPCMCCodeGenInfo(const Triple &TT, Reloc::Model RM,
+                                             CodeModel::Model CM,
+                                             CodeGenOpt::Level OL) {
+  MCCodeGenInfo *X = new MCCodeGenInfo();
+
+  if (RM == Reloc::Default) {
+    if (TT.isOSDarwin())
+      RM = Reloc::DynamicNoPIC;
+    else
+      RM = Reloc::Static;
+  }
   if (CM == CodeModel::Default) {
     if (!TT.isOSDarwin() &&
         (TT.getArch() == Triple::ppc64 || TT.getArch() == Triple::ppc64le))
       CM = CodeModel::Medium;
   }
+  X->initMCCodeGenInfo(RM, CM, OL);
+  return X;
 }
 
 namespace {
@@ -233,7 +245,7 @@ extern "C" void LLVMInitializePowerPCTargetMC() {
     RegisterMCAsmInfoFn C(*T, createPPCMCAsmInfo);
 
     // Register the MC codegen info.
-    TargetRegistry::registerMCAdjustCodeGenOpts(*T, adjustCodeGenOpts);
+    TargetRegistry::RegisterMCCodeGenInfo(*T, createPPCMCCodeGenInfo);
 
     // Register the MC instruction info.
     TargetRegistry::RegisterMCInstrInfo(*T, createPPCMCInstrInfo);

@@ -7,7 +7,8 @@ call void @bar()
 ret void
 }
 
-; CHECK: { call 0
-; CHECK:   allocframe(#0)
-; CHECK: 00000000:  R_HEX_B22_PCREL
+
+; CHECK: { allocframe(#0) }
+; CHECK: { call 0 }
+; CHECK: 00000004:  R_HEX_B22_PCREL
 ; CHECK: { dealloc_return }

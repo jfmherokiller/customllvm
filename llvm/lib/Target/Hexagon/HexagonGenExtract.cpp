@@ -195,7 +195,7 @@ bool HexagonGenExtract::convert(Instruction *In) {
       return false;
   }
 
-  IRBuilder<> IRB(In);
+  IRBuilder<> IRB(BB, In);
   Intrinsic::ID IntId = (BW == 32) ? Intrinsic::hexagon_S2_extractu
                                    : Intrinsic::hexagon_S2_extractup;
   Module *Mod = BB->getParent()->getParent();
@@ -242,9 +242,6 @@ bool HexagonGenExtract::visitBlock(BasicBlock *B) {
 
 
 bool HexagonGenExtract::runOnFunction(Function &F) {
-  if (skipFunction(F))
-    return false;
-
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   bool Changed;
 

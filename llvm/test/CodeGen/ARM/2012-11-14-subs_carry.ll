@@ -1,14 +1,10 @@
 ; RUN: llc < %s -mtriple=thumbv7-apple-ios -arm-atomic-cfg-tidy=0 | FileCheck %s
 
 ;CHECK-LABEL: foo:
-;CHECK: movs r0, #0
-;CHECK-NEXT: bx lr
+;CHECK: adds
+;CHECK-NEXT: adc
+;CHECK-NEXT: bx
 
-; Note: This test case originally checked, per r167963, for:
-;       adds
-;       adc
-;       bx
-; But SDAG now, like InstCombine, can fold everything away.
 ;rdar://12028498
 
 define i32 @foo() nounwind ssp {

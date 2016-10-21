@@ -59,22 +59,29 @@ namespace {
 
   // Numbering map for gep nodes. Used to keep track of ordering for
   // gep nodes.
-  struct NodeOrdering {
+  struct NodeNumbering : public std::map<const GepNode*,unsigned> {
+  };
+
+  struct NodeOrdering : public NodeNumbering {
     NodeOrdering() : LastNum(0) {}
-
-    void insert(const GepNode *N) { Map.insert(std::make_pair(N, ++LastNum)); }
-    void clear() { Map.clear(); }
-
-    bool operator()(const GepNode *N1, const GepNode *N2) const {
-      auto F1 = Map.find(N1), F2 = Map.find(N2);
-      assert(F1 != Map.end() && F2 != Map.end());
+#ifdef _MSC_VER
+    void special_insert_for_special_msvc(const GepNode *N)
+#else
+    using NodeNumbering::insert;
+    void insert(const GepNode* N)
+#endif
+    {
+      insert(std::make_pair(N, ++LastNum));
+    }
+    bool operator() (const GepNode* N1, const GepNode *N2) const {
+      const_iterator F1 = find(N1), F2 = find(N2);
+      assert(F1 != end() && F2 != end());
       return F1->second < F2->second;
     }
-
   private:
-    std::map<const GepNode *, unsigned> Map;
     unsigned LastNum;
   };
+
 
   class HexagonCommonGEP : public FunctionPass {
   public:
@@ -90,8 +97,8 @@ namespace {
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.addRequired<DominatorTreeWrapperPass>();
       AU.addPreserved<DominatorTreeWrapperPass>();
-      AU.addRequired<PostDominatorTreeWrapperPass>();
-      AU.addPreserved<PostDominatorTreeWrapperPass>();
+      AU.addRequired<PostDominatorTree>();
+      AU.addPreserved<PostDominatorTree>();
       AU.addRequired<LoopInfoWrapperPass>();
       AU.addPreserved<LoopInfoWrapperPass>();
       FunctionPass::getAnalysisUsage(AU);
@@ -147,7 +154,7 @@ char HexagonCommonGEP::ID = 0;
 INITIALIZE_PASS_BEGIN(HexagonCommonGEP, "hcommgep", "Hexagon Common GEP",
       false, false)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(PostDominatorTreeWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(PostDominatorTree)
 INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
 INITIALIZE_PASS_END(HexagonCommonGEP, "hcommgep", "Hexagon Common GEP",
       false, false)
@@ -212,6 +219,7 @@ namespace {
       if (Comma)
         OS << ',';
       OS << "used";
+      Comma = true;
     }
     OS << "} ";
     if (GN.Flags & GepNode::Root)
@@ -352,7 +360,11 @@ void HexagonCommonGEP::processGepInst(GetElementPtrInst *GepI,
     Us.insert(&UI.getUse());
   }
   Nodes.push_back(N);
+#ifdef _MSC_VER
+  NodeOrder.special_insert_for_special_msvc(N);
+#else
   NodeOrder.insert(N);
+#endif
 
   // Skip the first index operand, since we only handle 0. This dereferences
   // the pointer operand.
@@ -367,7 +379,11 @@ void HexagonCommonGEP::processGepInst(GetElementPtrInst *GepI,
     Nx->PTy = PtrTy;
     Nx->Idx = Op;
     Nodes.push_back(Nx);
+#ifdef _MSC_VER
+    NodeOrder.special_insert_for_special_msvc(Nx);
+#else
     NodeOrder.insert(Nx);
+#endif
     PN = Nx;
 
     PtrTy = next_type(PtrTy, Op);
@@ -388,7 +404,7 @@ void HexagonCommonGEP::processGepInst(GetElementPtrInst *GepI,
 void HexagonCommonGEP::collect() {
   // Establish depth-first traversal order of the dominator tree.
   ValueVect BO;
-  getBlockTraversalOrder(&Fn->front(), BO);
+  getBlockTraversalOrder(Fn->begin(), BO);
 
   // The creation of gep nodes requires DT-traversal. When processing a GEP
   // instruction that uses another GEP instruction as the base pointer, the
@@ -721,7 +737,7 @@ namespace {
       Instruction *In = cast<Instruction>(V);
       if (In->getParent() != B)
         continue;
-      BasicBlock::iterator It = In->getIterator();
+      BasicBlock::iterator It = In;
       if (std::distance(FirstUse, BEnd) < std::distance(It, BEnd))
         FirstUse = It;
     }
@@ -1119,7 +1135,7 @@ Value *HexagonCommonGEP::fabricateGEP(NodeVect &NA, BasicBlock::iterator At,
     ArrayRef<Value*> A(IdxList, IdxC);
     Type *InpTy = Input->getType();
     Type *ElTy = cast<PointerType>(InpTy->getScalarType())->getElementType();
-    NewInst = GetElementPtrInst::Create(ElTy, Input, A, "cgep", &*At);
+    NewInst = GetElementPtrInst::Create(ElTy, Input, A, "cgep", At);
     DEBUG(dbgs() << "new GEP: " << *NewInst << '\n');
     Input = NewInst;
   } while (nax <= Num);
@@ -1197,7 +1213,7 @@ void HexagonCommonGEP::materialize(NodeToValueMap &Loc) {
       Last = Child;
     } while (true);
 
-    BasicBlock::iterator InsertAt = LastB->getTerminator()->getIterator();
+    BasicBlock::iterator InsertAt = LastB->getTerminator();
     if (LastUsed || LastCN > 0) {
       ValueVect Urs;
       getAllUsersForNode(Root, Urs, NCM);
@@ -1267,9 +1283,6 @@ void HexagonCommonGEP::removeDeadCode() {
 
 
 bool HexagonCommonGEP::runOnFunction(Function &F) {
-  if (skipFunction(F))
-    return false;
-
   // For now bail out on C++ exception handling.
   for (Function::iterator A = F.begin(), Z = F.end(); A != Z; ++A)
     for (BasicBlock::iterator I = A->begin(), E = A->end(); I != E; ++I)
@@ -1278,7 +1291,7 @@ bool HexagonCommonGEP::runOnFunction(Function &F) {
 
   Fn = &F;
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-  PDT = &getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
+  PDT = &getAnalysis<PostDominatorTree>();
   LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
   Ctx = &F.getContext();
 
@@ -1297,7 +1310,7 @@ bool HexagonCommonGEP::runOnFunction(Function &F) {
   materialize(Loc);
   removeDeadCode();
 
-#ifdef EXPENSIVE_CHECKS
+#ifdef XDEBUG
   // Run this only when expensive checks are enabled.
   verifyFunction(F);
 #endif

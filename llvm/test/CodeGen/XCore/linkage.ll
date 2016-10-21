@@ -42,8 +42,9 @@ define protected void @test_protected() {
 
 ; CHECK-NOT: .hidden test_hidden_declaration
 
+; CHECK: .weak gr
+@gr = extern_weak global i32
+
 ; CHECK: .weak fr
 declare extern_weak void @fr(i32*, i32*)
 
-; CHECK: .weak gr
-@gr = extern_weak global i32

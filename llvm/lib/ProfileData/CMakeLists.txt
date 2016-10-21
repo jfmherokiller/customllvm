@@ -2,7 +2,9 @@ add_llvm_library(LLVMProfileData
   InstrProf.cpp
   InstrProfReader.cpp
   InstrProfWriter.cpp
-  ProfileSummaryBuilder.cpp
+  CoverageMapping.cpp
+  CoverageMappingWriter.cpp
+  CoverageMappingReader.cpp
   SampleProf.cpp
   SampleProfReader.cpp
   SampleProfWriter.cpp
@@ -13,5 +15,3 @@ add_llvm_library(LLVMProfileData
   DEPENDS
   intrinsics_gen
   )
-
-add_subdirectory(Coverage)

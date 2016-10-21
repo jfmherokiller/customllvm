@@ -36,7 +36,7 @@ class LLVMContext;
 
 class DebugCrashes;
 
-class CC;
+class GCC;
 
 extern bool DisableSimplifyCFG;
 
@@ -52,7 +52,7 @@ class BugDriver {
   std::vector<std::string> PassesToRun;
   AbstractInterpreter *Interpreter;   // How to run the program
   AbstractInterpreter *SafeInterpreter;  // To generate reference output, etc.
-  CC *cc;
+  GCC *gcc;
   bool run_find_bugs;
   unsigned Timeout;
   unsigned MemoryLimit;
@@ -76,7 +76,7 @@ public:
   // command line arguments into instance variables of BugDriver.
   //
   bool addSources(const std::vector<std::string> &FileNames);
-  void addPass(std::string p) { PassesToRun.push_back(std::move(p)); }
+  void addPass(std::string p) { PassesToRun.push_back(p); }
   void setPassesToRun(const std::vector<std::string> &PTR) {
     PassesToRun = PTR;
   }
@@ -130,6 +130,12 @@ public:
   ///
   bool isExecutingJIT();
 
+  /// runPasses - Run all of the passes in the "PassesToRun" list, discard the
+  /// output, and return true if any of the passes crashed.
+  bool runPasses(Module *M) const {
+    return runPasses(M, PassesToRun);
+  }
+
   Module *getProgram() const { return Program; }
 
   /// swapProgramIn - Set the current module to the specified module, returning
@@ -177,7 +183,7 @@ public:
   /// Error.
   ///
   std::string executeProgramSafely(const Module *Program,
-                                   const std::string &OutputFile,
+                                   std::string OutputFile,
                                    std::string *Error) const;
 
   /// createReferenceFile - calls compileProgram and then records the output
@@ -237,8 +243,12 @@ public:
 
   /// Carefully run the specified set of pass on the specified/ module,
   /// returning the transformed module on success, or a null pointer on failure.
+  /// If AutoDebugCrashes is set to true, then bugpoint will automatically
+  /// attempt to track down a crashing pass if one exists, and this method will
+  /// never return null.
   std::unique_ptr<Module> runPassesOn(Module *M,
                                       const std::vector<std::string> &Passes,
+                                      bool AutoDebugCrashes = false,
                                       unsigned NumExtraArgs = 0,
                                       const char *const *ExtraArgs = nullptr);
 
@@ -256,16 +266,6 @@ public:
                  std::string &OutputFilename, bool DeleteOutput = false,
                  bool Quiet = false, unsigned NumExtraArgs = 0,
                  const char * const *ExtraArgs = nullptr) const;
-
-  /// runPasses - Just like the method above, but this just returns true or
-  /// false indicating whether or not the optimizer crashed on the specified
-  /// input (true = crashed).  Does not produce any output.
-  ///
-  bool runPasses(Module *M,
-                 const std::vector<std::string> &PassesToRun) const {
-    std::string Filename;
-    return runPasses(M, PassesToRun, Filename, true);
-  }
                  
   /// runManyPasses - Take the specified pass list and create different 
   /// combinations of passes to compile the program with. Compile the program with
@@ -285,6 +285,17 @@ public:
                           const Module *M) const;
 
 private:
+  /// runPasses - Just like the method above, but this just returns true or
+  /// false indicating whether or not the optimizer crashed on the specified
+  /// input (true = crashed).
+  ///
+  bool runPasses(Module *M,
+                 const std::vector<std::string> &PassesToRun,
+                 bool DeleteOutput = true) const {
+    std::string Filename;
+    return runPasses(M, PassesToRun, Filename, DeleteOutput);
+  }
+
   /// initializeExecutionEnvironment - This method is used to set up the
   /// environment for executing LLVM programs.
   ///
@@ -310,21 +321,16 @@ void PrintFunctionList(const std::vector<Function*> &Funcs);
 ///
 void PrintGlobalVariableList(const std::vector<GlobalVariable*> &GVs);
 
-// DeleteGlobalInitializer - "Remove" the global variable by deleting its
-// initializer, making it external.
-//
-void DeleteGlobalInitializer(GlobalVariable *GV);
-
 // DeleteFunctionBody - "Remove" the function by deleting all of it's basic
 // blocks, making it external.
 //
 void DeleteFunctionBody(Function *F);
 
-/// Given a module and a list of functions in the module, split the functions
-/// OUT of the specified module, and place them in the new module.
-std::unique_ptr<Module>
-SplitFunctionsOutOfModule(Module *M, const std::vector<Function *> &F,
-                          ValueToValueMapTy &VMap);
+/// SplitFunctionsOutOfModule - Given a module and a list of functions in the
+/// module, split the functions OUT of the specified module, and place them in
+/// the new module.
+Module *SplitFunctionsOutOfModule(Module *M, const std::vector<Function*> &F,
+                                  ValueToValueMapTy &VMap);
 
 } // End llvm namespace
 

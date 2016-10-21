@@ -13,7 +13,6 @@ add_public_tablegen_target(SparcCommonTableGen)
 
 add_llvm_target(SparcCodeGen
   DelaySlotFiller.cpp
-  LeonPasses.cpp
   SparcAsmPrinter.cpp
   SparcInstrInfo.cpp
   SparcISelDAGToDAG.cpp

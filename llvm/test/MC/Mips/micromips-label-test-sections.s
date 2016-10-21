@@ -14,9 +14,7 @@ h:
 # CHECK:     Name: f
 # CHECK:     Binding: Local
 # CHECK:     Type: None
-# CHECK:     Other [ (0x80)
-# CHECK:       STO_MIPS_MICROMIPS
-# CHECK:     ]
+# CHECK:     Other: 128
 # CHECK:     Section: .text
 # CHECK:   }
 # CHECK:   Symbol {
@@ -30,9 +28,7 @@ h:
 # CHECK:     Name: h
 # CHECK:     Binding: Local
 # CHECK:     Type: None
-# CHECK:     Other [ (0x80)
-# CHECK:       STO_MIPS_MICROMIPS
-# CHECK:     ]
+# CHECK:     Other: 128
 # CHECK:     Section: .text
 # CHECK:   }
 # CHECK: ]

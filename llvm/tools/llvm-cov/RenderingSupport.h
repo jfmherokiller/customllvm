@@ -55,7 +55,6 @@ inline ColoredRawOstream colored_ostream(raw_ostream &OS,
     OS.changeColor(Color, Bold, BG);
   return ColoredRawOstream(OS, IsColorUsed);
 }
-
-} // namespace llvm
+}
 
 #endif // LLVM_COV_RENDERINGSUPPORT_H

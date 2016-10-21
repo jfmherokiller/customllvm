@@ -13,7 +13,6 @@
 
 #include "TableGenBackends.h" // Declares all backends.
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/TableGen/Error.h"
@@ -42,9 +41,7 @@ enum ActionType {
   PrintEnums,
   PrintSets,
   GenOptParserDefs,
-  GenCTags,
-  GenAttributes,
-  GenSearchableTables,
+  GenCTags
 };
 
 namespace {
@@ -88,10 +85,6 @@ namespace {
                                "Generate option definitions"),
                     clEnumValN(GenCTags, "gen-ctags",
                                "Generate ctags-compatible index"),
-                    clEnumValN(GenAttributes, "gen-attrs",
-                               "Generate attributes"),
-                    clEnumValN(GenSearchableTables, "gen-searchable-tables",
-                               "Generate generic binary-searchable table"),
                     clEnumValEnd));
 
   cl::opt<std::string>
@@ -172,12 +165,6 @@ bool LLVMTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
   case GenCTags:
     EmitCTags(Records, OS);
     break;
-  case GenAttributes:
-    EmitAttributes(Records, OS);
-    break;
-  case GenSearchableTables:
-    EmitSearchableTables(Records, OS);
-    break;
   }
 
   return false;
@@ -185,11 +172,9 @@ bool LLVMTableGenMain(raw_ostream &OS, RecordKeeper &Records) {
 }
 
 int main(int argc, char **argv) {
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
+  sys::PrintStackTraceOnErrorSignal();
   PrettyStackTraceProgram X(argc, argv);
   cl::ParseCommandLineOptions(argc, argv);
-
-  llvm_shutdown_obj Y;
 
   return TableGenMain(argv[0], &LLVMTableGenMain);
 }

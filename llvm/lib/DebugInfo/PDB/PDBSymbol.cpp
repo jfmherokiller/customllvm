@@ -50,7 +50,6 @@
 #include <utility>
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 PDBSymbol::PDBSymbol(const IPDBSession &PDBSession,
                      std::unique_ptr<IPDBRawSymbol> Symbol)
@@ -113,7 +112,6 @@ void PDBSymbol::defaultDump(raw_ostream &OS, int Indent) const {
 }
 
 PDB_SymType PDBSymbol::getSymTag() const { return RawSymbol->getSymTag(); }
-uint32_t PDBSymbol::getSymIndexId() const { return RawSymbol->getSymIndexId(); }
 
 std::unique_ptr<IPDBEnumSymbols> PDBSymbol::findAllChildren() const {
   return findAllChildren(PDB_SymType::None);

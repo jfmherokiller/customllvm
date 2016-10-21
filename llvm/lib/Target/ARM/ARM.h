@@ -27,7 +27,6 @@ class FunctionPass;
 class ImmutablePass;
 class MachineInstr;
 class MCInst;
-class PassRegistry;
 class TargetLowering;
 class TargetMachine;
 
@@ -36,6 +35,7 @@ FunctionPass *createARMISelDag(ARMBaseTargetMachine &TM,
 FunctionPass *createA15SDOptimizerPass();
 FunctionPass *createARMLoadStoreOptimizationPass(bool PreAlloc = false);
 FunctionPass *createARMExpandPseudoPass();
+FunctionPass *createARMGlobalBaseRegPass();
 FunctionPass *createARMConstantIslandPass();
 FunctionPass *createMLxExpansionPass();
 FunctionPass *createThumb2ITBlockPass();
@@ -45,9 +45,6 @@ FunctionPass *createThumb2SizeReductionPass(
 
 void LowerARMMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
                                   ARMAsmPrinter &AP);
-
-void initializeARMLoadStoreOptPass(PassRegistry &);
-void initializeARMPreAllocLoadStoreOptPass(PassRegistry &);
 
 } // end namespace llvm;
 

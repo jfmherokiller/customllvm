@@ -10,6 +10,7 @@
 #include "SystemZMCTargetDesc.h"
 #include "InstPrinter/SystemZInstPrinter.h"
 #include "SystemZMCAsmInfo.h"
+#include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
@@ -158,8 +159,17 @@ createSystemZMCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
   return createSystemZMCSubtargetInfoImpl(TT, CPU, FS);
 }
 
-static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
-                              CodeModel::Model &CM) {
+static MCCodeGenInfo *createSystemZMCCodeGenInfo(const Triple &TT,
+                                                 Reloc::Model RM,
+                                                 CodeModel::Model CM,
+                                                 CodeGenOpt::Level OL) {
+  MCCodeGenInfo *X = new MCCodeGenInfo();
+
+  // Static code is suitable for use in a dynamic executable; there is no
+  // separate DynamicNoPIC model.
+  if (RM == Reloc::Default || RM == Reloc::DynamicNoPIC)
+    RM = Reloc::Static;
+
   // For SystemZ we define the models as follows:
   //
   // Small:  BRASL can call any function and will use a stub if necessary.
@@ -193,6 +203,8 @@ static void adjustCodeGenOpts(const Triple &TT, Reloc::Model RM,
     CM = CodeModel::Small;
   else if (CM == CodeModel::JITDefault)
     CM = RM == Reloc::PIC_ ? CodeModel::Small : CodeModel::Medium;
+  X->initMCCodeGenInfo(RM, CM, OL);
+  return X;
 }
 
 static MCInstPrinter *createSystemZMCInstPrinter(const Triple &T,
@@ -208,13 +220,13 @@ extern "C" void LLVMInitializeSystemZTargetMC() {
   TargetRegistry::RegisterMCAsmInfo(TheSystemZTarget,
                                     createSystemZMCAsmInfo);
 
-  // Register the adjustCodeGenOpts.
-  TargetRegistry::registerMCAdjustCodeGenOpts(TheSystemZTarget,
-                                              adjustCodeGenOpts);
+  // Register the MCCodeGenInfo.
+  TargetRegistry::RegisterMCCodeGenInfo(TheSystemZTarget,
+                                        createSystemZMCCodeGenInfo);
 
   // Register the MCCodeEmitter.
   TargetRegistry::RegisterMCCodeEmitter(TheSystemZTarget,
-                                        createSystemZMCCodeEmitter);
+					createSystemZMCCodeEmitter);
 
   // Register the MCInstrInfo.
   TargetRegistry::RegisterMCInstrInfo(TheSystemZTarget,

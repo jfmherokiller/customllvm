@@ -43,12 +43,6 @@ class GoogleTest(TestFormat):
             if not ln.strip():
                 continue
 
-            if 'Running main() from gtest_main.cc' in ln:
-                # Upstream googletest prints this to stdout prior to running
-                # tests. LLVM removed that print statement in r61540, but we
-                # handle it here in case upstream googletest is being used.
-                continue
-
             prefix = ''
             index = 0
             while ln[index*2:index*2+2] == '  ':
@@ -115,15 +109,8 @@ class GoogleTest(TestFormat):
         if litConfig.noExecute:
             return lit.Test.PASS, ''
 
-        try:
-            out, err, exitCode = lit.util.executeCommand(
-                cmd, env=test.config.environment,
-                timeout=litConfig.maxIndividualTestTime)
-        except lit.util.ExecuteCommandTimeoutException:
-            return (lit.Test.TIMEOUT,
-                    'Reached timeout of {} seconds'.format(
-                        litConfig.maxIndividualTestTime)
-                   )
+        out, err, exitCode = lit.util.executeCommand(
+            cmd, env=test.config.environment)
 
         if exitCode:
             return lit.Test.FAIL, out + err

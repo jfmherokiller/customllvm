@@ -90,7 +90,7 @@ of the classes, then all of the definitions.  This is a good way to see what the
 various definitions expand to fully.  Running this on the ``X86.td`` file prints
 this (at the time of this writing):
 
-.. code-block:: text
+.. code-block:: llvm
 
   ...
   def ADD32rr {   // Instruction X86Inst I
@@ -155,7 +155,7 @@ by the code generator, and specifying it all manually would be unmaintainable,
 prone to bugs, and tiring to do in the first place.  Because we are using
 TableGen, all of the information was derived from the following definition:
 
-.. code-block:: text
+.. code-block:: llvm
 
   let Defs = [EFLAGS],
       isCommutable = 1,                  // X = ADD Y,Z --> X = ADD Z,Y
@@ -201,7 +201,7 @@ TableGen.
 **TableGen definitions** are the concrete form of 'records'.  These generally do
 not have any undefined values, and are marked with the '``def``' keyword.
 
-.. code-block:: text
+.. code-block:: llvm
 
   def FeatureFPARMv8 : SubtargetFeature<"fp-armv8", "HasFPARMv8", "true",
                                         "Enable ARMv8 FP">;
@@ -220,7 +220,7 @@ floating point instructions in the X86 backend).  TableGen keeps track of all of
 the classes that are used to build up a definition, so the backend can find all
 definitions of a particular class, such as "Instruction".
 
-.. code-block:: text
+.. code-block:: llvm
 
  class ProcNoItin<string Name, list<SubtargetFeature> Features>
        : Processor<Name, NoItineraries, Features>;
@@ -235,7 +235,7 @@ If a multiclass inherits from another multiclass, the definitions in the
 sub-multiclass become part of the current multiclass, as if they were declared
 in the current multiclass.
 
-.. code-block:: text
+.. code-block:: llvm
 
   multiclass ro_signed_pats<string T, string Rm, dag Base, dag Offset, dag Extend,
                           dag address, ValueType sty> {

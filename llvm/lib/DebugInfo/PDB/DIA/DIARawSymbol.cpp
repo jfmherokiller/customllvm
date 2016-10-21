@@ -7,77 +7,64 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/DebugInfo/PDB/DIA/DIARawSymbol.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/DebugInfo/PDB/DIA/DIAEnumSymbols.h"
+#include "llvm/DebugInfo/PDB/DIA/DIARawSymbol.h"
 #include "llvm/DebugInfo/PDB/DIA/DIASession.h"
 #include "llvm/DebugInfo/PDB/PDBExtras.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 namespace {
 Variant VariantFromVARIANT(const VARIANT &V) {
   Variant Result;
   switch (V.vt) {
   case VT_I1:
-    Result.Value.Int8 = V.cVal;
+    Result.Int8 = V.cVal;
     Result.Type = PDB_VariantType::Int8;
     break;
   case VT_I2:
-    Result.Value.Int16 = V.iVal;
+    Result.Int16 = V.iVal;
     Result.Type = PDB_VariantType::Int16;
     break;
   case VT_I4:
-    Result.Value.Int32 = V.intVal;
+    Result.Int32 = V.intVal;
     Result.Type = PDB_VariantType::Int32;
     break;
   case VT_I8:
-    Result.Value.Int64 = V.llVal;
+    Result.Int64 = V.llVal;
     Result.Type = PDB_VariantType::Int64;
     break;
   case VT_UI1:
-    Result.Value.UInt8 = V.bVal;
+    Result.UInt8 = V.bVal;
     Result.Type = PDB_VariantType::UInt8;
     break;
   case VT_UI2:
-    Result.Value.UInt16 = V.uiVal;
+    Result.UInt16 = V.uiVal;
     Result.Type = PDB_VariantType::UInt16;
     break;
   case VT_UI4:
-    Result.Value.UInt32 = V.uintVal;
+    Result.UInt32 = V.uintVal;
     Result.Type = PDB_VariantType::UInt32;
     break;
   case VT_UI8:
-    Result.Value.UInt64 = V.ullVal;
+    Result.UInt64 = V.ullVal;
     Result.Type = PDB_VariantType::UInt64;
     break;
   case VT_BOOL:
-    Result.Value.Bool = (V.boolVal == VARIANT_TRUE) ? true : false;
+    Result.Bool = (V.boolVal == VARIANT_TRUE) ? true : false;
     Result.Type = PDB_VariantType::Bool;
     break;
   case VT_R4:
-    Result.Value.Single = V.fltVal;
+    Result.Single = V.fltVal;
     Result.Type = PDB_VariantType::Single;
     break;
   case VT_R8:
-    Result.Value.Double = V.dblVal;
+    Result.Double = V.dblVal;
     Result.Type = PDB_VariantType::Double;
     break;
-  case VT_BSTR: {
-    const char *SrcBytes = reinterpret_cast<const char *>(V.bstrVal);
-    llvm::ArrayRef<char> SrcByteArray(SrcBytes, SysStringByteLen(V.bstrVal));
-    std::string Result8;
-    if (!llvm::convertUTF16ToUTF8String(SrcByteArray, Result8))
-      Result.Value.String = nullptr;
-    Result.Value.String = new char[Result8.length() + 1];
-    ::strcpy(Result.Value.String, Result8.c_str());
-    Result.Type = PDB_VariantType::String;
-    break;
-  }
   default:
     Result.Type = PDB_VariantType::Unknown;
     break;
@@ -534,8 +521,8 @@ uint32_t DIARawSymbol::getLiveRangeStartRelativeVirtualAddress() const {
       Symbol, &IDiaSymbol::get_liveRangeStartRelativeVirtualAddress);
 }
 
-codeview::RegisterId DIARawSymbol::getLocalBasePointerRegisterId() const {
-  return PrivateGetDIAValue<DWORD, codeview::RegisterId>(
+PDB_RegisterId DIARawSymbol::getLocalBasePointerRegisterId() const {
+  return PrivateGetDIAValue<DWORD, PDB_RegisterId>(
       Symbol, &IDiaSymbol::get_localBasePointerRegisterId);
 }
 
@@ -596,9 +583,9 @@ uint32_t DIARawSymbol::getRank() const {
   return PrivateGetDIAValue(Symbol, &IDiaSymbol::get_rank);
 }
 
-codeview::RegisterId DIARawSymbol::getRegisterId() const {
-  return PrivateGetDIAValue<DWORD, codeview::RegisterId>(
-      Symbol, &IDiaSymbol::get_registerId);
+PDB_RegisterId DIARawSymbol::getRegisterId() const {
+  return PrivateGetDIAValue<DWORD, PDB_RegisterId>(Symbol,
+                                                   &IDiaSymbol::get_registerId);
 }
 
 uint32_t DIARawSymbol::getRegisterType() const {
@@ -751,8 +738,8 @@ PDB_Machine DIARawSymbol::getMachineType() const {
                                                 &IDiaSymbol::get_machineType);
 }
 
-codeview::ThunkOrdinal DIARawSymbol::getThunkOrdinal() const {
-  return PrivateGetDIAValue<DWORD, codeview::ThunkOrdinal>(
+PDB_ThunkOrdinal DIARawSymbol::getThunkOrdinal() const {
+  return PrivateGetDIAValue<DWORD, PDB_ThunkOrdinal>(
       Symbol, &IDiaSymbol::get_thunkOrdinal);
 }
 

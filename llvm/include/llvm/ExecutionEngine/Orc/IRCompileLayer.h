@@ -37,6 +37,9 @@ public:
 private:
   typedef typename BaseLayerT::ObjSetHandleT ObjSetHandleT;
 
+  typedef std::vector<std::unique_ptr<object::ObjectFile>> OwningObjectVec;
+  typedef std::vector<std::unique_ptr<MemoryBuffer>> OwningBufferVec;
+
 public:
   /// @brief Handle to a set of compiled modules.
   typedef ObjSetHandleT ModuleSetHandleT;
@@ -59,29 +62,30 @@ public:
   ModuleSetHandleT addModuleSet(ModuleSetT Ms,
                                 MemoryManagerPtrT MemMgr,
                                 SymbolResolverPtrT Resolver) {
-    std::vector<std::unique_ptr<object::OwningBinary<object::ObjectFile>>>
-      Objects;
+    OwningObjectVec Objects;
+    OwningBufferVec Buffers;
 
     for (const auto &M : Ms) {
-      auto Object =
-        llvm::make_unique<object::OwningBinary<object::ObjectFile>>();
+      std::unique_ptr<object::ObjectFile> Object;
+      std::unique_ptr<MemoryBuffer> Buffer;
 
       if (ObjCache)
-        *Object = tryToLoadFromObjectCache(*M);
+        std::tie(Object, Buffer) = tryToLoadFromObjectCache(*M).takeBinary();
 
-      if (!Object->getBinary()) {
-        *Object = Compile(*M);
+      if (!Object) {
+        std::tie(Object, Buffer) = Compile(*M).takeBinary();
         if (ObjCache)
-          ObjCache->notifyObjectCompiled(&*M,
-                                     Object->getBinary()->getMemoryBufferRef());
+          ObjCache->notifyObjectCompiled(&*M, Buffer->getMemBufferRef());
       }
 
       Objects.push_back(std::move(Object));
+      Buffers.push_back(std::move(Buffer));
     }
 
     ModuleSetHandleT H =
-      BaseLayer.addObjectSet(std::move(Objects), std::move(MemMgr),
-                             std::move(Resolver));
+      BaseLayer.addObjectSet(Objects, std::move(MemMgr), std::move(Resolver));
+
+    BaseLayer.takeOwnershipOfBuffers(H, std::move(Buffers));
 
     return H;
   }
@@ -124,13 +128,10 @@ private:
     if (!ObjBuffer)
       return object::OwningBinary<object::ObjectFile>();
 
-    Expected<std::unique_ptr<object::ObjectFile>> Obj =
+    ErrorOr<std::unique_ptr<object::ObjectFile>> Obj =
         object::ObjectFile::createObjectFile(ObjBuffer->getMemBufferRef());
-    if (!Obj) {
-      // TODO: Actually report errors helpfully.
-      consumeError(Obj.takeError());
+    if (!Obj)
       return object::OwningBinary<object::ObjectFile>();
-    }
 
     return object::OwningBinary<object::ObjectFile>(std::move(*Obj),
                                                     std::move(ObjBuffer));

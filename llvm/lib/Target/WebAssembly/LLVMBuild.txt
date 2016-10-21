@@ -16,18 +16,17 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = Disassembler InstPrinter MCTargetDesc TargetInfo
+subdirectories = InstPrinter MCTargetDesc TargetInfo
 
 [component_0]
 type = TargetGroup
 name = WebAssembly
 parent = Target
 has_asmprinter = 1
-has_disassembler = 1
 
 [component_1]
 type = Library
 name = WebAssemblyCodeGen
 parent = WebAssembly
-required_libraries = Analysis AsmPrinter CodeGen Core MC Scalar SelectionDAG Support Target WebAssemblyAsmPrinter WebAssemblyDesc WebAssemblyInfo
+required_libraries = Analysis AsmPrinter CodeGen Core MC Scalar SelectionDAG Support Target WebAssemblyDesc WebAssemblyInfo
 add_to_library_groups = WebAssembly

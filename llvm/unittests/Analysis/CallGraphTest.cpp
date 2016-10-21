@@ -44,16 +44,14 @@ template <typename Ty> void canSpecializeGraphTraitsIterators(Ty *G) {
 }
 
 TEST(CallGraphTest, GraphTraitsSpecialization) {
-  LLVMContext Context;
-  Module M("", Context);
+  Module M("", getGlobalContext());
   CallGraph CG(M);
 
   canSpecializeGraphTraitsIterators(&CG);
 }
 
 TEST(CallGraphTest, GraphTraitsConstSpecialization) {
-  LLVMContext Context;
-  Module M("", Context);
+  Module M("", getGlobalContext());
   CallGraph CG(M);
 
   canSpecializeGraphTraitsIterators(const_cast<const CallGraph *>(&CG));

@@ -9,6 +9,7 @@
 
 #include "llvm/IR/DebugLoc.h"
 #include "LLVMContextImpl.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/IR/DebugInfo.h"
 using namespace llvm;
 
@@ -66,7 +67,7 @@ DebugLoc DebugLoc::get(unsigned Line, unsigned Col, const MDNode *Scope,
                          const_cast<MDNode *>(InlinedAt));
 }
 
-LLVM_DUMP_METHOD void DebugLoc::dump() const {
+void DebugLoc::dump() const {
 #ifndef NDEBUG
   if (!Loc)
     return;

@@ -223,7 +223,6 @@ MACHO-X86-64-NEXT:      SomeInstructions (0x4)
 MACHO-X86-64-NEXT:    ]
 MACHO-X86-64-NEXT:    Reserved1: 0x0
 MACHO-X86-64-NEXT:    Reserved2: 0x0
-MACHO-X86-64-NEXT:    Reserved3: 0x0
 MACHO-X86-64-NEXT:    Relocations [
 MACHO-X86-64-NEXT:      0xE 1 2 1 X86_64_RELOC_BRANCH 0 _SomeOtherFunction
 MACHO-X86-64-NEXT:      0x9 1 2 1 X86_64_RELOC_BRANCH 0 _puts
@@ -261,7 +260,6 @@ MACHO-X86-64-NEXT:    Attributes [ (0x0)
 MACHO-X86-64-NEXT:    ]
 MACHO-X86-64-NEXT:    Reserved1: 0x0
 MACHO-X86-64-NEXT:    Reserved2: 0x0
-MACHO-X86-64-NEXT:    Reserved3: 0x0
 MACHO-X86-64-NEXT:    Relocations [
 MACHO-X86-64-NEXT:    ]
 MACHO-X86-64-NEXT:    Symbols [
@@ -516,7 +514,6 @@ MACHO-PPC64-NEXT:       SomeInstructions (0x4)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x0
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:     Relocations [
 MACHO-PPC64-NEXT:       Relocation {
 MACHO-PPC64-NEXT:         Offset: 0x24
@@ -590,7 +587,6 @@ MACHO-PPC64-NEXT:       SomeInstructions (0x4)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x0
 MACHO-PPC64-NEXT:     Reserved2: 0x20
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:     Relocations [
 MACHO-PPC64-NEXT:       Relocation {
 MACHO-PPC64-NEXT:         Offset: 0x14
@@ -643,7 +639,6 @@ MACHO-PPC64-NEXT:     Attributes [ (0x0)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x0
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:     Relocations [
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Symbols [
@@ -677,7 +672,6 @@ MACHO-PPC64-NEXT:     Attributes [ (0x0)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x1
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:     Relocations [
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Symbols [
@@ -701,7 +695,6 @@ MACHO-PPC64-NEXT:     Attributes [ (0x0)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x2
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:     Relocations [
 MACHO-PPC64-NEXT:       Relocation {
 MACHO-PPC64-NEXT:         Offset: 0x0

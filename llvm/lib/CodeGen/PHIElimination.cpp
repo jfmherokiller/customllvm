@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/CodeGen/Passes.h"
 #include "PHIEliminationUtils.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -24,9 +25,9 @@
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineLoopInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
-#include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
@@ -120,7 +121,6 @@ INITIALIZE_PASS_END(PHIElimination, "phi-node-elimination",
                     "Eliminate PHI nodes for register allocation", false, false)
 
 void PHIElimination::getAnalysisUsage(AnalysisUsage &AU) const {
-  AU.addUsedIfAvailable<LiveVariables>();
   AU.addPreserved<LiveVariables>();
   AU.addPreserved<SlotIndexes>();
   AU.addPreserved<LiveIntervals>();
@@ -159,16 +159,17 @@ bool PHIElimination::runOnMachineFunction(MachineFunction &MF) {
     unsigned DefReg = DefMI->getOperand(0).getReg();
     if (MRI->use_nodbg_empty(DefReg)) {
       if (LIS)
-        LIS->RemoveMachineInstrFromMaps(*DefMI);
+        LIS->RemoveMachineInstrFromMaps(DefMI);
       DefMI->eraseFromParent();
     }
   }
 
   // Clean up the lowered PHI instructions.
-  for (auto &I : LoweredPHIs) {
+  for (LoweredPHIMap::iterator I = LoweredPHIs.begin(), E = LoweredPHIs.end();
+       I != E; ++I) {
     if (LIS)
-      LIS->RemoveMachineInstrFromMaps(*I.first);
-    MF.DeleteMachineInstr(I.first);
+      LIS->RemoveMachineInstrFromMaps(I->first);
+    MF.DeleteMachineInstr(I->first);
   }
 
   LoweredPHIs.clear();
@@ -227,7 +228,7 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
   MachineBasicBlock::iterator AfterPHIsIt = std::next(LastPHIIt);
 
   // Unlink the PHI node from the basic block, but don't delete the PHI yet.
-  MachineInstr *MPhi = MBB.remove(&*MBB.begin());
+  MachineInstr *MPhi = MBB.remove(MBB.begin());
 
   unsigned NumSrcs = (MPhi->getNumOperands() - 1) / 2;
   unsigned DestReg = MPhi->getOperand(0).getReg();
@@ -269,7 +270,7 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
 
   // Update live variable information if there is any.
   if (LV) {
-    MachineInstr &PHICopy = *std::prev(AfterPHIsIt);
+    MachineInstr *PHICopy = std::prev(AfterPHIsIt);
 
     if (IncomingReg) {
       LiveVariables::VarInfo &VI = LV->getVarInfo(IncomingReg);
@@ -283,7 +284,7 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
       if (reusedIncoming)
         if (MachineInstr *OldKill = VI.findKill(&MBB)) {
           DEBUG(dbgs() << "Remove old kill from " << *OldKill);
-          LV->removeVirtualRegisterKilled(IncomingReg, *OldKill);
+          LV->removeVirtualRegisterKilled(IncomingReg, OldKill);
           DEBUG(MBB.dump());
         }
 
@@ -297,19 +298,19 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
     // Since we are going to be deleting the PHI node, if it is the last use of
     // any registers, or if the value itself is dead, we need to move this
     // information over to the new copy we just inserted.
-    LV->removeVirtualRegistersKilled(*MPhi);
+    LV->removeVirtualRegistersKilled(MPhi);
 
     // If the result is dead, update LV.
     if (isDead) {
       LV->addVirtualRegisterDead(DestReg, PHICopy);
-      LV->removeVirtualRegisterDead(DestReg, *MPhi);
+      LV->removeVirtualRegisterDead(DestReg, MPhi);
     }
   }
 
   // Update LiveIntervals for the new copy or implicit def.
   if (LIS) {
-    SlotIndex DestCopyIndex =
-        LIS->InsertMachineInstrInMaps(*std::prev(AfterPHIsIt));
+    MachineInstr *NewInstr = std::prev(AfterPHIsIt);
+    SlotIndex DestCopyIndex = LIS->InsertMachineInstrInMaps(NewInstr);
 
     SlotIndex MBBStartIndex = LIS->getMBBStartIdx(&MBB);
     if (IncomingReg) {
@@ -452,7 +453,7 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
       assert(KillInst->readsRegister(SrcReg) && "Cannot find kill instruction");
 
       // Finally, mark it killed.
-      LV->addVirtualRegisterKilled(SrcReg, *KillInst);
+      LV->addVirtualRegisterKilled(SrcReg, KillInst);
 
       // This vreg no longer lives all of the way through opBlock.
       unsigned opBlockNum = opBlock.getNumber();
@@ -461,8 +462,8 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
 
     if (LIS) {
       if (NewSrcInstr) {
-        LIS->InsertMachineInstrInMaps(*NewSrcInstr);
-        LIS->addSegmentToEndOfBlock(IncomingReg, *NewSrcInstr);
+        LIS->InsertMachineInstrInMaps(NewSrcInstr);
+        LIS->addSegmentToEndOfBlock(IncomingReg, NewSrcInstr);
       }
 
       if (!SrcUndef &&
@@ -512,7 +513,7 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
           assert(KillInst->readsRegister(SrcReg) &&
                  "Cannot find kill instruction");
 
-          SlotIndex LastUseIndex = LIS->getInstructionIndex(*KillInst);
+          SlotIndex LastUseIndex = LIS->getInstructionIndex(KillInst);
           SrcLI.removeSegment(LastUseIndex.getRegSlot(),
                               LIS->getMBBEndIdx(&opBlock));
         }
@@ -523,7 +524,7 @@ void PHIElimination::LowerPHINode(MachineBasicBlock &MBB,
   // Really delete the PHI instruction now, if it is not in the LoweredPHIs map.
   if (reusedIncoming || !IncomingReg) {
     if (LIS)
-      LIS->RemoveMachineInstrFromMaps(*MPhi);
+      LIS->RemoveMachineInstrFromMaps(MPhi);
     MF.DeleteMachineInstr(MPhi);
   }
 }
@@ -547,7 +548,7 @@ void PHIElimination::analyzePHINodes(const MachineFunction& MF) {
 bool PHIElimination::SplitPHIEdges(MachineFunction &MF,
                                    MachineBasicBlock &MBB,
                                    MachineLoopInfo *MLI) {
-  if (MBB.empty() || !MBB.front().isPHI() || MBB.isEHPad())
+  if (MBB.empty() || !MBB.front().isPHI() || MBB.isLandingPad())
     return false;   // Quick exit for basic blocks without PHIs.
 
   const MachineLoop *CurLoop = MLI ? MLI->getLoopFor(&MBB) : nullptr;
@@ -611,7 +612,7 @@ bool PHIElimination::SplitPHIEdges(MachineFunction &MF,
       }
       if (!ShouldSplit && !SplitAllCriticalEdges)
         continue;
-      if (!PreMBB->SplitCriticalEdge(&MBB, *this)) {
+      if (!PreMBB->SplitCriticalEdge(&MBB, this)) {
         DEBUG(dbgs() << "Failed to split critical edge.\n");
         continue;
       }

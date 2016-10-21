@@ -50,11 +50,11 @@ bool UnifyFunctionExitNodes::runOnFunction(Function &F) {
   //
   std::vector<BasicBlock*> ReturningBlocks;
   std::vector<BasicBlock*> UnreachableBlocks;
-  for (BasicBlock &I : F)
-    if (isa<ReturnInst>(I.getTerminator()))
-      ReturningBlocks.push_back(&I);
-    else if (isa<UnreachableInst>(I.getTerminator()))
-      UnreachableBlocks.push_back(&I);
+  for(Function::iterator I = F.begin(), E = F.end(); I != E; ++I)
+    if (isa<ReturnInst>(I->getTerminator()))
+      ReturningBlocks.push_back(I);
+    else if (isa<UnreachableInst>(I->getTerminator()))
+      UnreachableBlocks.push_back(I);
 
   // Then unreachable blocks.
   if (UnreachableBlocks.empty()) {
@@ -66,7 +66,9 @@ bool UnifyFunctionExitNodes::runOnFunction(Function &F) {
                                           "UnifiedUnreachableBlock", &F);
     new UnreachableInst(F.getContext(), UnreachableBlock);
 
-    for (BasicBlock *BB : UnreachableBlocks) {
+    for (std::vector<BasicBlock*>::iterator I = UnreachableBlocks.begin(),
+           E = UnreachableBlocks.end(); I != E; ++I) {
+      BasicBlock *BB = *I;
       BB->getInstList().pop_back();  // Remove the unreachable inst.
       BranchInst::Create(UnreachableBlock, BB);
     }
@@ -102,7 +104,10 @@ bool UnifyFunctionExitNodes::runOnFunction(Function &F) {
   // Loop over all of the blocks, replacing the return instruction with an
   // unconditional branch.
   //
-  for (BasicBlock *BB : ReturningBlocks) {
+  for (std::vector<BasicBlock*>::iterator I = ReturningBlocks.begin(),
+         E = ReturningBlocks.end(); I != E; ++I) {
+    BasicBlock *BB = *I;
+
     // Add an incoming element to the PHI node for every return instruction that
     // is merging into this new block...
     if (PN)

@@ -29,7 +29,7 @@ protected:
 public:
   AArch64TargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                        StringRef FS, const TargetOptions &Options,
-                       Optional<Reloc::Model> RM, CodeModel::Model CM,
+                       Reloc::Model RM, CodeModel::Model CM,
                        CodeGenOpt::Level OL, bool IsLittleEndian);
 
   ~AArch64TargetMachine() override;
@@ -46,28 +46,28 @@ public:
   }
 
 private:
-  AArch64Subtarget Subtarget;
+  bool isLittle;
 };
 
-// AArch64 little endian target machine.
+// AArch64leTargetMachine - AArch64 little endian target machine.
 //
 class AArch64leTargetMachine : public AArch64TargetMachine {
   virtual void anchor();
 public:
   AArch64leTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                          StringRef FS, const TargetOptions &Options,
-                         Optional<Reloc::Model> RM, CodeModel::Model CM,
+                         Reloc::Model RM, CodeModel::Model CM,
                          CodeGenOpt::Level OL);
 };
 
-// AArch64 big endian target machine.
+// AArch64beTargetMachine - AArch64 big endian target machine.
 //
 class AArch64beTargetMachine : public AArch64TargetMachine {
   virtual void anchor();
 public:
   AArch64beTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                          StringRef FS, const TargetOptions &Options,
-                         Optional<Reloc::Model> RM, CodeModel::Model CM,
+                         Reloc::Model RM, CodeModel::Model CM,
                          CodeGenOpt::Level OL);
 };
 

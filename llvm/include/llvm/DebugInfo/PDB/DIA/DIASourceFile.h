@@ -14,7 +14,6 @@
 #include "llvm/DebugInfo/PDB/IPDBSourceFile.h"
 
 namespace llvm {
-namespace pdb {
 class DIASession;
 
 class DIASourceFile : public IPDBSourceFile {
@@ -26,16 +25,12 @@ public:
   uint32_t getUniqueId() const override;
   std::string getChecksum() const override;
   PDB_Checksum getChecksumType() const override;
-  std::unique_ptr<IPDBEnumChildren<PDBSymbolCompiland>>
-  getCompilands() const override;
-
-  CComPtr<IDiaSourceFile> getDiaFile() const { return SourceFile; }
+  std::unique_ptr<IPDBEnumSymbols> getCompilands() const override;
 
 private:
   const DIASession &Session;
   CComPtr<IDiaSourceFile> SourceFile;
 };
-}
 }
 
 #endif

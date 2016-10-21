@@ -17,8 +17,6 @@
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/InitializePasses.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetSelect.h"
 
@@ -40,10 +38,6 @@ protected:
   {
     InitializeNativeTarget();
     InitializeNativeTargetAsmPrinter();
-
-    // FIXME: It isn't at all clear why this is necesasry, but without it we
-    // fail to initialize the AssumptionCacheTracker.
-    initializeAssumptionCacheTrackerPass(*PassRegistry::getPassRegistry());
 
 #ifdef LLVM_ON_WIN32
     // On Windows, generate ELF objects by specifying "-elf" in triple

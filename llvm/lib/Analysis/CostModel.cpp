@@ -152,7 +152,10 @@ static bool matchPairwiseShuffleMask(ShuffleVectorInst *SI, bool IsLeft,
     Mask[i] = val;
 
   SmallVector<int, 16> ActualMask = SI->getShuffleMask();
-  return Mask == ActualMask;
+  if (Mask != ActualMask)
+    return false;
+
+  return true;
 }
 
 static bool matchPairwiseReductionAtLevel(const BinaryOperator *BinOp,
@@ -380,8 +383,10 @@ unsigned CostModelAnalysis::getInstructionCost(const Instruction *I) const {
     return -1;
 
   switch (I->getOpcode()) {
-  case Instruction::GetElementPtr:
-    return TTI->getUserCost(I);
+  case Instruction::GetElementPtr:{
+    Type *ValTy = I->getOperand(0)->getType()->getPointerElementType();
+    return TTI->getAddressComputationCost(ValTy);
+  }
 
   case Instruction::Ret:
   case Instruction::PHI:
@@ -500,16 +505,12 @@ unsigned CostModelAnalysis::getInstructionCost(const Instruction *I) const {
   }
   case Instruction::Call:
     if (const IntrinsicInst *II = dyn_cast<IntrinsicInst>(I)) {
-      SmallVector<Value *, 4> Args;
+      SmallVector<Type*, 4> Tys;
       for (unsigned J = 0, JE = II->getNumArgOperands(); J != JE; ++J)
-        Args.push_back(II->getArgOperand(J));
-
-      FastMathFlags FMF;
-      if (auto *FPMO = dyn_cast<FPMathOperator>(II))
-        FMF = FPMO->getFastMathFlags();
+        Tys.push_back(II->getArgOperand(J)->getType());
 
       return TTI->getIntrinsicInstrCost(II->getIntrinsicID(), II->getType(),
-                                        Args, FMF);
+                                        Tys);
     }
     return -1;
   default:
@@ -522,15 +523,16 @@ void CostModelAnalysis::print(raw_ostream &OS, const Module*) const {
   if (!F)
     return;
 
-  for (BasicBlock &B : *F) {
-    for (Instruction &Inst : B) {
-      unsigned Cost = getInstructionCost(&Inst);
+  for (Function::iterator B = F->begin(), BE = F->end(); B != BE; ++B) {
+    for (BasicBlock::iterator it = B->begin(), e = B->end(); it != e; ++it) {
+      Instruction *Inst = it;
+      unsigned Cost = getInstructionCost(Inst);
       if (Cost != (unsigned)-1)
         OS << "Cost Model: Found an estimated cost of " << Cost;
       else
         OS << "Cost Model: Unknown cost";
 
-      OS << " for instruction: " << Inst << "\n";
+      OS << " for instruction: "<< *Inst << "\n";
     }
   }
 }

@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/SubtargetFeature.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Format.h"
@@ -57,7 +56,7 @@ static inline bool isEnabled(StringRef Feature) {
 ///
 static void Split(std::vector<std::string> &V, StringRef S) {
   SmallVector<StringRef, 3> Tmp;
-  S.split(Tmp, ',', -1, false /* KeepEmpty */);
+  S.split(Tmp, ",", -1, false /* KeepEmpty */);
   V.assign(Tmp.begin(), Tmp.end());
 }
 
@@ -161,9 +160,10 @@ void ClearImpliedBits(FeatureBitset &Bits,
   }
 }
 
-/// ToggleFeature - Toggle a feature and update the feature bits.
-void
-SubtargetFeatures::ToggleFeature(FeatureBitset &Bits, StringRef Feature,
+/// ToggleFeature - Toggle a feature and returns the newly updated feature
+/// bits.
+FeatureBitset
+SubtargetFeatures::ToggleFeature(FeatureBitset Bits, StringRef Feature,
                                  ArrayRef<SubtargetFeatureKV> FeatureTable) {
 
   // Find feature in table.
@@ -186,9 +186,12 @@ SubtargetFeatures::ToggleFeature(FeatureBitset &Bits, StringRef Feature,
            << "' is not a recognized feature for this target"
            << " (ignoring feature)\n";
   }
+
+  return Bits;
 }
 
-void SubtargetFeatures::ApplyFeatureFlag(FeatureBitset &Bits, StringRef Feature,
+FeatureBitset
+SubtargetFeatures::ApplyFeatureFlag(FeatureBitset Bits, StringRef Feature,
                                     ArrayRef<SubtargetFeatureKV> FeatureTable) {
 
   assert(hasFlag(Feature));
@@ -200,7 +203,7 @@ void SubtargetFeatures::ApplyFeatureFlag(FeatureBitset &Bits, StringRef Feature,
   if (FeatureEntry) {
     // Enable/disable feature in bits
     if (isEnabled(Feature)) {
-      Bits |= FeatureEntry->Value;
+      Bits |=  FeatureEntry->Value;
 
       // For each feature that this implies, set it.
       SetImpliedBits(Bits, FeatureEntry, FeatureTable);
@@ -215,6 +218,8 @@ void SubtargetFeatures::ApplyFeatureFlag(FeatureBitset &Bits, StringRef Feature,
            << "' is not a recognized feature for this target"
            << " (ignoring feature)\n";
   }
+
+  return Bits;
 }
 
 
@@ -229,10 +234,14 @@ SubtargetFeatures::getFeatureBits(StringRef CPU,
     return FeatureBitset();
 
 #ifndef NDEBUG
-  assert(std::is_sorted(std::begin(CPUTable), std::end(CPUTable)) &&
-         "CPU table is not sorted");
-  assert(std::is_sorted(std::begin(FeatureTable), std::end(FeatureTable)) &&
-         "CPU features table is not sorted");
+  for (size_t i = 1, e = CPUTable.size(); i != e; ++i) {
+    assert(strcmp(CPUTable[i - 1].Key, CPUTable[i].Key) < 0 &&
+           "CPU table is not sorted");
+  }
+  for (size_t i = 1, e = FeatureTable.size(); i != e; ++i) {
+    assert(strcmp(FeatureTable[i - 1].Key, FeatureTable[i].Key) < 0 &&
+          "CPU features table is not sorted");
+  }
 #endif
   // Resulting bits
   FeatureBitset Bits;
@@ -268,7 +277,7 @@ SubtargetFeatures::getFeatureBits(StringRef CPU,
     if (Feature == "+help")
       Help(CPUTable, FeatureTable);
 
-    ApplyFeatureFlag(Bits, Feature, FeatureTable);
+    Bits = ApplyFeatureFlag(Bits, Feature, FeatureTable);
   }
 
   return Bits;
@@ -285,7 +294,7 @@ void SubtargetFeatures::print(raw_ostream &OS) const {
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
 /// dump - Dump feature info.
 ///
-LLVM_DUMP_METHOD void SubtargetFeatures::dump() const {
+void SubtargetFeatures::dump() const {
   print(dbgs());
 }
 #endif

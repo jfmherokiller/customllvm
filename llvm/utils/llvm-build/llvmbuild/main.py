@@ -411,15 +411,11 @@ subdirectories = %s
         f.write('} AvailableComponents[%d] = {\n' % len(entries))
         for name,library_name,required_names,is_installed in entries:
             if library_name is None:
-                library_name_as_cstr = 'nullptr'
+                library_name_as_cstr = '0'
             else:
-                library_name_as_cstr = '"%s"' % library_name
-            if is_installed:
-                is_installed_as_cstr = 'true'
-            else:
-                is_installed_as_cstr = 'false'
-            f.write('  { "%s", %s, %s, { %s } },\n' % (
-                name, library_name_as_cstr, is_installed_as_cstr,
+                library_name_as_cstr = '"lib%s.a"' % library_name
+            f.write('  { "%s", %s, %d, { %s } },\n' % (
+                name, library_name_as_cstr, is_installed,
                 ', '.join('"%s"' % dep
                           for dep in required_names)))
         f.write('};\n')
@@ -505,33 +501,6 @@ subdirectories = %s
             if (path.startswith(self.source_root) and os.path.exists(path)):
                 yield path
 
-    def foreach_cmake_library(self, f,
-                              enabled_optional_components,
-                              skip_disabled,
-                              skip_not_installed):
-        for ci in self.ordered_component_infos:
-            # Skip optional components which are not enabled.
-            if ci.type_name == 'OptionalLibrary' \
-                and ci.name not in enabled_optional_components:
-                continue
-
-            # We only write the information for libraries currently.
-            if ci.type_name not in ('Library', 'OptionalLibrary'):
-                continue
-
-            # Skip disabled targets.
-            if skip_disabled:
-                tg = ci.get_parent_target_group()
-                if tg and not tg.enabled:
-                    continue
-
-            # Skip targets that will not be installed
-            if skip_not_installed and not ci.installed:
-                continue
-
-            f(ci)
-
-
     def write_cmake_fragment(self, output_path, enabled_optional_components):
         """
         write_cmake_fragment(output_path) -> None
@@ -600,18 +569,21 @@ configure_file(\"%s\"
 # The following property assignments effectively create a map from component
 # names to required libraries, in a way that is easily accessed from CMake.
 """)
-        self.foreach_cmake_library(
-            lambda ci:
-              f.write("""\
+        for ci in self.ordered_component_infos:
+            # Skip optional components which are not enabled.
+            if ci.type_name == 'OptionalLibrary' \
+                and ci.name not in enabled_optional_components:
+                continue
+
+            # We only write the information for certain components currently.
+            if ci.type_name not in ('Library', 'OptionalLibrary'):
+                continue
+
+            f.write("""\
 set_property(GLOBAL PROPERTY LLVMBUILD_LIB_DEPS_%s %s)\n""" % (
                 ci.get_prefixed_library_name(), " ".join(sorted(
                      dep.get_prefixed_library_name()
                      for dep in self.get_required_libraries_for_component(ci)))))
-            ,
-            enabled_optional_components,
-            skip_disabled = False,
-            skip_not_installed = False # Dependency info must be emitted for internals libs too
-            )
 
         f.close()
 
@@ -636,22 +608,30 @@ set_property(GLOBAL PROPERTY LLVMBUILD_LIB_DEPS_%s %s)\n""" % (
 # The following property assignments tell CMake about link
 # dependencies of libraries imported from LLVM.
 """)
-        self.foreach_cmake_library(
-            lambda ci:
-              f.write("""\
+        for ci in self.ordered_component_infos:
+            # Skip optional components which are not enabled.
+            if ci.type_name == 'OptionalLibrary' \
+                and ci.name not in enabled_optional_components:
+                continue
+
+            # We only write the information for libraries currently.
+            if ci.type_name not in ('Library', 'OptionalLibrary'):
+                continue
+
+            # Skip disabled targets.
+            tg = ci.get_parent_target_group()
+            if tg and not tg.enabled:
+                continue
+
+            f.write("""\
 set_property(TARGET %s PROPERTY IMPORTED_LINK_INTERFACE_LIBRARIES %s)\n""" % (
                 ci.get_prefixed_library_name(), " ".join(sorted(
                      dep.get_prefixed_library_name()
                      for dep in self.get_required_libraries_for_component(ci)))))
-            ,
-            enabled_optional_components,
-            skip_disabled = True,
-            skip_not_installed = True # Do not export internal libraries like gtest
-            )
 
         f.close()
 
-    def write_make_fragment(self, output_path, enabled_optional_components):
+    def write_make_fragment(self, output_path):
         """
         write_make_fragment(output_path) -> None
 
@@ -717,19 +697,6 @@ set_property(TARGET %s PROPERTY IMPORTED_LINK_INTERFACE_LIBRARIES %s)\n""" % (
             f.write("%s:\n" % (mk_quote_string_for_target(dep),))
         f.write('endif\n')
 
-        f.write("""
-# List of libraries to be exported for use by applications.
-# See 'cmake/modules/Makefile'.
-LLVM_LIBS_TO_EXPORT :=""")
-        self.foreach_cmake_library(
-            lambda ci:
-                f.write(' \\\n  %s' % ci.get_prefixed_library_name())
-            ,
-            enabled_optional_components,
-            skip_disabled = True,
-            skip_not_installed = True # Do not export internal libraries like gtest
-            )
-        f.write('\n')
         f.close()
 
 def add_magic_target_components(parser, project, opts):
@@ -953,8 +920,7 @@ given by --build-root) at the same SUBPATH""",
 
     # Write out the make fragment, if requested.
     if opts.write_make_fragment:
-        project_info.write_make_fragment(opts.write_make_fragment,
-                                         opts.optional_components)
+        project_info.write_make_fragment(opts.write_make_fragment)
 
     # Write out the cmake fragment, if requested.
     if opts.write_cmake_fragment:

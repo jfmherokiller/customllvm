@@ -27,7 +27,6 @@ class FunctionPass;
 class MachineFunctionPass;
 
 FunctionPass *createAArch64DeadRegisterDefinitions();
-FunctionPass *createAArch64RedundantCopyEliminationPass();
 FunctionPass *createAArch64ConditionalCompares();
 FunctionPass *createAArch64AdvSIMDScalar();
 FunctionPass *createAArch64BranchRelaxation();
@@ -45,8 +44,6 @@ FunctionPass *createAArch64A53Fix835769();
 FunctionPass *createAArch64CleanupLocalDynamicTLSPass();
 
 FunctionPass *createAArch64CollectLOHPass();
-
-void initializeAArch64ExpandPseudoPass(PassRegistry&);
 } // end namespace llvm
 
 #endif

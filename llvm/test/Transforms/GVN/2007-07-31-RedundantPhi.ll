@@ -1,4 +1,4 @@
-; RUN: opt < %s -basicaa -gvn -S | FileCheck %s
+; RUN: opt < %s -basicaa -gvn -S | not grep "tmp701 ="
 
 @img_width = external global i16		; <i16*> [#uses=2]
 
@@ -18,6 +18,5 @@ cond_false470:		; preds = %cond_next449
 
 cond_next698:		; preds = %cond_true492
 	%tmp701 = load i16, i16* @img_width, align 2		; <i16> [#uses=0]
-; CHECK-NOT: %tmp701 =
 	ret i32 0
 }

@@ -14,13 +14,13 @@
 #ifndef LLVM_ADT_BITVECTOR_H
 #define LLVM_ADT_BITVECTOR_H
 
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include <algorithm>
 #include <cassert>
 #include <climits>
-#include <cstdint>
 #include <cstdlib>
-#include <cstring>
 
 namespace llvm {
 
@@ -34,7 +34,7 @@ class BitVector {
 
   BitWord  *Bits;        // Actual bits.
   unsigned Size;         // Size of bitvector in bits.
-  unsigned Capacity;     // Number of BitWords allocated in the Bits array.
+  unsigned Capacity;     // Size of allocated memory in BitWord.
 
 public:
   typedef unsigned size_type;
@@ -69,7 +69,7 @@ public:
     }
 
     operator bool() const {
-      return ((*WordRef) & (BitWord(1) << BitPos)) != 0;
+      return ((*WordRef) & (BitWord(1) << BitPos)) ? true : false;
     }
   };
 
@@ -105,7 +105,6 @@ public:
   BitVector(BitVector &&RHS)
     : Bits(RHS.Bits), Size(RHS.Size), Capacity(RHS.Capacity) {
     RHS.Bits = nullptr;
-    RHS.Size = RHS.Capacity = 0;
   }
 
   ~BitVector() {
@@ -245,7 +244,7 @@ public:
 
     BitWord PrefixMask = ~0UL << (I % BITWORD_SIZE);
     Bits[I / BITWORD_SIZE] |= PrefixMask;
-    I = alignTo(I, BITWORD_SIZE);
+    I = RoundUpToAlignment(I, BITWORD_SIZE);
 
     for (; I + BITWORD_SIZE <= E; I += BITWORD_SIZE)
       Bits[I / BITWORD_SIZE] = ~0UL;
@@ -284,7 +283,7 @@ public:
 
     BitWord PrefixMask = ~0UL << (I % BITWORD_SIZE);
     Bits[I / BITWORD_SIZE] &= ~PrefixMask;
-    I = alignTo(I, BITWORD_SIZE);
+    I = RoundUpToAlignment(I, BITWORD_SIZE);
 
     for (; I + BITWORD_SIZE <= E; I += BITWORD_SIZE)
       Bits[I / BITWORD_SIZE] = 0UL;
@@ -455,7 +454,6 @@ public:
     Capacity = RHS.Capacity;
 
     RHS.Bits = nullptr;
-    RHS.Size = RHS.Capacity = 0;
 
     return *this;
   }
@@ -568,17 +566,9 @@ private:
     if (AddBits)
       clear_unused_bits();
   }
-
-public:
-  /// Return the size (in bytes) of the bit vector.
-  size_t getMemorySize() const { return Capacity * sizeof(BitWord); }
 };
 
-static inline size_t capacity_in_bytes(const BitVector &X) {
-  return X.getMemorySize();
-}
-
-} // end namespace llvm
+} // End llvm namespace
 
 namespace std {
   /// Implement std::swap in terms of BitVector swap.
@@ -586,6 +576,6 @@ namespace std {
   swap(llvm::BitVector &LHS, llvm::BitVector &RHS) {
     LHS.swap(RHS);
   }
-} // end namespace std
+}
 
-#endif // LLVM_ADT_BITVECTOR_H
+#endif

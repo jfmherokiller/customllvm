@@ -20,36 +20,30 @@
 
 namespace llvm {
 
-struct NewArchiveMember {
-  std::unique_ptr<MemoryBuffer> Buf;
-  sys::TimeValue ModTime = sys::TimeValue::PosixZeroTime();
-  unsigned UID = 0, GID = 0, Perms = 0644;
+class NewArchiveIterator {
+  bool IsNewMember;
+  StringRef Name;
 
-  NewArchiveMember() = default;
-  NewArchiveMember(NewArchiveMember &&Other)
-      : Buf(std::move(Other.Buf)), ModTime(Other.ModTime), UID(Other.UID),
-        GID(Other.GID), Perms(Other.Perms) {}
-  NewArchiveMember &operator=(NewArchiveMember &&Other) {
-    Buf = std::move(Other.Buf);
-    ModTime = Other.ModTime;
-    UID = Other.UID;
-    GID = Other.GID;
-    Perms = Other.Perms;
-    return *this;
-  }
-  NewArchiveMember(MemoryBufferRef BufRef);
+  object::Archive::child_iterator OldI;
 
-  static Expected<NewArchiveMember>
-  getOldMember(const object::Archive::Child &OldMember, bool Deterministic);
+  StringRef NewFilename;
 
-  static Expected<NewArchiveMember> getFile(StringRef FileName,
-                                            bool Deterministic);
+public:
+  NewArchiveIterator(object::Archive::child_iterator I, StringRef Name);
+  NewArchiveIterator(StringRef I, StringRef Name);
+  bool isNewMember() const;
+  StringRef getName() const;
+
+  object::Archive::child_iterator getOld() const;
+
+  StringRef getNew() const;
+  llvm::ErrorOr<int> getFD(sys::fs::file_status &NewStatus) const;
+  const sys::fs::file_status &getStatus() const;
 };
 
 std::pair<StringRef, std::error_code>
-writeArchive(StringRef ArcName, std::vector<NewArchiveMember> &NewMembers,
-             bool WriteSymtab, object::Archive::Kind Kind, bool Deterministic,
-             bool Thin, std::unique_ptr<MemoryBuffer> OldArchiveBuf = nullptr);
+writeArchive(StringRef ArcName, std::vector<NewArchiveIterator> &NewMembers,
+             bool WriteSymtab, object::Archive::Kind Kind, bool Deterministic);
 }
 
 #endif

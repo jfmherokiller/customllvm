@@ -72,7 +72,7 @@ BugDriver::BugDriver(const char *toolname, bool find_bugs,
                      LLVMContext& ctxt)
   : Context(ctxt), ToolName(toolname), ReferenceOutputFile(OutputFile),
     Program(nullptr), Interpreter(nullptr), SafeInterpreter(nullptr),
-    cc(nullptr), run_find_bugs(find_bugs), Timeout(timeout),
+    gcc(nullptr), run_find_bugs(find_bugs), Timeout(timeout),
     MemoryLimit(memlimit), UseValgrind(use_valgrind) {}
 
 BugDriver::~BugDriver() {
@@ -80,7 +80,7 @@ BugDriver::~BugDriver() {
   if (Interpreter != SafeInterpreter)
     delete Interpreter;
   delete SafeInterpreter;
-  delete cc;
+  delete gcc;
 }
 
 std::unique_ptr<Module> llvm::parseInputFile(StringRef Filename,
@@ -132,7 +132,7 @@ bool BugDriver::addSources(const std::vector<std::string> &Filenames) {
     if (!M.get()) return true;
 
     outs() << "Linking in input file: '" << Filenames[i] << "'\n";
-    if (Linker::linkModules(*Program, std::move(M)))
+    if (Linker::LinkModules(Program, M.get()))
       return true;
   }
 

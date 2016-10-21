@@ -39,8 +39,9 @@ public:
   bool isLegalToSplitMBBAt(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MBBI) const override;
 
-  void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
-                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
+  void copyPhysReg(MachineBasicBlock &MBB,
+                   MachineBasicBlock::iterator I, DebugLoc DL,
+                   unsigned DestReg, unsigned SrcReg,
                    bool KillSrc) const override;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
@@ -62,13 +63,16 @@ public:
   const ThumbRegisterInfo &getRegisterInfo() const override { return RI; }
 
 private:
-  void expandLoadStackGuard(MachineBasicBlock::iterator MI) const override;
+  void expandLoadStackGuard(MachineBasicBlock::iterator MI,
+                            Reloc::Model RM) const override;
 };
 
 /// getITInstrPredicate - Valid only in Thumb2 mode. This function is identical
 /// to llvm::getInstrPredicate except it returns AL for conditional branch
 /// instructions which are "predicated", but are not in IT blocks.
-ARMCC::CondCodes getITInstrPredicate(const MachineInstr &MI, unsigned &PredReg);
+ARMCC::CondCodes getITInstrPredicate(const MachineInstr *MI, unsigned &PredReg);
+
+
 }
 
 #endif

@@ -10,8 +10,8 @@
 
 .text
 foo:
-  ldr r0, =0x12345678
+  ldr r0, =0x101
   .space 8000
 @ CHECK: error: out of range pc-relative fixup value
-@ CHECK: ldr r0, =0x12345678
+@ CHECK: ldr r0, =0x101
 @ CHECK: ^

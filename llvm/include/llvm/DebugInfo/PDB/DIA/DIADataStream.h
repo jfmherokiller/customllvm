@@ -14,7 +14,6 @@
 #include "llvm/DebugInfo/PDB/IPDBDataStream.h"
 
 namespace llvm {
-namespace pdb {
 class DIADataStream : public IPDBDataStream {
 public:
   explicit DIADataStream(CComPtr<IDiaEnumDebugStreamData> DiaStreamData);
@@ -29,7 +28,6 @@ public:
 private:
   CComPtr<IDiaEnumDebugStreamData> StreamData;
 };
-}
 }
 
 #endif

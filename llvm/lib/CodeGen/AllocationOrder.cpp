@@ -29,13 +29,12 @@ using namespace llvm;
 // Compare VirtRegMap::getRegAllocPref().
 AllocationOrder::AllocationOrder(unsigned VirtReg,
                                  const VirtRegMap &VRM,
-                                 const RegisterClassInfo &RegClassInfo,
-                                 const LiveRegMatrix *Matrix)
+                                 const RegisterClassInfo &RegClassInfo)
   : Pos(0) {
   const MachineFunction &MF = VRM.getMachineFunction();
   const TargetRegisterInfo *TRI = &VRM.getTargetRegInfo();
   Order = RegClassInfo.getOrder(MF.getRegInfo().getRegClass(VirtReg));
-  TRI->getRegAllocationHints(VirtReg, Order, Hints, MF, &VRM, Matrix);
+  TRI->getRegAllocationHints(VirtReg, Order, Hints, MF, &VRM);
   rewind();
 
   DEBUG({

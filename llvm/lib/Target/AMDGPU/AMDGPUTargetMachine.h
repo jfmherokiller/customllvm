@@ -12,11 +12,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_AMDGPU_AMDGPUTARGETMACHINE_H
-#define LLVM_LIB_TARGET_AMDGPU_AMDGPUTARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_R600_AMDGPUTARGETMACHINE_H
+#define LLVM_LIB_TARGET_R600_AMDGPUTARGETMACHINE_H
 
+#include "AMDGPUFrameLowering.h"
+#include "AMDGPUInstrInfo.h"
 #include "AMDGPUIntrinsicInfo.h"
 #include "AMDGPUSubtarget.h"
+#include "R600ISelLowering.h"
+#include "llvm/IR/DataLayout.h"
 
 namespace llvm {
 
@@ -25,30 +29,30 @@ namespace llvm {
 //===----------------------------------------------------------------------===//
 
 class AMDGPUTargetMachine : public LLVMTargetMachine {
+private:
+
 protected:
-  std::unique_ptr<TargetLoweringObjectFile> TLOF;
+  TargetLoweringObjectFile *TLOF;
+  AMDGPUSubtarget Subtarget;
   AMDGPUIntrinsicInfo IntrinsicInfo;
 
-  StringRef getGPUName(const Function &F) const;
-  StringRef getFeatureString(const Function &F) const;
-
 public:
-  AMDGPUTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
-                      StringRef FS, TargetOptions Options,
-                      Optional<Reloc::Model> RM, CodeModel::Model CM,
-                      CodeGenOpt::Level OL);
+  AMDGPUTargetMachine(const Target &T, const Triple &TT, StringRef FS,
+                      StringRef CPU, TargetOptions Options, Reloc::Model RM,
+                      CodeModel::Model CM, CodeGenOpt::Level OL);
   ~AMDGPUTargetMachine();
 
-  const AMDGPUSubtarget *getSubtargetImpl() const;
-  const AMDGPUSubtarget *getSubtargetImpl(const Function &) const override;
-
+  const AMDGPUSubtarget *getSubtargetImpl() const { return &Subtarget; }
+  const AMDGPUSubtarget *getSubtargetImpl(const Function &) const override {
+    return &Subtarget;
+  }
   const AMDGPUIntrinsicInfo *getIntrinsicInfo() const override {
     return &IntrinsicInfo;
   }
   TargetIRAnalysis getTargetIRAnalysis() override;
 
   TargetLoweringObjectFile *getObjFileLowering() const override {
-    return TLOF.get();
+    return TLOF;
   }
 };
 
@@ -56,46 +60,29 @@ public:
 // R600 Target Machine (R600 -> Cayman)
 //===----------------------------------------------------------------------===//
 
-class R600TargetMachine final : public AMDGPUTargetMachine {
-private:
-  mutable StringMap<std::unique_ptr<R600Subtarget>> SubtargetMap;
+class R600TargetMachine : public AMDGPUTargetMachine {
 
 public:
-  R600TargetMachine(const Target &T, const Triple &TT, StringRef CPU,
-                    StringRef FS, TargetOptions Options,
-                    Optional<Reloc::Model> RM, CodeModel::Model CM,
-                    CodeGenOpt::Level OL);
+  R600TargetMachine(const Target &T, const Triple &TT, StringRef FS,
+                    StringRef CPU, TargetOptions Options, Reloc::Model RM,
+                    CodeModel::Model CM, CodeGenOpt::Level OL);
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
-
-  const R600Subtarget *getSubtargetImpl(const Function &) const override;
 };
 
 //===----------------------------------------------------------------------===//
 // GCN Target Machine (SI+)
 //===----------------------------------------------------------------------===//
 
-class GCNTargetMachine final : public AMDGPUTargetMachine {
-private:
-  mutable StringMap<std::unique_ptr<SISubtarget>> SubtargetMap;
+class GCNTargetMachine : public AMDGPUTargetMachine {
 
 public:
-  GCNTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
-                   StringRef FS, TargetOptions Options,
-                   Optional<Reloc::Model> RM, CodeModel::Model CM,
-                   CodeGenOpt::Level OL);
+  GCNTargetMachine(const Target &T, const Triple &TT, StringRef FS,
+                   StringRef CPU, TargetOptions Options, Reloc::Model RM,
+                   CodeModel::Model CM, CodeGenOpt::Level OL);
 
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
-
-  const SISubtarget *getSubtargetImpl(const Function &) const override;
 };
-
-inline const AMDGPUSubtarget *AMDGPUTargetMachine::getSubtargetImpl(
-  const Function &F) const {
-  if (getTargetTriple().getArch() == Triple::amdgcn)
-    return static_cast<const GCNTargetMachine *>(this)->getSubtargetImpl(F);
-  return static_cast<const R600TargetMachine *>(this)->getSubtargetImpl(F);
-}
 
 } // End namespace llvm
 

@@ -11,6 +11,7 @@
 #define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDCHECKERIMPL_H
 
 #include "RuntimeDyldImpl.h"
+#include <set>
 
 namespace llvm {
 

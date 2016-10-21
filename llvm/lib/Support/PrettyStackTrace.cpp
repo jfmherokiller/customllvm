@@ -13,15 +13,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Support/PrettyStackTrace.h"
-#include "llvm-c/ErrorHandling.h"
+#include "llvm-c/Core.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/Config/config.h"     // Get autoconf configuration settings
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/Watchdog.h"
 #include "llvm/Support/raw_ostream.h"
-
-#include <tuple>
 
 #ifdef HAVE_CRASHREPORTERCLIENT_H
 #include <CrashReporterClient.h>
@@ -38,32 +36,20 @@ using namespace llvm;
 // objects, but we *really* cannot tolerate destructors running and do not want
 // to pay any overhead of synchronizing. As a consequence, we use a raw
 // thread-local variable.
-static LLVM_THREAD_LOCAL PrettyStackTraceEntry *PrettyStackTraceHead = nullptr;
+static LLVM_THREAD_LOCAL const PrettyStackTraceEntry *PrettyStackTraceHead =
+    nullptr;
 
-namespace llvm {
-PrettyStackTraceEntry *ReverseStackTrace(PrettyStackTraceEntry *Head) {
-  PrettyStackTraceEntry *Prev = nullptr;
-  while (Head)
-    std::tie(Prev, Head, Head->NextEntry) =
-        std::make_tuple(Head, Head->NextEntry, Prev);
-  return Prev;
-}
-}
-
-static void PrintStack(raw_ostream &OS) {
-  // Print out the stack in reverse order. To avoid recursion (which is likely
-  // to fail if we crashed due to stack overflow), we do an up-front pass to
-  // reverse the stack, then print it, then reverse it again.
-  unsigned ID = 0;
-  PrettyStackTraceEntry *ReversedStack =
-      llvm::ReverseStackTrace(PrettyStackTraceHead);
-  for (const PrettyStackTraceEntry *Entry = ReversedStack; Entry;
-       Entry = Entry->getNextEntry()) {
-    OS << ID++ << ".\t";
+static unsigned PrintStack(const PrettyStackTraceEntry *Entry, raw_ostream &OS){
+  unsigned NextID = 0;
+  if (Entry->getNextEntry())
+    NextID = PrintStack(Entry->getNextEntry(), OS);
+  OS << NextID << ".\t";
+  {
     sys::Watchdog W(5);
     Entry->print(OS);
   }
-  llvm::ReverseStackTrace(ReversedStack);
+  
+  return NextID+1;
 }
 
 /// PrintCurStackTrace - Print the current stack trace to the specified stream.
@@ -74,7 +60,7 @@ static void PrintCurStackTrace(raw_ostream &OS) {
   // If there are pretty stack frames registered, walk and emit them.
   OS << "Stack dump:\n";
   
-  PrintStack(OS);
+  PrintStack(PrettyStackTraceHead, OS);
   OS.flush();
 }
 
@@ -137,7 +123,7 @@ PrettyStackTraceEntry::~PrettyStackTraceEntry() {
 #if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
   assert(PrettyStackTraceHead == this &&
          "Pretty stack trace entry destruction is out of order");
-  PrettyStackTraceHead = NextEntry;
+  PrettyStackTraceHead = getNextEntry();
 #endif
 }
 
@@ -165,21 +151,6 @@ void llvm::EnablePrettyStackTrace() {
   // The first time this is called, we register the crash printer.
   static bool HandlerRegistered = RegisterCrashPrinter();
   (void)HandlerRegistered;
-#endif
-}
-
-const void *llvm::SavePrettyStackState() {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
-  return PrettyStackTraceHead;
-#else
-  return nullptr;
-#endif
-}
-
-void llvm::RestorePrettyStackState(const void *Top) {
-#if defined(HAVE_BACKTRACE) && defined(ENABLE_BACKTRACES)
-  PrettyStackTraceHead =
-      static_cast<PrettyStackTraceEntry *>(const_cast<void *>(Top));
 #endif
 }
 

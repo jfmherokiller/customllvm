@@ -46,7 +46,8 @@ namespace llvm {
   class Type;
   class Value;
 
-  /// Given operands for an Add, fold the result or return null.
+  /// SimplifyAddInst - Given operands for an Add, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyAddInst(Value *LHS, Value *RHS, bool isNSW, bool isNUW,
                          const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
@@ -54,7 +55,8 @@ namespace llvm {
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for a Sub, fold the result or return null.
+  /// SimplifySubInst - Given operands for a Sub, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifySubInst(Value *LHS, Value *RHS, bool isNSW, bool isNUW,
                          const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
@@ -62,7 +64,8 @@ namespace llvm {
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for an FAdd, fold the result or return null.
+  /// Given operands for an FAdd, see if we can fold the result.  If not, this
+  /// returns null.
   Value *SimplifyFAddInst(Value *LHS, Value *RHS, FastMathFlags FMF,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -70,7 +73,8 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for an FSub, fold the result or return null.
+  /// Given operands for an FSub, see if we can fold the result.  If not, this
+  /// returns null.
   Value *SimplifyFSubInst(Value *LHS, Value *RHS, FastMathFlags FMF,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -78,7 +82,8 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for an FMul, fold the result or return null.
+  /// Given operands for an FMul, see if we can fold the result.  If not, this
+  /// returns null.
   Value *SimplifyFMulInst(Value *LHS, Value *RHS, FastMathFlags FMF,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -86,28 +91,32 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for a Mul, fold the result or return null.
+  /// SimplifyMulInst - Given operands for a Mul, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyMulInst(Value *LHS, Value *RHS, const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
                          const DominatorTree *DT = nullptr,
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for an SDiv, fold the result or return null.
+  /// SimplifySDivInst - Given operands for an SDiv, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifySDivInst(Value *LHS, Value *RHS, const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
                           const DominatorTree *DT = nullptr,
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for a UDiv, fold the result or return null.
+  /// SimplifyUDivInst - Given operands for a UDiv, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyUDivInst(Value *LHS, Value *RHS, const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
                           const DominatorTree *DT = nullptr,
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for an FDiv, fold the result or return null.
+  /// SimplifyFDivInst - Given operands for an FDiv, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyFDivInst(Value *LHS, Value *RHS, FastMathFlags FMF,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -115,21 +124,24 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for an SRem, fold the result or return null.
+  /// SimplifySRemInst - Given operands for an SRem, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifySRemInst(Value *LHS, Value *RHS, const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
                           const DominatorTree *DT = nullptr,
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for a URem, fold the result or return null.
+  /// SimplifyURemInst - Given operands for a URem, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyURemInst(Value *LHS, Value *RHS, const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
                           const DominatorTree *DT = nullptr,
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for an FRem, fold the result or return null.
+  /// SimplifyFRemInst - Given operands for an FRem, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyFRemInst(Value *LHS, Value *RHS, FastMathFlags FMF,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -137,7 +149,8 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for a Shl, fold the result or return null.
+  /// SimplifyShlInst - Given operands for a Shl, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyShlInst(Value *Op0, Value *Op1, bool isNSW, bool isNUW,
                          const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
@@ -145,7 +158,8 @@ namespace llvm {
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for a LShr, fold the result or return null.
+  /// SimplifyLShrInst - Given operands for a LShr, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyLShrInst(Value *Op0, Value *Op1, bool isExact,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -153,7 +167,8 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for a AShr, fold the result or return nulll.
+  /// SimplifyAShrInst - Given operands for a AShr, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyAShrInst(Value *Op0, Value *Op1, bool isExact,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -161,36 +176,41 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for an And, fold the result or return null.
+  /// SimplifyAndInst - Given operands for an And, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyAndInst(Value *LHS, Value *RHS, const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
                          const DominatorTree *DT = nullptr,
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for an Or, fold the result or return null.
+  /// SimplifyOrInst - Given operands for an Or, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyOrInst(Value *LHS, Value *RHS, const DataLayout &DL,
                         const TargetLibraryInfo *TLI = nullptr,
                         const DominatorTree *DT = nullptr,
                         AssumptionCache *AC = nullptr,
                         const Instruction *CxtI = nullptr);
 
-  /// Given operands for an Xor, fold the result or return null.
+  /// SimplifyXorInst - Given operands for a Xor, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyXorInst(Value *LHS, Value *RHS, const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
                          const DominatorTree *DT = nullptr,
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for an ICmpInst, fold the result or return null.
+  /// SimplifyICmpInst - Given operands for an ICmpInst, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyICmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                           const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
                           const DominatorTree *DT = nullptr,
                           AssumptionCache *AC = nullptr,
-                          const Instruction *CxtI = nullptr);
+                          Instruction *CxtI = nullptr);
 
-  /// Given operands for an FCmpInst, fold the result or return null.
+  /// SimplifyFCmpInst - Given operands for an FCmpInst, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyFCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                           FastMathFlags FMF, const DataLayout &DL,
                           const TargetLibraryInfo *TLI = nullptr,
@@ -198,7 +218,8 @@ namespace llvm {
                           AssumptionCache *AC = nullptr,
                           const Instruction *CxtI = nullptr);
 
-  /// Given operands for a SelectInst, fold the result or return null.
+  /// SimplifySelectInst - Given operands for a SelectInst, see if we can fold
+  /// the result.  If not, this returns null.
   Value *SimplifySelectInst(Value *Cond, Value *TrueVal, Value *FalseVal,
                             const DataLayout &DL,
                             const TargetLibraryInfo *TLI = nullptr,
@@ -206,15 +227,16 @@ namespace llvm {
                             AssumptionCache *AC = nullptr,
                             const Instruction *CxtI = nullptr);
 
-  /// Given operands for a GetElementPtrInst, fold the result or return null.
-  Value *SimplifyGEPInst(Type *SrcTy, ArrayRef<Value *> Ops,
-                         const DataLayout &DL,
+  /// SimplifyGEPInst - Given operands for an GetElementPtrInst, see if we can
+  /// fold the result.  If not, this returns null.
+  Value *SimplifyGEPInst(ArrayRef<Value *> Ops, const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
                          const DominatorTree *DT = nullptr,
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for an InsertValueInst, fold the result or return null.
+  /// SimplifyInsertValueInst - Given operands for an InsertValueInst, see if we
+  /// can fold the result.  If not, this returns null.
   Value *SimplifyInsertValueInst(Value *Agg, Value *Val,
                                  ArrayRef<unsigned> Idxs, const DataLayout &DL,
                                  const TargetLibraryInfo *TLI = nullptr,
@@ -222,7 +244,8 @@ namespace llvm {
                                  AssumptionCache *AC = nullptr,
                                  const Instruction *CxtI = nullptr);
 
-  /// Given operands for an ExtractValueInst, fold the result or return null.
+  /// \brief Given operands for an ExtractValueInst, see if we can fold the
+  /// result.  If not, this returns null.
   Value *SimplifyExtractValueInst(Value *Agg, ArrayRef<unsigned> Idxs,
                                   const DataLayout &DL,
                                   const TargetLibraryInfo *TLI = nullptr,
@@ -230,7 +253,8 @@ namespace llvm {
                                   AssumptionCache *AC = nullptr,
                                   const Instruction *CxtI = nullptr);
 
-  /// Given operands for an ExtractElementInst, fold the result or return null.
+  /// \brief Given operands for an ExtractElementInst, see if we can fold the
+  /// result.  If not, this returns null.
   Value *SimplifyExtractElementInst(Value *Vec, Value *Idx,
                                     const DataLayout &DL,
                                     const TargetLibraryInfo *TLI = nullptr,
@@ -238,7 +262,8 @@ namespace llvm {
                                     AssumptionCache *AC = nullptr,
                                     const Instruction *CxtI = nullptr);
 
-  /// Given operands for an TruncInst, fold the result or return null.
+  /// SimplifyTruncInst - Given operands for an TruncInst, see if we can fold
+  /// the result.  If not, this returns null.
   Value *SimplifyTruncInst(Value *Op, Type *Ty, const DataLayout &DL,
                            const TargetLibraryInfo *TLI = nullptr,
                            const DominatorTree *DT = nullptr,
@@ -248,7 +273,8 @@ namespace llvm {
   //=== Helper functions for higher up the class hierarchy.
 
 
-  /// Given operands for a CmpInst, fold the result or return null.
+  /// SimplifyCmpInst - Given operands for a CmpInst, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyCmpInst(unsigned Predicate, Value *LHS, Value *RHS,
                          const DataLayout &DL,
                          const TargetLibraryInfo *TLI = nullptr,
@@ -256,15 +282,16 @@ namespace llvm {
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given operands for a BinaryOperator, fold the result or return null.
+  /// SimplifyBinOp - Given operands for a BinaryOperator, see if we can
+  /// fold the result.  If not, this returns null.
   Value *SimplifyBinOp(unsigned Opcode, Value *LHS, Value *RHS,
                        const DataLayout &DL,
                        const TargetLibraryInfo *TLI = nullptr,
                        const DominatorTree *DT = nullptr,
                        AssumptionCache *AC = nullptr,
                        const Instruction *CxtI = nullptr);
-
-  /// Given operands for an FP BinaryOperator, fold the result or return null.
+  /// SimplifyFPBinOp - Given operands for a BinaryOperator, see if we can
+  /// fold the result.  If not, this returns null.
   /// In contrast to SimplifyBinOp, try to use FastMathFlag when folding the
   /// result. In case we don't need FastMathFlags, simply fall to SimplifyBinOp.
   Value *SimplifyFPBinOp(unsigned Opcode, Value *LHS, Value *RHS,
@@ -274,8 +301,10 @@ namespace llvm {
                          AssumptionCache *AC = nullptr,
                          const Instruction *CxtI = nullptr);
 
-  /// Given a function and iterators over arguments, fold the result or return
-  /// null.
+  /// \brief Given a function and iterators over arguments, see if we can fold
+  /// the result.
+  ///
+  /// If this call could not be simplified returns null.
   Value *SimplifyCall(Value *V, User::op_iterator ArgBegin,
                       User::op_iterator ArgEnd, const DataLayout &DL,
                       const TargetLibraryInfo *TLI = nullptr,
@@ -283,21 +312,25 @@ namespace llvm {
                       AssumptionCache *AC = nullptr,
                       const Instruction *CxtI = nullptr);
 
-  /// Given a function and set of arguments, fold the result or return null.
+  /// \brief Given a function and set of arguments, see if we can fold the
+  /// result.
+  ///
+  /// If this call could not be simplified returns null.
   Value *SimplifyCall(Value *V, ArrayRef<Value *> Args, const DataLayout &DL,
                       const TargetLibraryInfo *TLI = nullptr,
                       const DominatorTree *DT = nullptr,
                       AssumptionCache *AC = nullptr,
                       const Instruction *CxtI = nullptr);
 
-  /// See if we can compute a simplified version of this instruction. If not,
-  /// return null.
+  /// SimplifyInstruction - See if we can compute a simplified version of this
+  /// instruction.  If not, this returns null.
   Value *SimplifyInstruction(Instruction *I, const DataLayout &DL,
                              const TargetLibraryInfo *TLI = nullptr,
                              const DominatorTree *DT = nullptr,
                              AssumptionCache *AC = nullptr);
 
-  /// Replace all uses of 'I' with 'SimpleV' and simplify the uses recursively.
+  /// \brief Replace all uses of 'I' with 'SimpleV' and simplify the uses
+  /// recursively.
   ///
   /// This first performs a normal RAUW of I with SimpleV. It then recursively
   /// attempts to simplify those users updated by the operation. The 'I'
@@ -309,7 +342,7 @@ namespace llvm {
                                      const DominatorTree *DT = nullptr,
                                      AssumptionCache *AC = nullptr);
 
-  /// Recursively attempt to simplify an instruction.
+  /// \brief Recursively attempt to simplify an instruction.
   ///
   /// This routine uses SimplifyInstruction to simplify 'I', and if successful
   /// replaces uses of 'I' with the simplified value. It then recurses on each

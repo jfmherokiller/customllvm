@@ -25,9 +25,12 @@
 #ifndef LLVM_IR_USE_H
 #define LLVM_IR_USE_H
 
+#include "llvm-c/Core.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/Support/CBindingWrapping.h"
+#include "llvm/Support/Compiler.h"
 #include <cstddef>
+#include <iterator>
 
 namespace llvm {
 
@@ -99,8 +102,14 @@ public:
 
   inline void set(Value *Val);
 
-  inline Value *operator=(Value *RHS);
-  inline const Use &operator=(const Use &RHS);
+  Value *operator=(Value *RHS) {
+    set(RHS);
+    return RHS;
+  }
+  const Use &operator=(const Use &RHS) {
+    set(RHS.Val);
+    return *this;
+  }
 
   Value *operator->() { return Val; }
   const Value *operator->() const { return Val; }

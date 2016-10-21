@@ -26,15 +26,9 @@ PrintModulePass::PrintModulePass(raw_ostream &OS, const std::string &Banner,
     : OS(OS), Banner(Banner),
       ShouldPreserveUseListOrder(ShouldPreserveUseListOrder) {}
 
-PreservedAnalyses PrintModulePass::run(Module &M, AnalysisManager<Module> &) {
+PreservedAnalyses PrintModulePass::run(Module &M) {
   OS << Banner;
-  if (llvm::isFunctionInPrintList("*"))
-    M.print(OS, nullptr, ShouldPreserveUseListOrder);
-  else {
-    for(const auto &F : M.functions())
-      if (llvm::isFunctionInPrintList(F.getName()))
-        F.print(OS);
-  }
+  M.print(OS, nullptr, ShouldPreserveUseListOrder);
   return PreservedAnalyses::all();
 }
 
@@ -42,10 +36,8 @@ PrintFunctionPass::PrintFunctionPass() : OS(dbgs()) {}
 PrintFunctionPass::PrintFunctionPass(raw_ostream &OS, const std::string &Banner)
     : OS(OS), Banner(Banner) {}
 
-PreservedAnalyses PrintFunctionPass::run(Function &F,
-                                         AnalysisManager<Function> &) {
-  if (isFunctionInPrintList(F.getName()))
-    OS << Banner << static_cast<Value &>(F);
+PreservedAnalyses PrintFunctionPass::run(Function &F) {
+  OS << Banner << static_cast<Value &>(F);
   return PreservedAnalyses::all();
 }
 
@@ -62,8 +54,7 @@ public:
       : ModulePass(ID), P(OS, Banner, ShouldPreserveUseListOrder) {}
 
   bool runOnModule(Module &M) override {
-    ModuleAnalysisManager DummyMAM;
-    P.run(M, DummyMAM);
+    P.run(M);
     return false;
   }
 
@@ -83,8 +74,7 @@ public:
 
   // This pass just prints a banner followed by the function as it's processed.
   bool runOnFunction(Function &F) override {
-    FunctionAnalysisManager DummyFAM;
-    P.run(F, DummyFAM);
+    P.run(F);
     return false;
   }
 

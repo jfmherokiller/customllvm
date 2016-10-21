@@ -47,7 +47,6 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Printable.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
@@ -123,12 +122,6 @@ private:
 
   RegSet VRegsToAlloc, EmptyIntervalVRegs;
 
-  /// Inst which is a def of an original reg and whose defs are already all
-  /// dead after remat is saved in DeadRemats. The deletion of such inst is
-  /// postponed till all the allocations are done, so its remat expr is
-  /// always available for the remat of all the siblings of the original reg.
-  SmallPtrSet<MachineInstr *, 32> DeadRemats;
-
   /// \brief Finds the initial set of vreg intervals to allocate.
   void findVRegIntervalsToAlloc(const MachineFunction &MF, LiveIntervals &LIS);
 
@@ -152,7 +145,6 @@ private:
   void finalizeAlloc(MachineFunction &MF, LiveIntervals &LIS,
                      VirtRegMap &VRM) const;
 
-  void postOptimization(Spiller &VRegSpiller, LiveIntervals &LIS);
 };
 
 char RegAllocPBQP::ID = 0;
@@ -505,8 +497,8 @@ void PBQPRAConstraintList::anchor() {}
 
 void RegAllocPBQP::getAnalysisUsage(AnalysisUsage &au) const {
   au.setPreservesCFG();
-  au.addRequired<AAResultsWrapperPass>();
-  au.addPreserved<AAResultsWrapperPass>();
+  au.addRequired<AliasAnalysis>();
+  au.addPreserved<AliasAnalysis>();
   au.addRequired<SlotIndexes>();
   au.addPreserved<SlotIndexes>();
   au.addRequired<LiveIntervals>();
@@ -638,8 +630,7 @@ void RegAllocPBQP::spillVReg(unsigned VReg,
                              VirtRegMap &VRM, Spiller &VRegSpiller) {
 
   VRegsToAlloc.erase(VReg);
-  LiveRangeEdit LRE(&LIS.getInterval(VReg), NewIntervals, MF, LIS, &VRM,
-                    nullptr, &DeadRemats);
+  LiveRangeEdit LRE(&LIS.getInterval(VReg), NewIntervals, MF, LIS, &VRM);
   VRegSpiller.spill(LRE);
 
   const TargetRegisterInfo &TRI = *MF.getSubtarget().getRegisterInfo();
@@ -721,16 +712,6 @@ void RegAllocPBQP::finalizeAlloc(MachineFunction &MF,
   }
 }
 
-void RegAllocPBQP::postOptimization(Spiller &VRegSpiller, LiveIntervals &LIS) {
-  VRegSpiller.postOptimization();
-  /// Remove dead defs because of rematerialization.
-  for (auto DeadInst : DeadRemats) {
-    LIS.RemoveMachineInstrFromMaps(*DeadInst);
-    DeadInst->eraseFromParent();
-  }
-  DeadRemats.clear();
-}
-
 static inline float normalizePBQPSpillWeight(float UseDefFreq, unsigned Size,
                                          unsigned NumInstr) {
   // All intervals have a spill weight that is mostly proportional to the number
@@ -743,10 +724,10 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   MachineBlockFrequencyInfo &MBFI =
     getAnalysis<MachineBlockFrequencyInfo>();
 
-  VirtRegMap &VRM = getAnalysis<VirtRegMap>();
+  calculateSpillWeightsAndHints(LIS, MF, getAnalysis<MachineLoopInfo>(), MBFI,
+                                normalizePBQPSpillWeight);
 
-  calculateSpillWeightsAndHints(LIS, MF, &VRM, getAnalysis<MachineLoopInfo>(),
-                                MBFI, normalizePBQPSpillWeight);
+  VirtRegMap &VRM = getAnalysis<VirtRegMap>();
 
   std::unique_ptr<Spiller> VRegSpiller(createInlineSpiller(*this, MF, VRM));
 
@@ -816,7 +797,6 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
 
   // Finalise allocation, allocate empty ranges.
   finalizeAlloc(MF, LIS, VRM);
-  postOptimization(*VRegSpiller, LIS);
   VRegsToAlloc.clear();
   EmptyIntervalVRegs.clear();
 
@@ -825,17 +805,33 @@ bool RegAllocPBQP::runOnMachineFunction(MachineFunction &MF) {
   return true;
 }
 
-/// Create Printable object for node and register info.
-static Printable PrintNodeInfo(PBQP::RegAlloc::PBQPRAGraph::NodeId NId,
-                               const PBQP::RegAlloc::PBQPRAGraph &G) {
-  return Printable([NId, &G](raw_ostream &OS) {
+namespace {
+// A helper class for printing node and register info in a consistent way
+class PrintNodeInfo {
+public:
+  typedef PBQP::RegAlloc::PBQPRAGraph Graph;
+  typedef PBQP::RegAlloc::PBQPRAGraph::NodeId NodeId;
+
+  PrintNodeInfo(NodeId NId, const Graph &G) : G(G), NId(NId) {}
+
+  void print(raw_ostream &OS) const {
     const MachineRegisterInfo &MRI = G.getMetadata().MF.getRegInfo();
     const TargetRegisterInfo *TRI = MRI.getTargetRegisterInfo();
     unsigned VReg = G.getNodeMetadata(NId).getVReg();
     const char *RegClassName = TRI->getRegClassName(MRI.getRegClass(VReg));
     OS << NId << " (" << RegClassName << ':' << PrintReg(VReg, TRI) << ')';
-  });
+  }
+
+private:
+  const Graph &G;
+  NodeId NId;
+};
+
+inline raw_ostream &operator<<(raw_ostream &OS, const PrintNodeInfo &PR) {
+  PR.print(OS);
+  return OS;
 }
+} // anonymous namespace
 
 void PBQP::RegAlloc::PBQPRAGraph::dump(raw_ostream &OS) const {
   for (auto NId : nodeIds()) {
@@ -858,7 +854,7 @@ void PBQP::RegAlloc::PBQPRAGraph::dump(raw_ostream &OS) const {
   }
 }
 
-LLVM_DUMP_METHOD void PBQP::RegAlloc::PBQPRAGraph::dump() const { dump(dbgs()); }
+void PBQP::RegAlloc::PBQPRAGraph::dump() const { dump(dbgs()); }
 
 void PBQP::RegAlloc::PBQPRAGraph::printDot(raw_ostream &OS) const {
   OS << "graph {\n";

@@ -25,7 +25,7 @@ class XCoreTargetMachine : public LLVMTargetMachine {
 public:
   XCoreTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                      StringRef FS, const TargetOptions &Options,
-                     Optional<Reloc::Model> RM, CodeModel::Model CM,
+                     Reloc::Model RM, CodeModel::Model CM,
                      CodeGenOpt::Level OL);
   ~XCoreTargetMachine() override;
 

@@ -41,6 +41,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/SMLoc.h"
+#include <limits>
 #include <map>
 #include <utility>
 
@@ -144,12 +145,11 @@ public:
   unsigned int getType() const { return TypeID; }
 
   void *operator new(size_t Size, BumpPtrAllocator &Alloc,
-                     size_t Alignment = 16) LLVM_NOEXCEPT {
+                     size_t Alignment = 16) throw() {
     return Alloc.Allocate(Size, Alignment);
   }
 
-  void operator delete(void *Ptr, BumpPtrAllocator &Alloc,
-                       size_t Size) LLVM_NOEXCEPT {
+  void operator delete(void *Ptr, BumpPtrAllocator &Alloc, size_t Size) throw() {
     Alloc.Deallocate(Ptr, Size);
   }
 
@@ -157,7 +157,7 @@ protected:
   std::unique_ptr<Document> &Doc;
   SMRange SourceRange;
 
-  void operator delete(void *) LLVM_NOEXCEPT = delete;
+  void operator delete(void *) throw() {}
 
   ~Node() = default;
 
@@ -304,7 +304,7 @@ private:
 /// increment() which must set CurrentEntry to 0 to create an end iterator.
 template <class BaseT, class ValueT>
 class basic_collection_iterator
-    : public std::iterator<std::input_iterator_tag, ValueT> {
+    : public std::iterator<std::forward_iterator_tag, ValueT> {
 public:
   basic_collection_iterator() : Base(nullptr) {}
   basic_collection_iterator(BaseT *B) : Base(B) {}
@@ -325,24 +325,11 @@ public:
     return Base->CurrentEntry;
   }
 
-  /// Note on EqualityComparable:
-  ///
-  /// The iterator is not re-entrant,
-  /// it is meant to be used for parsing YAML on-demand
-  /// Once iteration started - it can point only to one entry at a time
-  /// hence Base.CurrentEntry and Other.Base.CurrentEntry are equal
-  /// iff Base and Other.Base are equal.
-  bool operator==(const basic_collection_iterator &Other) const {
-    if (Base && (Base == Other.Base)) {
-      assert((Base->CurrentEntry == Other.Base->CurrentEntry)
-             && "Equal Bases expected to point to equal Entries");
-    }
-
-    return Base == Other.Base;
-  }
-
   bool operator!=(const basic_collection_iterator &Other) const {
-    return !(Base == Other.Base);
+    if (Base != Other.Base)
+      return true;
+    return (Base && Other.Base) &&
+           Base->CurrentEntry != Other.Base->CurrentEntry;
   }
 
   basic_collection_iterator &operator++() {

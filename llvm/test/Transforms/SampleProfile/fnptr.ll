@@ -5,15 +5,12 @@
 ; RUN: opt < %s -sample-profile -sample-profile-file=%S/Inputs/fnptr.prof | opt -analyze -branch-prob | FileCheck %s
 ; RUN: opt < %s -sample-profile -sample-profile-file=%S/Inputs/fnptr.binprof | opt -analyze -branch-prob | FileCheck %s
 
-; RUN: opt < %s -passes=sample-profile -sample-profile-file=%S/Inputs/fnptr.prof | opt -analyze -branch-prob | FileCheck %s
-; RUN: opt < %s -passes=sample-profile -sample-profile-file=%S/Inputs/fnptr.binprof | opt -analyze -branch-prob | FileCheck %s
-
-; CHECK:   edge for.body3 -> if.then probability is 0x1a4f3959 / 0x80000000 = 20.55%
-; CHECK:   edge for.body3 -> if.else probability is 0x65b0c6a7 / 0x80000000 = 79.45%
-; CHECK:   edge for.inc -> for.inc12 probability is 0x20dc8dc9 / 0x80000000 = 25.67%
-; CHECK:   edge for.inc -> for.body3 probability is 0x5f237237 / 0x80000000 = 74.33%
-; CHECK:   edge for.inc12 -> for.end14 probability is 0x00000000 / 0x80000000 = 0.00%
-; CHECK:   edge for.inc12 -> for.cond1.preheader probability is 0x80000000 / 0x80000000 = 100.00%
+; CHECK:   edge for.body3 -> if.then probability is 534 / 2598 = 20.5543%
+; CHECK:   edge for.body3 -> if.else probability is 2064 / 2598 = 79.4457%
+; CHECK:   edge for.inc -> for.inc12 probability is 1052 / 2598 = 40.4927%
+; CHECK:   edge for.inc -> for.body3 probability is 1546 / 2598 = 59.5073%
+; CHECK:   edge for.inc12 -> for.end14 probability is 518 / 1052 = 49.2395%
+; CHECK:   edge for.inc12 -> for.cond1.preheader probability is 534 / 1052 = 50.7605%
 
 ; Original C++ test case.
 ;
@@ -49,7 +46,7 @@
 
 @.str = private unnamed_addr constant [9 x i8] c"S = %lf\0A\00", align 1
 
-define double @_Z3fooi(i32 %x) #0 !dbg !3 {
+define double @_Z3fooi(i32 %x) #0 {
 entry:
   %conv = sitofp i32 %x to double, !dbg !2
   %call = tail call double @sin(double %conv) #3, !dbg !8
@@ -59,7 +56,7 @@ entry:
 
 declare double @sin(double) #1
 
-define double @_Z3bari(i32 %x) #0 !dbg !10 {
+define double @_Z3bari(i32 %x) #0 {
 entry:
   %conv = sitofp i32 %x to double, !dbg !9
   %call = tail call double @cos(double %conv) #3, !dbg !11
@@ -69,7 +66,7 @@ entry:
 
 declare double @cos(double) #1
 
-define i32 @main() #2 !dbg !13 {
+define i32 @main() #2 {
 entry:
   br label %for.cond1.preheader, !dbg !12
 
@@ -129,22 +126,21 @@ declare i32 @printf(i8* nocapture readonly, ...) #1
 
 !llvm.module.flags = !{!0}
 !llvm.ident = !{!1}
-!llvm.dbg.cu = !{!26}
 
 !0 = !{i32 2, !"Debug Info Version", i32 3}
 !1 = !{!"clang version 3.6.0 "}
 !2 = !DILocation(line: 9, column: 3, scope: !3)
-!3 = distinct !DISubprogram(name: "foo", line: 8, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, unit: !26, scopeLine: 8, file: !4, scope: !5, type: !6, variables: !7)
+!3 = !DISubprogram(name: "foo", line: 8, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 8, file: !4, scope: !5, type: !6, function: double (i32)* @_Z3fooi, variables: !7)
 !4 = !DIFile(filename: "fnptr.cc", directory: ".")
 !5 = !DIFile(filename: "fnptr.cc", directory: ".")
 !6 = !DISubroutineType(types: !7)
 !7 = !{}
 !8 = !DILocation(line: 9, column: 14, scope: !3)
 !9 = !DILocation(line: 13, column: 3, scope: !10)
-!10 = distinct !DISubprogram(name: "bar", line: 12, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, unit: !26, scopeLine: 12, file: !4, scope: !5, type: !6, variables: !7)
+!10 = !DISubprogram(name: "bar", line: 12, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 12, file: !4, scope: !5, type: !6, function: double (i32)* @_Z3bari, variables: !7)
 !11 = !DILocation(line: 13, column: 14, scope: !10)
 !12 = !DILocation(line: 19, column: 3, scope: !13)
-!13 = distinct !DISubprogram(name: "main", line: 16, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, unit: !26, scopeLine: 16, file: !4, scope: !5, type: !6, variables: !7)
+!13 = !DISubprogram(name: "main", line: 16, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 16, file: !4, scope: !5, type: !6, function: i32 ()* @main, variables: !7)
 !14 = !DILocation(line: 20, column: 5, scope: !13)
 !15 = !DILocation(line: 21, column: 15, scope: !13)
 !16 = !DILocation(line: 22, column: 11, scope: !13)
@@ -157,4 +153,3 @@ declare i32 @printf(i8* nocapture readonly, ...) #1
 !23 = !{!"branch_weights", i32 0, i32 534}
 !24 = !DILocation(line: 27, column: 3, scope: !13)
 !25 = !DILocation(line: 28, column: 3, scope: !13)
-!26 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5 ", isOptimized: false, emissionKind: FullDebug, file: !4)

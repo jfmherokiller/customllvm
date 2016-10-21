@@ -41,19 +41,29 @@ void TypeFinder::run(const Module &M, bool onlyNamed) {
 
   // Get types from functions.
   SmallVector<std::pair<unsigned, MDNode *>, 4> MDForInst;
-  for (const Function &FI : M) {
-    incorporateType(FI.getType());
+  for (Module::const_iterator FI = M.begin(), E = M.end(); FI != E; ++FI) {
+    incorporateType(FI->getType());
 
-    for (const Use &U : FI.operands())
-      incorporateValue(U.get());
+    if (FI->hasPrefixData())
+      incorporateValue(FI->getPrefixData());
+
+    if (FI->hasPrologueData())
+      incorporateValue(FI->getPrologueData());
+
+    if (FI->hasPersonalityFn())
+      incorporateValue(FI->getPersonalityFn());
 
     // First incorporate the arguments.
-    for (Function::const_arg_iterator AI = FI.arg_begin(), AE = FI.arg_end();
-         AI != AE; ++AI)
-      incorporateValue(&*AI);
+    for (Function::const_arg_iterator AI = FI->arg_begin(),
+           AE = FI->arg_end(); AI != AE; ++AI)
+      incorporateValue(AI);
 
-    for (const BasicBlock &BB : FI)
-      for (const Instruction &I : BB) {
+    for (Function::const_iterator BB = FI->begin(), E = FI->end();
+         BB != E;++BB)
+      for (BasicBlock::const_iterator II = BB->begin(),
+             E = BB->end(); II != E; ++II) {
+        const Instruction &I = *II;
+
         // Incorporate the type of the instruction.
         incorporateType(I.getType());
 
@@ -75,7 +85,7 @@ void TypeFinder::run(const Module &M, bool onlyNamed) {
 
   for (Module::const_named_metadata_iterator I = M.named_metadata_begin(),
          E = M.named_metadata_end(); I != E; ++I) {
-    const NamedMDNode *NMD = &*I;
+    const NamedMDNode *NMD = I;
     for (unsigned i = 0, e = NMD->getNumOperands(); i != e; ++i)
       incorporateMDNode(NMD->getOperand(i));
   }

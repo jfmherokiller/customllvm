@@ -120,17 +120,13 @@ static std::string formatSymbol(const Dumper::Context &Ctx,
 
   SymbolRef Symbol;
   if (!Ctx.ResolveSymbol(Section, Offset, Symbol, Ctx.UserData)) {
-    Expected<StringRef> Name = Symbol.getName();
-    if (Name) {
+    if (ErrorOr<StringRef> Name = Symbol.getName()) {
       OS << *Name;
       if (Displacement > 0)
         OS << format(" +0x%X (0x%" PRIX64 ")", Displacement, Offset);
       else
         OS << format(" (0x%" PRIX64 ")", Offset);
       return OS.str();
-    } else {
-      // TODO: Actually report errors helpfully.
-      consumeError(Name.takeError());
     }
   }
 
@@ -148,15 +144,16 @@ static std::error_code resolveRelocation(const Dumper::Context &Ctx,
           Ctx.ResolveSymbol(Section, Offset, Symbol, Ctx.UserData))
     return EC;
 
-  Expected<uint64_t> ResolvedAddressOrErr = Symbol.getAddress();
-  if (!ResolvedAddressOrErr)
-    return errorToErrorCode(ResolvedAddressOrErr.takeError());
+  ErrorOr<uint64_t> ResolvedAddressOrErr = Symbol.getAddress();
+  if (std::error_code EC = ResolvedAddressOrErr.getError())
+    return EC;
   ResolvedAddress = *ResolvedAddressOrErr;
 
-  Expected<section_iterator> SI = Symbol.getSection();
-  if (!SI)
-    return errorToErrorCode(SI.takeError());
-  ResolvedSection = Ctx.COFF.getCOFFSection(**SI);
+  section_iterator SI = Ctx.COFF.section_begin();
+  if (std::error_code EC = Symbol.getSection(SI))
+    return EC;
+
+  ResolvedSection = Ctx.COFF.getCOFFSection(*SI);
   return std::error_code();
 }
 
@@ -260,7 +257,7 @@ void Dumper::printUnwindInfo(const Context &Ctx, const coff_section *Section,
         return;
       }
 
-      printUnwindCode(UI, makeArrayRef(UCI, UCE));
+      printUnwindCode(UI, ArrayRef<UnwindCode>(UCI, UCE));
       UCI = UCI + UsedSlots - 1;
     }
   }
@@ -287,11 +284,11 @@ void Dumper::printRuntimeFunction(const Context &Ctx,
 
   const coff_section *XData;
   uint64_t Offset;
-  resolveRelocation(Ctx, Section, SectionOffset + 8, XData, Offset);
+  if (error(resolveRelocation(Ctx, Section, SectionOffset + 8, XData, Offset)))
+    return;
 
   ArrayRef<uint8_t> Contents;
-  error(Ctx.COFF.getSectionContents(XData, Contents));
-  if (Contents.empty())
+  if (error(Ctx.COFF.getSectionContents(XData, Contents)) || Contents.empty())
     return;
 
   Offset = Offset + RF.UnwindInfoOffset;
@@ -305,15 +302,15 @@ void Dumper::printRuntimeFunction(const Context &Ctx,
 void Dumper::printData(const Context &Ctx) {
   for (const auto &Section : Ctx.COFF.sections()) {
     StringRef Name;
-    Section.getName(Name);
+    if (error(Section.getName(Name)))
+      continue;
 
     if (Name != ".pdata" && !Name.startswith(".pdata$"))
       continue;
 
     const coff_section *PData = Ctx.COFF.getCOFFSection(Section);
     ArrayRef<uint8_t> Contents;
-    error(Ctx.COFF.getSectionContents(PData, Contents));
-    if (Contents.empty())
+    if (error(Ctx.COFF.getSectionContents(PData, Contents)) || Contents.empty())
       continue;
 
     const RuntimeFunction *Entries =

@@ -17,7 +17,6 @@ namespace llvm {
 class Module;
 class Function;
 class SlotTracker;
-class Value;
 
 /// Manage lifetime of a slot tracker for printing IR.
 ///
@@ -30,8 +29,6 @@ class Value;
 class ModuleSlotTracker {
   /// Storage for a slot tracker.
   std::unique_ptr<SlotTracker> MachineStorage;
-  bool ShouldCreateStorage = false;
-  bool ShouldInitializeAllMetadata = false;
 
   const Module *M = nullptr;
   const Function *F = nullptr;
@@ -55,9 +52,7 @@ public:
   /// Destructor to clean up storage.
   ~ModuleSlotTracker();
 
-  /// Lazily creates a slot tracker.
-  SlotTracker *getMachine();
-
+  SlotTracker *getMachine() const { return Machine; }
   const Module *getModule() const { return M; }
   const Function *getCurrentFunction() const { return F; }
 
@@ -66,13 +61,6 @@ public:
   /// Purge the currently incorporated function and incorporate \c F.  If \c F
   /// is currently incorporated, this is a no-op.
   void incorporateFunction(const Function &F);
-
-  /// Return the slot number of the specified local value.
-  ///
-  /// A function that defines this value should be incorporated prior to calling
-  /// this method.
-  /// Return -1 if the value is not in the function's SlotTracker.
-  int getLocalSlot(const Value *V);
 };
 
 } // end namespace llvm

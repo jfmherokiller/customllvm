@@ -24,11 +24,6 @@ import (
 	"strings"
 )
 
-const (
-	linkmodeComponentLibs = "component-libs"
-	linkmodeDylib         = "dylib"
-)
-
 type pkg struct {
 	llvmpath, pkgpath string
 }
@@ -71,12 +66,11 @@ var components = []string{
 func llvmConfig(args ...string) string {
 	configpath := os.Getenv("LLVM_CONFIG")
 	if configpath == "" {
-		bin, _ := filepath.Split(os.Args[0])
-		configpath = filepath.Join(bin, "llvm-config")
+		// strip llvm-go, add llvm-config
+		configpath = os.Args[0][:len(os.Args[0])-7] + "llvm-config"
 	}
 
 	cmd := exec.Command(configpath, args...)
-	cmd.Stderr = os.Stderr
 	out, err := cmd.Output()
 	if err != nil {
 		panic(err.Error())
@@ -84,13 +78,11 @@ func llvmConfig(args ...string) string {
 
 	outstr := string(out)
 	outstr = strings.TrimSuffix(outstr, "\n")
-	outstr = strings.Replace(outstr, "\n", " ", -1)
-	return outstr
+	return strings.Replace(outstr, "\n", " ", -1)
 }
 
 func llvmFlags() compilerFlags {
-	args := append([]string{"--ldflags", "--libs", "--system-libs"}, components...)
-	ldflags := llvmConfig(args...)
+	ldflags := llvmConfig(append([]string{"--ldflags", "--libs", "--system-libs"}, components...)...)
 	if runtime.GOOS != "darwin" {
 		// OS X doesn't like -rpath with cgo. See:
 		// https://code.google.com/p/go/issues/detail?id=7293
@@ -186,7 +178,7 @@ func runGoWithLLVMEnv(args []string, cc, cxx, gocmd, llgo, cppflags, cxxflags, l
 		"PATH=" + newpath,
 	}
 	if llgo != "" {
-		newenv = append(newenv, "GCCGO="+llgo)
+		newenv = append(newenv, "GCCGO=" + llgo)
 	}
 
 	for _, v := range os.Environ() {
@@ -243,32 +235,35 @@ func main() {
 	gocmd := "go"
 	llgo := ""
 
-	flags := []struct {
-		name string
-		dest *string
-	}{
-		{"cc", &cc},
-		{"cxx", &cxx},
-		{"go", &gocmd},
-		{"llgo", &llgo},
-		{"cppflags", &cppflags},
-		{"ldflags", &ldflags},
-	}
-
 	args := os.Args[1:]
-LOOP:
-	for {
-		if len(args) == 0 {
+	DONE: for {
+		switch {
+		case len(args) == 0:
 			usage()
+		case strings.HasPrefix(args[0], "cc="):
+			cc = args[0][3:]
+			args = args[1:]
+		case strings.HasPrefix(args[0], "cxx="):
+			cxx = args[0][4:]
+			args = args[1:]
+		case strings.HasPrefix(args[0], "go="):
+			gocmd = args[0][3:]
+			args = args[1:]
+		case strings.HasPrefix(args[0], "llgo="):
+			llgo = args[0][5:]
+			args = args[1:]
+		case strings.HasPrefix(args[0], "cppflags="):
+			cppflags = args[0][9:]
+			args = args[1:]
+		case strings.HasPrefix(args[0], "cxxflags="):
+			cxxflags = args[0][9:]
+			args = args[1:]
+		case strings.HasPrefix(args[0], "ldflags="):
+			ldflags = args[0][8:]
+			args = args[1:]
+		default:
+			break DONE
 		}
-		for _, flag := range flags {
-			if strings.HasPrefix(args[0], flag.name+"=") {
-				*flag.dest = args[0][len(flag.name)+1:]
-				args = args[1:]
-				continue LOOP
-			}
-		}
-		break
 	}
 
 	switch args[0] {

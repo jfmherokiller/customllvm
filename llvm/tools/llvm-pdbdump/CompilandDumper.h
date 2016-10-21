@@ -13,18 +13,14 @@
 #include "llvm/DebugInfo/PDB/PDBSymDumper.h"
 
 namespace llvm {
-namespace pdb {
 
 class LinePrinter;
 
-typedef int CompilandDumpFlags;
 class CompilandDumper : public PDBSymDumper {
 public:
-  enum Flags { None = 0x0, Children = 0x1, Symbols = 0x2, Lines = 0x4 };
-
   CompilandDumper(LinePrinter &P);
 
-  void start(const PDBSymbolCompiland &Symbol, CompilandDumpFlags flags);
+  void start(const PDBSymbolCompiland &Symbol, bool Children);
 
   void dump(const PDBSymbolCompilandDetails &Symbol) override;
   void dump(const PDBSymbolCompilandEnv &Symbol) override;
@@ -38,7 +34,6 @@ public:
 private:
   LinePrinter &Printer;
 };
-}
 }
 
 #endif

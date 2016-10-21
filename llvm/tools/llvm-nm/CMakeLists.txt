@@ -1,7 +1,5 @@
 set(LLVM_LINK_COMPONENTS
-  AllTargetsAsmParsers
-  AllTargetsDescs
-  AllTargetsInfos
+  ${LLVM_TARGETS_TO_BUILD}
   Core
   Object
   Support

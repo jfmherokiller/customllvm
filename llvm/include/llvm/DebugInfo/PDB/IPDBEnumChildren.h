@@ -14,7 +14,6 @@
 #include <memory>
 
 namespace llvm {
-namespace pdb {
 
 template <typename ChildType> class IPDBEnumChildren {
 public:
@@ -29,7 +28,6 @@ public:
   virtual void reset() = 0;
   virtual MyType *clone() const = 0;
 };
-}
 }
 
 #endif

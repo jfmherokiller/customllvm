@@ -13,6 +13,7 @@
 
 #include "ARMMCAsmInfo.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
 
@@ -32,9 +33,7 @@ ARMMCAsmInfoDarwin::ARMMCAsmInfoDarwin(const Triple &TheTriple) {
   SupportsDebugInformation = true;
 
   // Exceptions handling
-  ExceptionsType = (TheTriple.isOSDarwin() && !TheTriple.isWatchABI())
-                       ? ExceptionHandling::SjLj
-                       : ExceptionHandling::DwarfCFI;
+  ExceptionsType = ExceptionHandling::SjLj;
 
   UseIntegratedAssembler = true;
 }

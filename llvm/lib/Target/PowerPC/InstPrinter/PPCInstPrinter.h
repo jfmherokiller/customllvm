@@ -18,6 +18,8 @@
 
 namespace llvm {
 
+class MCOperand;
+
 class PPCInstPrinter : public MCInstPrinter {
   bool IsDarwin;
 public:
@@ -53,8 +55,6 @@ public:
   void printS5ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
   void printU5ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
   void printU6ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
-  void printU7ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
-  void printU8ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
   void printU10ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
   void printU12ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
   void printS16ImmOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);

@@ -33,22 +33,22 @@ extern Triple TargetTriple;
 class LLC;
 
 //===---------------------------------------------------------------------===//
-// CC abstraction
+// GCC abstraction
 //
-class CC {
-  std::string CCPath;                // The path to the cc executable.
+class GCC {
+  std::string GCCPath;                // The path to the gcc executable.
   std::string RemoteClientPath;       // The path to the rsh / ssh executable.
-  std::vector<std::string> ccArgs; // CC-specific arguments.
-  CC(StringRef ccPath, StringRef RemotePath,
-      const std::vector<std::string> *CCArgs)
-    : CCPath(ccPath), RemoteClientPath(RemotePath) {
-    if (CCArgs) ccArgs = *CCArgs;
+  std::vector<std::string> gccArgs; // GCC-specific arguments.
+  GCC(StringRef gccPath, StringRef RemotePath,
+      const std::vector<std::string> *GCCArgs)
+    : GCCPath(gccPath), RemoteClientPath(RemotePath) {
+    if (GCCArgs) gccArgs = *GCCArgs;
   }
 public:
   enum FileType { AsmFile, ObjectFile, CFile };
 
-  static CC *create(std::string &Message,
-                     const std::string &CCBinary,
+  static GCC *create(std::string &Message,
+                     const std::string &GCCBinary,
                      const std::vector<std::string> *Args);
 
   /// ExecuteProgram - Execute the program specified by "ProgramFile" (which is
@@ -64,7 +64,7 @@ public:
                      const std::string &InputFile,
                      const std::string &OutputFile,
                      std::string *Error = nullptr,
-                     const std::vector<std::string> &CCArgs =
+                     const std::vector<std::string> &GCCArgs =
                          std::vector<std::string>(),
                      unsigned Timeout = 0,
                      unsigned MemoryLimit = 0);
@@ -74,7 +74,7 @@ public:
   ///
   int MakeSharedObject(const std::string &InputFile, FileType fileType,
                        std::string &OutputFile,
-                       const std::vector<std::string> &ArgsForCC,
+                       const std::vector<std::string> &ArgsForGCC,
                        std::string &Error);
 };
 
@@ -88,9 +88,9 @@ class AbstractInterpreter {
   virtual void anchor();
 public:
   static LLC *createLLC(const char *Argv0, std::string &Message,
-                        const std::string              &CCBinary,
+                        const std::string              &GCCBinary,
                         const std::vector<std::string> *Args = nullptr,
-                        const std::vector<std::string> *CCArgs = nullptr,
+                        const std::vector<std::string> *GCCArgs = nullptr,
                         bool UseIntegratedAssembler = false);
 
   static AbstractInterpreter*
@@ -119,15 +119,15 @@ public:
                               unsigned Timeout = 0, unsigned MemoryLimit = 0) {}
 
   /// OutputCode - Compile the specified program from bitcode to code
-  /// understood by the CC driver (either C or asm).  If the code generator
+  /// understood by the GCC driver (either C or asm).  If the code generator
   /// fails, it sets Error, otherwise, this function returns the type of code
   /// emitted.
-  virtual CC::FileType OutputCode(const std::string &Bitcode,
+  virtual GCC::FileType OutputCode(const std::string &Bitcode,
                                    std::string &OutFile, std::string &Error,
                                    unsigned Timeout = 0,
                                    unsigned MemoryLimit = 0) {
     Error = "OutputCode not supported by this AbstractInterpreter!";
-    return CC::AsmFile;
+    return GCC::AsmFile;
   }
 
   /// ExecuteProgram - Run the specified bitcode file, emitting output to the
@@ -140,7 +140,7 @@ public:
                              const std::string &InputFile,
                              const std::string &OutputFile,
                              std::string *Error,
-                             const std::vector<std::string> &CCArgs =
+                             const std::vector<std::string> &GCCArgs =
                                std::vector<std::string>(),
                              const std::vector<std::string> &SharedLibs =
                                std::vector<std::string>(),
@@ -154,18 +154,18 @@ public:
 class LLC : public AbstractInterpreter {
   std::string LLCPath;               // The path to the LLC executable.
   std::vector<std::string> ToolArgs; // Extra args to pass to LLC.
-  CC *cc;
+  GCC *gcc;
   bool UseIntegratedAssembler;
 public:
-  LLC(const std::string &llcPath, CC *cc,
+  LLC(const std::string &llcPath, GCC *Gcc,
       const std::vector<std::string> *Args,
       bool useIntegratedAssembler)
-    : LLCPath(llcPath), cc(cc),
+    : LLCPath(llcPath), gcc(Gcc),
       UseIntegratedAssembler(useIntegratedAssembler) {
     ToolArgs.clear();
     if (Args) ToolArgs = *Args;
   }
-  ~LLC() override { delete cc; }
+  ~LLC() override { delete gcc; }
 
   /// compileProgram - Compile the specified program from bitcode to executable
   /// code.  This does not produce any output, it is only used when debugging
@@ -178,7 +178,7 @@ public:
                      const std::string &InputFile,
                      const std::string &OutputFile,
                      std::string *Error,
-                     const std::vector<std::string> &CCArgs =
+                     const std::vector<std::string> &GCCArgs =
                        std::vector<std::string>(),
                      const std::vector<std::string> &SharedLibs =
                         std::vector<std::string>(),
@@ -186,10 +186,10 @@ public:
                      unsigned MemoryLimit = 0) override;
 
   /// OutputCode - Compile the specified program from bitcode to code
-  /// understood by the CC driver (either C or asm).  If the code generator
+  /// understood by the GCC driver (either C or asm).  If the code generator
   /// fails, it sets Error, otherwise, this function returns the type of code
   /// emitted.
-  CC::FileType OutputCode(const std::string &Bitcode,
+  GCC::FileType OutputCode(const std::string &Bitcode,
                            std::string &OutFile, std::string &Error,
                            unsigned Timeout = 0,
                            unsigned MemoryLimit = 0) override;

@@ -1,5 +1,4 @@
 ; RUN: opt < %s -float2int -S | FileCheck %s
-; RUN: opt < %s -passes='float2int' -S | FileCheck %s
 
 ;
 ; Positive tests
@@ -255,13 +254,3 @@ define i32 @neg_calluser(i32 %value) {
   ret i32 %7
 }
 declare double @g(double)
-
-; CHECK-LABEL: @neg_vector
-; CHECK:  %1 = uitofp <4 x i8> %a to <4 x float>
-; CHECK:  %2 = fptoui <4 x float> %1 to <4 x i16>
-; CHECK:  ret <4 x i16> %2
-define <4 x i16> @neg_vector(<4 x i8> %a) {
-  %1 = uitofp <4 x i8> %a to <4 x float>
-  %2 = fptoui <4 x float> %1 to <4 x i16>
-  ret <4 x i16> %2
-}

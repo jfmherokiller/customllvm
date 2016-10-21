@@ -10,6 +10,9 @@
 #ifndef LLVM_SUPPORT_YAMLTRAITS_H
 #define LLVM_SUPPORT_YAMLTRAITS_H
 
+
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
@@ -17,7 +20,6 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Compiler.h"
-#include "llvm/Support/Endian.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/YAMLParser.h"
@@ -26,6 +28,7 @@
 
 namespace llvm {
 namespace yaml {
+
 
 /// This class should be specialized by any type that needs to be converted
 /// to/from a YAML mapping.  For example:
@@ -49,6 +52,7 @@ struct MappingTraits {
   // static const bool flow = true;
 };
 
+
 /// This class should be specialized by any integral type that converts
 /// to/from a YAML scalar where there is a one-to-one mapping between
 /// in-memory values and a string in YAML.  For example:
@@ -66,6 +70,7 @@ struct ScalarEnumerationTraits {
   // static void enumeration(IO &io, T &value);
 };
 
+
 /// This class should be specialized by any integer type that is a union
 /// of bit values and the YAML representation is a flow sequence of
 /// strings.  For example:
@@ -82,6 +87,7 @@ struct ScalarBitSetTraits {
   // Must provide:
   // static void bitset(IO &io, T &value);
 };
+
 
 /// This class should be specialized by type that requires custom conversion
 /// to/from a yaml scalar.  For example:
@@ -143,6 +149,7 @@ struct BlockScalarTraits {
   // static StringRef input(StringRef Scalar, void *ctxt, T &Value);
 };
 
+
 /// This class should be specialized by any type that needs to be converted
 /// to/from a YAML sequence.  For example:
 ///
@@ -168,6 +175,7 @@ struct SequenceTraits {
   // static const bool flow = true;
 };
 
+
 /// This class should be specialized by any type that needs to be converted
 /// to/from a list of YAML documents.
 template<typename T>
@@ -177,6 +185,7 @@ struct DocumentListTraits {
   // static T::value_type& element(IO &io, T &seq, size_t index);
 };
 
+
 // Only used by compiler if both template types are the same
 template <typename T, T>
 struct SameType;
@@ -184,6 +193,8 @@ struct SameType;
 // Only used for better diagnostics of missing traits
 template <typename T>
 struct MissingTrait;
+
+
 
 // Test if ScalarEnumerationTraits<T> is defined on type T.
 template <class T>
@@ -202,6 +213,7 @@ public:
     (sizeof(test<ScalarEnumerationTraits<T> >(nullptr)) == 1);
 };
 
+
 // Test if ScalarBitSetTraits<T> is defined on type T.
 template <class T>
 struct has_ScalarBitSetTraits
@@ -217,6 +229,7 @@ struct has_ScalarBitSetTraits
 public:
   static bool const value = (sizeof(test<ScalarBitSetTraits<T> >(nullptr)) == 1);
 };
+
 
 // Test if ScalarTraits<T> is defined on type T.
 template <class T>
@@ -239,6 +252,7 @@ public:
       (sizeof(test<ScalarTraits<T>>(nullptr, nullptr, nullptr)) == 1);
 };
 
+
 // Test if BlockScalarTraits<T> is defined on type T.
 template <class T>
 struct has_BlockScalarTraits
@@ -257,6 +271,7 @@ public:
   static bool const value =
       (sizeof(test<BlockScalarTraits<T>>(nullptr, nullptr)) == 1);
 };
+
 
 // Test if MappingTraits<T> is defined on type T.
 template <class T>
@@ -290,6 +305,8 @@ public:
   static bool const value = (sizeof(test<MappingTraits<T> >(nullptr)) == 1);
 };
 
+
+
 // Test if SequenceTraits<T> is defined on type T.
 template <class T>
 struct has_SequenceMethodTraits
@@ -305,6 +322,7 @@ struct has_SequenceMethodTraits
 public:
   static bool const value =  (sizeof(test<SequenceTraits<T> >(nullptr)) == 1);
 };
+
 
 // has_FlowTraits<int> will cause an error with some compilers because
 // it subclasses int.  Using this wrapper only instantiates the
@@ -335,10 +353,13 @@ public:
   static bool const value = sizeof(f<Derived>(nullptr)) == 2;
 };
 
+
+
 // Test if SequenceTraits<T> is defined on type T
 template<typename T>
 struct has_SequenceTraits : public std::integral_constant<bool,
                                       has_SequenceMethodTraits<T>::value > { };
+
 
 // Test if DocumentListTraits<T> is defined on type T
 template <class T>
@@ -432,6 +453,7 @@ inline bool needsQuotes(StringRef S) {
   return false;
 }
 
+
 template<typename T>
 struct missingTraits : public std::integral_constant<bool,
                                          !has_ScalarEnumerationTraits<T>::value
@@ -511,11 +533,11 @@ public:
 
   template <typename FBT, typename T>
   void enumFallback(T &Val) {
-    if (matchEnumFallback()) {
+    if ( matchEnumFallback() ) {
       // FIXME: Force integral conversion to allow strong typedefs to convert.
-      FBT Res = static_cast<typename FBT::BaseType>(Val);
+      FBT Res = (uint64_t)Val;
       yamlize(*this, Res, true);
-      Val = static_cast<T>(static_cast<typename FBT::BaseType>(Res));
+      Val = (uint64_t)Res;
     }
   }
 
@@ -632,6 +654,8 @@ private:
   void  *Ctxt;
 };
 
+
+
 template<typename T>
 typename std::enable_if<has_ScalarEnumerationTraits<T>::value,void>::type
 yamlize(IO &io, T &Val, bool) {
@@ -651,6 +675,7 @@ yamlize(IO &io, T &Val, bool) {
     io.endBitSetScalar();
   }
 }
+
 
 template<typename T>
 typename std::enable_if<has_ScalarTraits<T>::value,void>::type
@@ -766,6 +791,7 @@ yamlize(IO &io, T &Seq, bool) {
   }
 }
 
+
 template<>
 struct ScalarTraits<bool> {
   static void output(const bool &, void*, llvm::raw_ostream &);
@@ -857,31 +883,7 @@ struct ScalarTraits<double> {
   static bool mustQuote(StringRef) { return false; }
 };
 
-// For endian types, we just use the existing ScalarTraits for the underlying
-// type.  This way endian aware types are supported whenever a ScalarTraits
-// is defined for the underlying type.
-template <typename value_type, support::endianness endian, size_t alignment>
-struct ScalarTraits<support::detail::packed_endian_specific_integral<
-    value_type, endian, alignment>> {
-  typedef support::detail::packed_endian_specific_integral<value_type, endian,
-                                                           alignment>
-      endian_type;
 
-  static void output(const endian_type &E, void *Ctx,
-                     llvm::raw_ostream &Stream) {
-    ScalarTraits<value_type>::output(static_cast<value_type>(E), Ctx, Stream);
-  }
-  static StringRef input(StringRef Str, void *Ctx, endian_type &E) {
-    value_type V;
-    auto R = ScalarTraits<value_type>::input(Str, Ctx, V);
-    E = static_cast<endian_type>(V);
-    return R;
-  }
-
-  static bool mustQuote(StringRef Str) {
-    return ScalarTraits<value_type>::mustQuote(Str);
-  }
-};
 
 // Utility for use within MappingTraits<>::mapping() method
 // to [de]normalize an object for use with YAML conversion.
@@ -915,20 +917,18 @@ private:
   TFinal       &Result;
 };
 
+
+
 // Utility for use within MappingTraits<>::mapping() method
 // to [de]normalize an object for use with YAML conversion.
 template <typename TNorm, typename TFinal>
 struct MappingNormalizationHeap {
-  MappingNormalizationHeap(IO &i_o, TFinal &Obj,
-                           llvm::BumpPtrAllocator *allocator)
-    : io(i_o), BufPtr(nullptr), Result(Obj) {
+  MappingNormalizationHeap(IO &i_o, TFinal &Obj)
+    : io(i_o), BufPtr(NULL), Result(Obj) {
     if ( io.outputting() ) {
       BufPtr = new (&Buffer) TNorm(io, Obj);
     }
-    else if (allocator) {
-      BufPtr = allocator->Allocate<TNorm>();
-      new (BufPtr) TNorm(io);
-    } else {
+    else {
       BufPtr = new TNorm(io);
     }
   }
@@ -952,6 +952,8 @@ private:
   TNorm        *BufPtr;
   TFinal       &Result;
 };
+
+
 
 ///
 /// The Input class is used to parse a yaml document into in-memory structs
@@ -1081,6 +1083,7 @@ private:
   void setError(HNode *hnode, const Twine &message);
   void setError(Node *node, const Twine &message);
 
+
 public:
   // These are only used by operator>>. They could be private
   // if those templated things could be made friends.
@@ -1101,6 +1104,9 @@ private:
   HNode                              *CurrentNode;
   bool                                ScalarMatchFound;
 };
+
+
+
 
 ///
 /// The Output class is used to generate a yaml document from in-memory structs
@@ -1175,6 +1181,9 @@ private:
   bool                     NeedsNewLine;
 };
 
+
+
+
 /// YAML I/O does conversion based on types. But often native data types
 /// are just a typedef of built in intergral types (e.g. int).  But the C++
 /// type matching system sees through the typedef and all the typedefed types
@@ -1195,8 +1204,9 @@ private:
         bool operator==(const _base &rhs) const { return value == rhs; }       \
         bool operator<(const _type &rhs) const { return value < rhs.value; }   \
         _base value;                                                           \
-        typedef _base BaseType;                                                \
     };
+
+
 
 ///
 /// Use these types instead of uintXX_t in any mapping to have
@@ -1206,6 +1216,7 @@ LLVM_YAML_STRONG_TYPEDEF(uint8_t, Hex8)
 LLVM_YAML_STRONG_TYPEDEF(uint16_t, Hex16)
 LLVM_YAML_STRONG_TYPEDEF(uint32_t, Hex32)
 LLVM_YAML_STRONG_TYPEDEF(uint64_t, Hex64)
+
 
 template<>
 struct ScalarTraits<Hex8> {
@@ -1234,6 +1245,7 @@ struct ScalarTraits<Hex64> {
   static StringRef input(StringRef, void*, Hex64 &);
   static bool mustQuote(StringRef) { return false; }
 };
+
 
 // Define non-member operator>> so that Input can stream in a document list.
 template <typename T>
@@ -1290,6 +1302,7 @@ operator>>(Input &yin, T &docSeq) {
   char missing_yaml_trait_for_type[sizeof(MissingTrait<T>)];
   return yin;
 }
+
 
 // Define non-member operator<< so that Output can stream out document list.
 template <typename T>
@@ -1359,8 +1372,10 @@ operator<<(Output &yout, T &seq) {
   return yout;
 }
 
+
 } // namespace yaml
 } // namespace llvm
+
 
 /// Utility for declaring that a std::vector of a particular type
 /// should be considered a YAML sequence.
@@ -1420,5 +1435,7 @@ operator<<(Output &yout, T &seq) {
     };                                                                      \
   }                                                                         \
   }
+
+
 
 #endif // LLVM_SUPPORT_YAMLTRAITS_H

@@ -21,8 +21,7 @@ namespace llvm {
 class MipsSEDAGToDAGISel : public MipsDAGToDAGISel {
 
 public:
-  explicit MipsSEDAGToDAGISel(MipsTargetMachine &TM, CodeGenOpt::Level OL)
-      : MipsDAGToDAGISel(TM, OL) {}
+  explicit MipsSEDAGToDAGISel(MipsTargetMachine &TM) : MipsDAGToDAGISel(TM) {}
 
 private:
 
@@ -35,18 +34,20 @@ private:
 
   bool replaceUsesWithZeroReg(MachineRegisterInfo *MRI, const MachineInstr&);
 
-  std::pair<SDNode *, SDNode *> selectMULT(SDNode *N, unsigned Opc,
-                                           const SDLoc &dl, EVT Ty, bool HasLo,
-                                           bool HasHi);
+  std::pair<SDNode*, SDNode*> selectMULT(SDNode *N, unsigned Opc, SDLoc dl,
+                                         EVT Ty, bool HasLo, bool HasHi);
 
-  void selectAddESubE(unsigned MOp, SDValue InFlag, SDValue CmpLHS,
-                      const SDLoc &DL, SDNode *Node) const;
+  SDNode *selectAddESubE(unsigned MOp, SDValue InFlag, SDValue CmpLHS,
+                         SDLoc DL, SDNode *Node) const;
 
   bool selectAddrFrameIndex(SDValue Addr, SDValue &Base, SDValue &Offset) const;
   bool selectAddrFrameIndexOffset(SDValue Addr, SDValue &Base, SDValue &Offset,
                                   unsigned OffsetBits) const;
 
   bool selectAddrRegImm(SDValue Addr, SDValue &Base,
+                        SDValue &Offset) const override;
+
+  bool selectAddrRegReg(SDValue Addr, SDValue &Base,
                         SDValue &Offset) const override;
 
   bool selectAddrDefault(SDValue Addr, SDValue &Base,
@@ -61,23 +62,14 @@ private:
   bool selectAddrRegImm10(SDValue Addr, SDValue &Base,
                           SDValue &Offset) const;
 
-  bool selectAddrRegImm11(SDValue Addr, SDValue &Base,
-                          SDValue &Offset) const;
-
   bool selectAddrRegImm12(SDValue Addr, SDValue &Base,
                           SDValue &Offset) const;
 
   bool selectAddrRegImm16(SDValue Addr, SDValue &Base,
                           SDValue &Offset) const;
 
-  bool selectIntAddr11MM(SDValue Addr, SDValue &Base,
-                         SDValue &Offset) const override;
-
-  bool selectIntAddr12MM(SDValue Addr, SDValue &Base,
-                         SDValue &Offset) const override;
-
-  bool selectIntAddr16MM(SDValue Addr, SDValue &Base,
-                         SDValue &Offset) const override;
+  bool selectIntAddrMM(SDValue Addr, SDValue &Base,
+                       SDValue &Offset) const override;
 
   bool selectIntAddrLSL2MM(SDValue Addr, SDValue &Base,
                            SDValue &Offset) const override;
@@ -119,7 +111,7 @@ private:
   /// starting at bit zero.
   bool selectVSplatMaskR(SDValue N, SDValue &Imm) const override;
 
-  bool trySelect(SDNode *Node) override;
+  std::pair<bool, SDNode*> selectNode(SDNode *Node) override;
 
   void processFunctionAfterISel(MachineFunction &MF) override;
 
@@ -132,8 +124,8 @@ private:
                                     std::vector<SDValue> &OutOps) override;
 };
 
-FunctionPass *createMipsSEISelDag(MipsTargetMachine &TM,
-                                  CodeGenOpt::Level OptLevel);
+FunctionPass *createMipsSEISelDag(MipsTargetMachine &TM);
+
 }
 
 #endif

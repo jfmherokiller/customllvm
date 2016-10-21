@@ -15,7 +15,7 @@
 #ifndef LLVM_CODEGEN_TARGETLOWERINGOBJECTFILEIMPL_H
 #define LLVM_CODEGEN_TARGETLOWERINGOBJECTFILEIMPL_H
 
-#include "llvm/MC/MCExpr.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/SectionKind.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 
@@ -23,6 +23,7 @@ namespace llvm {
   class MachineModuleInfo;
   class Mangler;
   class MCAsmInfo;
+  class MCExpr;
   class MCSection;
   class MCSectionMachO;
   class MCSymbol;
@@ -35,23 +36,18 @@ class TargetLoweringObjectFileELF : public TargetLoweringObjectFile {
   bool UseInitArray;
   mutable unsigned NextUniqueID = 0;
 
-protected:
-  MCSymbolRefExpr::VariantKind PLTRelativeVariantKind =
-      MCSymbolRefExpr::VK_None;
-
 public:
   TargetLoweringObjectFileELF() : UseInitArray(false) {}
 
   ~TargetLoweringObjectFileELF() override {}
 
-  void emitPersonalityValue(MCStreamer &Streamer, const DataLayout &TM,
+  void emitPersonalityValue(MCStreamer &Streamer, const TargetMachine &TM,
                             const MCSymbol *Sym) const override;
 
   /// Given a constant with the SectionKind, return a section that it should be
   /// placed in.
-  MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
-                                   const Constant *C,
-                                   unsigned &Align) const override;
+  MCSection *getSectionForConstant(SectionKind Kind,
+                                   const Constant *C) const override;
 
   MCSection *getExplicitSectionGlobal(const GlobalValue *GV, SectionKind Kind,
                                       Mangler &Mang,
@@ -85,10 +81,6 @@ public:
                                   const MCSymbol *KeySym) const override;
   MCSection *getStaticDtorSection(unsigned Priority,
                                   const MCSymbol *KeySym) const override;
-
-  const MCExpr *lowerRelativeReference(const GlobalValue *LHS,
-                                       const GlobalValue *RHS, Mangler &Mang,
-                                       const TargetMachine &TM) const override;
 };
 
 
@@ -111,9 +103,8 @@ public:
                                       Mangler &Mang,
                                       const TargetMachine &TM) const override;
 
-  MCSection *getSectionForConstant(const DataLayout &DL, SectionKind Kind,
-                                   const Constant *C,
-                                   unsigned &Align) const override;
+  MCSection *getSectionForConstant(SectionKind Kind,
+                                   const Constant *C) const override;
 
   /// The mach-o version of this method defaults to returning a stub reference.
   const MCExpr *
@@ -132,16 +123,11 @@ public:
                                           const MCValue &MV, int64_t Offset,
                                           MachineModuleInfo *MMI,
                                           MCStreamer &Streamer) const override;
-
-  void getNameWithPrefix(SmallVectorImpl<char> &OutName, const GlobalValue *GV,
-                         Mangler &Mang, const TargetMachine &TM) const override;
 };
 
 
 
 class TargetLoweringObjectFileCOFF : public TargetLoweringObjectFile {
-  mutable unsigned NextUniqueID = 0;
-
 public:
   ~TargetLoweringObjectFileCOFF() override {}
 
@@ -154,7 +140,8 @@ public:
                                     const TargetMachine &TM) const override;
 
   void getNameWithPrefix(SmallVectorImpl<char> &OutName, const GlobalValue *GV,
-                         Mangler &Mang, const TargetMachine &TM) const override;
+                         bool CannotUsePrivateLabel, Mangler &Mang,
+                         const TargetMachine &TM) const override;
 
   MCSection *getSectionForJumpTable(const Function &F, Mangler &Mang,
                                     const TargetMachine &TM) const override;

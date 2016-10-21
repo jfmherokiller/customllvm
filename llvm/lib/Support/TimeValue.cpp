@@ -15,7 +15,6 @@
 #include "llvm/Config/config.h"
 
 namespace llvm {
-
 using namespace sys;
 
 const TimeValue::SecondsType
@@ -23,7 +22,8 @@ const TimeValue::SecondsType
 const TimeValue::SecondsType
   TimeValue::Win32ZeroTimeSeconds = -12591158400ULL;
 
-void TimeValue::normalize() {
+void
+TimeValue::normalize( void ) {
   if ( nanos_ >= NANOSECONDS_PER_SECOND ) {
     do {
       seconds_++;
@@ -45,7 +45,7 @@ void TimeValue::normalize() {
   }
 }
 
-} // namespace llvm
+}
 
 /// Include the platform-specific portion of TimeValue class
 #ifdef LLVM_ON_UNIX

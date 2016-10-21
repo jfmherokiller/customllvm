@@ -35,7 +35,7 @@ AsmWriterFlavor("x86-asm-syntax", cl::init(ATT),
              clEnumValEnd));
 
 static cl::opt<bool>
-MarkedJTDataRegions("mark-data-regions", cl::init(true),
+MarkedJTDataRegions("mark-data-regions", cl::init(false),
   cl::desc("Mark code section jump table data regions."),
   cl::Hidden);
 

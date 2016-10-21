@@ -4,7 +4,6 @@ set(LLVM_LINK_COMPONENTS
   Core
   MCDisassembler
   Object
-  Support
   Target
   )
 
@@ -37,9 +36,7 @@ endif ()
 
 add_llvm_tool(llvm-c-test
   calc.c
-  diagnostic.c
   disassemble.c
-  echo.cpp
   helpers.c
   include-all.c
   main.c

@@ -20,19 +20,18 @@
 #include "llvm/Analysis/CallGraphSCCPass.h"
 
 namespace llvm {
-class AssumptionCacheTracker;
-class CallSite;
-class DataLayout;
-class InlineCost;
-class ProfileSummaryInfo;
-template <class PtrType, unsigned SmallSize> class SmallPtrSet;
+  class CallSite;
+  class DataLayout;
+  class InlineCost;
+  template<class PtrType, unsigned SmallSize>
+  class SmallPtrSet;
 
 /// Inliner - This class contains all of the helper code which is used to
 /// perform the inlining operations that do not depend on the policy.
 ///
 struct Inliner : public CallGraphSCCPass {
   explicit Inliner(char &ID);
-  explicit Inliner(char &ID, bool InsertLifetime);
+  explicit Inliner(char &ID, int Threshold, bool InsertLifetime);
 
   /// getAnalysisUsage - For this class, we declare that we require and preserve
   /// the call graph.  If the derived class implements this method, it should
@@ -47,6 +46,18 @@ struct Inliner : public CallGraphSCCPass {
   // doFinalization - Remove now-dead linkonce functions at the end of
   // processing to avoid breaking the SCC traversal.
   bool doFinalization(CallGraph &CG) override;
+
+  /// This method returns the value specified by the -inline-threshold value,
+  /// specified on the command line.  This is typically not directly needed.
+  ///
+  unsigned getInlineThreshold() const { return InlineThreshold; }
+
+  /// Calculate the inline threshold for given Caller. This threshold is lower
+  /// if the caller is marked with OptimizeForSize and -inline-threshold is not
+  /// given on the comand line. It is higher if the callee is marked with the
+  /// inlinehint attribute.
+  ///
+  unsigned getInlineThreshold(CallSite CS) const;
 
   /// getInlineCost - This method must be implemented by the subclass to
   /// determine the cost of inlining the specified call site.  If the cost
@@ -63,30 +74,16 @@ struct Inliner : public CallGraphSCCPass {
   /// deal with that subset of the functions.
   bool removeDeadFunctions(CallGraph &CG, bool AlwaysInlineOnly = false);
 
-  /// This function performs the main work of the pass.  The default
-  /// of Inlinter::runOnSCC() calls skipSCC() before calling this method, but
-  /// derived classes which cannot be skipped can override that method and
-  /// call this function unconditionally.
-  bool inlineCalls(CallGraphSCC &SCC);
-
 private:
+  // InlineThreshold - Cache the value here for easy access.
+  unsigned InlineThreshold;
+
   // InsertLifetime - Insert @llvm.lifetime intrinsics.
   bool InsertLifetime;
 
   /// shouldInline - Return true if the inliner should attempt to
   /// inline at the given CallSite.
   bool shouldInline(CallSite CS);
-  /// Return true if inlining of CS can block the caller from being
-  /// inlined which is proved to be more beneficial. \p IC is the
-  /// estimated inline cost associated with callsite \p CS.
-  /// \p TotalAltCost will be set to the estimated cost of inlining the caller
-  /// if \p CS is suppressed for inlining.
-  bool shouldBeDeferred(Function *Caller, CallSite CS, InlineCost IC,
-                        int &TotalAltCost);
-
-protected:
-  AssumptionCacheTracker *ACT;
-  ProfileSummaryInfo *PSI;
 };
 
 } // End llvm namespace

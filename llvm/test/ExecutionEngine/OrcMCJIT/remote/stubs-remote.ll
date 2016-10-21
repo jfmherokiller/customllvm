@@ -1,7 +1,6 @@
 ; RUN: %lli -jit-kind=orc-mcjit -remote-mcjit -disable-lazy-compilation=false -mcjit-remote-process=lli-child-target%exeext %s
-; XFAIL: mingw32,win32
-; UNSUPPORTED: powerpc64-unknown-linux-gnu
-; Remove UNSUPPORTED for powerpc64-unknown-linux-gnu if problem caused by r266663 is fixed
+; XFAIL: *
+; This test should fail until remote symbol resolution is supported.
 
 define i32 @main() nounwind {
 entry:

@@ -32,11 +32,6 @@ class TargetLibraryInfo;
 class Type;
 class Value;
 
-enum class ObjSizeMode {
-  Exact = 0,
-  Min = 1,
-  Max = 2
-};
 
 /// \brief Tests if a value is a call or invoke to a library function that
 /// allocates or reallocates memory (either malloc, calloc, realloc, or strdup
@@ -63,6 +58,16 @@ bool isCallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
 /// allocates memory (either malloc, calloc, or strdup like).
 bool isAllocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
                    bool LookThroughBitCast = false);
+
+/// \brief Tests if a value is a call or invoke to a library function that
+/// reallocates memory (such as realloc).
+bool isReallocLikeFn(const Value *V, const TargetLibraryInfo *TLI,
+                     bool LookThroughBitCast = false);
+
+/// \brief Tests if a value is a call or invoke to a library function that
+/// allocates memory and never returns null (such as operator new).
+bool isOperatorNewLikeFn(const Value *V, const TargetLibraryInfo *TLI,
+                         bool LookThroughBitCast = false);
 
 //===----------------------------------------------------------------------===//
 //  malloc Call Utility Functions.
@@ -135,11 +140,8 @@ static inline CallInst *isFreeCall(Value *I, const TargetLibraryInfo *TLI) {
 /// underlying object pointed to by Ptr.
 /// If RoundToAlign is true, then Size is rounded up to the aligment of allocas,
 /// byval arguments, and global variables.
-/// If Mode is Min or Max the size will be evaluated even if it depends on
-/// a condition and corresponding value will be returned (min or max).
 bool getObjectSize(const Value *Ptr, uint64_t &Size, const DataLayout &DL,
-                   const TargetLibraryInfo *TLI, bool RoundToAlign = false,
-                   ObjSizeMode Mode = ObjSizeMode::Exact);
+                   const TargetLibraryInfo *TLI, bool RoundToAlign = false);
 
 typedef std::pair<APInt, APInt> SizeOffsetType;
 
@@ -151,7 +153,6 @@ class ObjectSizeOffsetVisitor
   const DataLayout &DL;
   const TargetLibraryInfo *TLI;
   bool RoundToAlign;
-  ObjSizeMode Mode;
   unsigned IntTyBits;
   APInt Zero;
   SmallPtrSet<Instruction *, 8> SeenInsts;
@@ -164,20 +165,19 @@ class ObjectSizeOffsetVisitor
 
 public:
   ObjectSizeOffsetVisitor(const DataLayout &DL, const TargetLibraryInfo *TLI,
-                          LLVMContext &Context, bool RoundToAlign = false,
-                          ObjSizeMode Mode = ObjSizeMode::Exact);
+                          LLVMContext &Context, bool RoundToAlign = false);
 
   SizeOffsetType compute(Value *V);
 
-  static bool knownSize(const SizeOffsetType &SizeOffset) {
+  bool knownSize(SizeOffsetType &SizeOffset) {
     return SizeOffset.first.getBitWidth() > 1;
   }
 
-  static bool knownOffset(const SizeOffsetType &SizeOffset) {
+  bool knownOffset(SizeOffsetType &SizeOffset) {
     return SizeOffset.second.getBitWidth() > 1;
   }
 
-  static bool bothKnown(const SizeOffsetType &SizeOffset) {
+  bool bothKnown(SizeOffsetType &SizeOffset) {
     return knownSize(SizeOffset) && knownOffset(SizeOffset);
   }
 
@@ -208,7 +208,7 @@ typedef std::pair<Value*, Value*> SizeOffsetEvalType;
 class ObjectSizeOffsetEvaluator
   : public InstVisitor<ObjectSizeOffsetEvaluator, SizeOffsetEvalType> {
 
-  typedef IRBuilder<TargetFolder> BuilderTy;
+  typedef IRBuilder<true, TargetFolder> BuilderTy;
   typedef std::pair<WeakVH, WeakVH> WeakEvalType;
   typedef DenseMap<const Value*, WeakEvalType> CacheMapTy;
   typedef SmallPtrSet<const Value*, 8> PtrSetTy;

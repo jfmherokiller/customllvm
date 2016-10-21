@@ -31,6 +31,8 @@ public:
   void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
   void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
 
+  void fixTCReturn(MachineFunction &MF, MachineBasicBlock &MBB) const;
+
   bool spillCalleeSavedRegisters(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MI,
                                  const std::vector<CalleeSavedInfo> &CSI,
@@ -50,17 +52,13 @@ public:
                              unsigned &FrameReg) const override;
   int ResolveFrameIndexReference(const MachineFunction &MF, int FI,
                                  unsigned &FrameReg, int SPAdj) const;
+  int getFrameIndexOffset(const MachineFunction &MF, int FI) const override;
 
   void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs,
                             RegScavenger *RS) const override;
 
   void adjustForSegmentedStacks(MachineFunction &MF,
                                 MachineBasicBlock &MBB) const override;
-
-  /// Returns true if the target will correctly handle shrink wrapping.
-  bool enableShrinkWrapping(const MachineFunction &MF) const override {
-    return true;
-  }
 
  private:
   void emitPushInst(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
@@ -74,7 +72,7 @@ public:
                    bool(*Func)(unsigned, bool),
                    unsigned NumAlignedDPRCS2Regs) const;
 
-  MachineBasicBlock::iterator
+  void
   eliminateCallFramePseudoInstr(MachineFunction &MF,
                                 MachineBasicBlock &MBB,
                                 MachineBasicBlock::iterator MI) const override;

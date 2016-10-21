@@ -41,8 +41,8 @@ namespace llvm {
                                   const std::vector<CalleeSavedInfo> &CSI,
                                   const TargetRegisterInfo *TRI) const override;
 
-    MachineBasicBlock::iterator
-    eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+    void eliminateCallFramePseudoInstr(MachineFunction &MF,
+                                  MachineBasicBlock &MBB,
                                   MachineBasicBlock::iterator I) const override;
 
     bool hasFP(const MachineFunction &MF) const override;

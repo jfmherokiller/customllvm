@@ -23,7 +23,6 @@
 #include "llvm/DebugInfo/PDB/PDBSymbolTypeUDT.h"
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 TypedefDumper::TypedefDumper(LinePrinter &P) : PDBSymDumper(true), Printer(P) {}
 

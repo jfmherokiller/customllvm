@@ -1,6 +1,5 @@
-; RUN: opt < %s -passes=globaldce -S | FileCheck %s
+; RUN: opt < %s -globaldce -S | not grep global
 
-; CHECK-NOT: global
 @X = external global i32
 @Y = internal global i32 7
 

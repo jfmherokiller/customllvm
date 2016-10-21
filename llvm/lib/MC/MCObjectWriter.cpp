@@ -33,14 +33,8 @@ bool MCObjectWriter::isSymbolRefDifferenceFullyResolved(
   if (!SA.getFragment() || !SB.getFragment())
     return false;
 
-  return isSymbolRefDifferenceFullyResolvedImpl(Asm, SA, SB, InSet);
-}
-
-bool MCObjectWriter::isSymbolRefDifferenceFullyResolvedImpl(
-    const MCAssembler &Asm, const MCSymbol &A, const MCSymbol &B,
-    bool InSet) const {
-  return isSymbolRefDifferenceFullyResolvedImpl(Asm, A, *B.getFragment(), InSet,
-                                                false);
+  return isSymbolRefDifferenceFullyResolvedImpl(Asm, SA, *SB.getFragment(),
+                                                InSet, false);
 }
 
 bool MCObjectWriter::isSymbolRefDifferenceFullyResolvedImpl(

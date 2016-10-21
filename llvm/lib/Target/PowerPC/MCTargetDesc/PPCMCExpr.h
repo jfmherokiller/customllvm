@@ -82,8 +82,8 @@ public:
                                  const MCAsmLayout *Layout,
                                  const MCFixup *Fixup) const override;
   void visitUsedExpr(MCStreamer &Streamer) const override;
-  MCFragment *findAssociatedFragment() const override {
-    return getSubExpr()->findAssociatedFragment();
+  MCSection *findAssociatedSection() const override {
+    return getSubExpr()->findAssociatedSection();
   }
 
   // There are no TLS PPCMCExprs at the moment.

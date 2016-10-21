@@ -19,7 +19,6 @@
 #include <utility>
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 namespace {
 class FunctionArgEnumerator : public IPDBEnumSymbols {

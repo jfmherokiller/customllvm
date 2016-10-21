@@ -14,11 +14,13 @@
 #ifndef LLVM_LIB_TARGET_BPF_MCTARGETDESC_BPFMCASMINFO_H
 #define LLVM_LIB_TARGET_BPF_MCTARGETDESC_BPFMCASMINFO_H
 
-#include "llvm/ADT/Triple.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/ADT/Triple.h"
 
 namespace llvm {
 class Target;
+class Triple;
 
 class BPFMCAsmInfo : public MCAsmInfo {
 public:
@@ -32,8 +34,6 @@ public:
     UsesELFSectionDirectiveForBSS = true;
     HasSingleParameterDotFile = false;
     HasDotTypeDotSizeDirective = false;
-
-    SupportsDebugInformation = true;
   }
 };
 }

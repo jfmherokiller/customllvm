@@ -17,7 +17,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
-#include <utility>
 using namespace llvm;
 
 namespace {
@@ -25,7 +24,7 @@ namespace {
   public:
     static char ID; // Pass identification
     UnpackMachineBundles(std::function<bool(const Function &)> Ftor = nullptr)
-        : MachineFunctionPass(ID), PredicateFtor(std::move(Ftor)) {
+        : MachineFunctionPass(ID), PredicateFtor(Ftor) {
       initializeUnpackMachineBundlesPass(*PassRegistry::getPassRegistry());
     }
 
@@ -79,7 +78,7 @@ bool UnpackMachineBundles::runOnMachineFunction(MachineFunction &MF) {
 
 FunctionPass *
 llvm::createUnpackMachineBundles(std::function<bool(const Function &)> Ftor) {
-  return new UnpackMachineBundles(std::move(Ftor));
+  return new UnpackMachineBundles(Ftor);
 }
 
 namespace {
@@ -294,17 +293,15 @@ MachineOperandIteratorBase::PhysRegInfo
 MachineOperandIteratorBase::analyzePhysReg(unsigned Reg,
                                            const TargetRegisterInfo *TRI) {
   bool AllDefsDead = true;
-  PhysRegInfo PRI = {false, false, false, false, false, false, false, false};
+  PhysRegInfo PRI = {false, false, false, false, false, false};
 
   assert(TargetRegisterInfo::isPhysicalRegister(Reg) &&
          "analyzePhysReg not given a physical register!");
   for (; isValid(); ++*this) {
     MachineOperand &MO = deref();
 
-    if (MO.isRegMask() && MO.clobbersPhysReg(Reg)) {
-      PRI.Clobbered = true;
-      continue;
-    }
+    if (MO.isRegMask() && MO.clobbersPhysReg(Reg))
+      PRI.Clobbers = true;    // Regmask clobbers Reg.
 
     if (!MO.isReg())
       continue;
@@ -313,32 +310,33 @@ MachineOperandIteratorBase::analyzePhysReg(unsigned Reg,
     if (!MOReg || !TargetRegisterInfo::isPhysicalRegister(MOReg))
       continue;
 
-    if (!TRI->regsOverlap(MOReg, Reg))
+    bool IsRegOrSuperReg = MOReg == Reg || TRI->isSubRegister(MOReg, Reg);
+    bool IsRegOrOverlapping = MOReg == Reg || TRI->regsOverlap(MOReg, Reg);
+
+    if (IsRegOrSuperReg && MO.readsReg()) {
+      // Reg or a super-reg is read, and perhaps killed also.
+      PRI.Reads = true;
+      PRI.Kills = MO.isKill();
+    }
+
+    if (IsRegOrOverlapping && MO.readsReg()) {
+      PRI.ReadsOverlap = true;// Reg or an overlapping register is read.
+    }
+
+    if (!MO.isDef())
       continue;
 
-    bool Covered = TRI->isSuperRegisterEq(Reg, MOReg);
-    if (MO.readsReg()) {
-      PRI.Read = true;
-      if (Covered) {
-        PRI.FullyRead = true;
-        if (MO.isKill())
-          PRI.Killed = true;
-      }
-    } else if (MO.isDef()) {
-      PRI.Defined = true;
-      if (Covered)
-        PRI.FullyDefined = true;
+    if (IsRegOrSuperReg) {
+      PRI.Defines = true;     // Reg or a super-register is defined.
       if (!MO.isDead())
         AllDefsDead = false;
     }
+    if (IsRegOrOverlapping)
+      PRI.Clobbers = true;    // Reg or an overlapping reg is defined.
   }
 
-  if (AllDefsDead) {
-    if (PRI.FullyDefined || PRI.Clobbered)
-      PRI.DeadDef = true;
-    else if (PRI.Defined)
-      PRI.PartialDeadDef = true;
-  }
+  if (AllDefsDead && PRI.Defines)
+    PRI.DefinesDead = true;   // Reg or super-register was defined and was dead.
 
   return PRI;
 }

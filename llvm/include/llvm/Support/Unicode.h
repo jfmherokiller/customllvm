@@ -15,9 +15,9 @@
 #ifndef LLVM_SUPPORT_UNICODE_H
 #define LLVM_SUPPORT_UNICODE_H
 
-namespace llvm {
-class StringRef;
+#include "llvm/ADT/StringRef.h"
 
+namespace llvm {
 namespace sys {
 namespace unicode {
 

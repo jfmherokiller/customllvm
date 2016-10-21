@@ -23,7 +23,6 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/RegisterScavenging.h"
-#include "llvm/MC/MCAsmInfo.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Function.h"
 #include "llvm/MC/MCContext.h"
@@ -59,7 +58,7 @@ bool ARMFrameLowering::hasFP(const MachineFunction &MF) const {
   const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
 
   // iOS requires FP not to be clobbered for backtracing purpose.
-  if (STI.isTargetIOS() || STI.isTargetWatchOS())
+  if (STI.isTargetIOS())
     return true;
 
   const MachineFrameInfo *MFI = MF.getFrameInfo();
@@ -98,32 +97,35 @@ ARMFrameLowering::canSimplifyCallFramePseudos(const MachineFunction &MF) const {
   return hasReservedCallFrame(MF) || MF.getFrameInfo()->hasVarSizedObjects();
 }
 
-static bool isCSRestore(MachineInstr &MI, const ARMBaseInstrInfo &TII,
+static bool isCSRestore(MachineInstr *MI,
+                        const ARMBaseInstrInfo &TII,
                         const MCPhysReg *CSRegs) {
   // Integer spill area is handled with "pop".
-  if (isPopOpcode(MI.getOpcode())) {
+  if (isPopOpcode(MI->getOpcode())) {
     // The first two operands are predicates. The last two are
     // imp-def and imp-use of SP. Check everything in between.
-    for (int i = 5, e = MI.getNumOperands(); i != e; ++i)
-      if (!isCalleeSavedRegister(MI.getOperand(i).getReg(), CSRegs))
+    for (int i = 5, e = MI->getNumOperands(); i != e; ++i)
+      if (!isCalleeSavedRegister(MI->getOperand(i).getReg(), CSRegs))
         return false;
     return true;
   }
-  if ((MI.getOpcode() == ARM::LDR_POST_IMM ||
-       MI.getOpcode() == ARM::LDR_POST_REG ||
-       MI.getOpcode() == ARM::t2LDR_POST) &&
-      isCalleeSavedRegister(MI.getOperand(0).getReg(), CSRegs) &&
-      MI.getOperand(1).getReg() == ARM::SP)
+  if ((MI->getOpcode() == ARM::LDR_POST_IMM ||
+       MI->getOpcode() == ARM::LDR_POST_REG ||
+       MI->getOpcode() == ARM::t2LDR_POST) &&
+      isCalleeSavedRegister(MI->getOperand(0).getReg(), CSRegs) &&
+      MI->getOperand(1).getReg() == ARM::SP)
     return true;
 
   return false;
 }
 
-static void emitRegPlusImmediate(
-    bool isARM, MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
-    const DebugLoc &dl, const ARMBaseInstrInfo &TII, unsigned DestReg,
-    unsigned SrcReg, int NumBytes, unsigned MIFlags = MachineInstr::NoFlags,
-    ARMCC::CondCodes Pred = ARMCC::AL, unsigned PredReg = 0) {
+static void emitRegPlusImmediate(bool isARM, MachineBasicBlock &MBB,
+                                 MachineBasicBlock::iterator &MBBI, DebugLoc dl,
+                                 const ARMBaseInstrInfo &TII, unsigned DestReg,
+                                 unsigned SrcReg, int NumBytes,
+                                 unsigned MIFlags = MachineInstr::NoFlags,
+                                 ARMCC::CondCodes Pred = ARMCC::AL,
+                                 unsigned PredReg = 0) {
   if (isARM)
     emitARMRegPlusImmediate(MBB, MBBI, dl, DestReg, SrcReg, NumBytes,
                             Pred, PredReg, TII, MIFlags);
@@ -133,7 +135,7 @@ static void emitRegPlusImmediate(
 }
 
 static void emitSPUpdate(bool isARM, MachineBasicBlock &MBB,
-                         MachineBasicBlock::iterator &MBBI, const DebugLoc &dl,
+                         MachineBasicBlock::iterator &MBBI, DebugLoc dl,
                          const ARMBaseInstrInfo &TII, int NumBytes,
                          unsigned MIFlags = MachineInstr::NoFlags,
                          ARMCC::CondCodes Pred = ARMCC::AL,
@@ -142,9 +144,9 @@ static void emitSPUpdate(bool isARM, MachineBasicBlock &MBB,
                        MIFlags, Pred, PredReg);
 }
 
-static int sizeOfSPAdjustment(const MachineInstr &MI) {
+static int sizeOfSPAdjustment(const MachineInstr *MI) {
   int RegSize;
-  switch (MI.getOpcode()) {
+  switch (MI->getOpcode()) {
   case ARM::VSTMDDB_UPD:
     RegSize = 8;
     break;
@@ -162,7 +164,7 @@ static int sizeOfSPAdjustment(const MachineInstr &MI) {
   int count = 0;
   // ARM and Thumb2 push/pop insts have explicit "sp, sp" operands (+
   // pred) so the list starts at 4.
-  for (int i = MI.getNumOperands() - 1; i >= 4; --i)
+  for (int i = MI->getNumOperands() - 1; i >= 4; --i)
     count += RegSize;
   return count;
 }
@@ -203,8 +205,7 @@ struct StackAdjustingInsts {
   }
 
   void emitDefCFAOffsets(MachineModuleInfo &MMI, MachineBasicBlock &MBB,
-                         const DebugLoc &dl, const ARMBaseInstrInfo &TII,
-                         bool HasFP) {
+                         DebugLoc dl, const ARMBaseInstrInfo &TII, bool HasFP) {
     unsigned CFAOffset = 0;
     for (auto &Info : Insts) {
       if (HasFP && !Info.BeforeFPSet)
@@ -233,7 +234,7 @@ static void emitAligningInstructions(MachineFunction &MF, ARMFunctionInfo *AFI,
                                      const TargetInstrInfo &TII,
                                      MachineBasicBlock &MBB,
                                      MachineBasicBlock::iterator MBBI,
-                                     const DebugLoc &DL, const unsigned Reg,
+                                     DebugLoc DL, const unsigned Reg,
                                      const unsigned Alignment,
                                      const bool MustBeSingleInstruction) {
   const ARMSubtarget &AST =
@@ -287,6 +288,7 @@ static void emitAligningInstructions(MachineFunction &MF, ARMFunctionInfo *AFI,
 
 void ARMFrameLowering::emitPrologue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
+  assert(&MBB == &MF.front() && "Shrink-wrapping not yet implemented");
   MachineBasicBlock::iterator MBBI = MBB.begin();
   MachineFrameInfo  *MFI = MF.getFrameInfo();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
@@ -303,11 +305,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
   unsigned ArgRegsSaveSize = AFI->getArgRegsSaveSize();
   unsigned NumBytes = MFI->getStackSize();
   const std::vector<CalleeSavedInfo> &CSI = MFI->getCalleeSavedInfo();
-
-  // Debug location must be unknown since the first debug location is used
-  // to determine the end of the prologue.
-  DebugLoc dl;
-  
+  DebugLoc dl = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
   unsigned FramePtr = RegInfo->getFrameRegister(MF);
 
   // Determine the sizes of each callee-save spill areas and record which frame
@@ -353,7 +351,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
     case ARM::R10:
     case ARM::R11:
     case ARM::R12:
-      if (STI.splitFramePushPop()) {
+      if (STI.isTargetDarwin()) {
         GPRCS2Size += 4;
         break;
       }
@@ -414,7 +412,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
   // .cfi_offset operations will reflect that.
   if (DPRGapSize) {
     assert(DPRGapSize == 4 && "unexpected alignment requirements for DPRs");
-    if (tryFoldSPUpdateIntoPushPop(STI, MF, &*LastPush, DPRGapSize))
+    if (tryFoldSPUpdateIntoPushPop(STI, MF, LastPush, DPRGapSize))
       DefCFAOffsetCandidates.addExtraBytes(LastPush, DPRGapSize);
     else {
       emitSPUpdate(isARM, MBB, MBBI, dl, TII, -DPRGapSize,
@@ -428,7 +426,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
     // Since vpush register list cannot have gaps, there may be multiple vpush
     // instructions in the prologue.
     while (MBBI->getOpcode() == ARM::VSTMDDB_UPD) {
-      DefCFAOffsetCandidates.addInst(MBBI, sizeOfSPAdjustment(*MBBI));
+      DefCFAOffsetCandidates.addInst(MBBI, sizeOfSPAdjustment(MBBI));
       LastPush = MBBI++;
     }
   }
@@ -483,7 +481,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
 
     AddDefaultCC(AddDefaultPred(BuildMI(MBB, MBBI, dl, TII.get(ARM::t2SUBrr),
                                         ARM::SP)
-                                .addReg(ARM::SP, RegState::Kill)
+                                .addReg(ARM::SP, RegState::Define)
                                 .addReg(ARM::R4, RegState::Kill)
                                 .setMIFlags(MachineInstr::FrameSetup)));
     NumBytes = 0;
@@ -491,8 +489,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
 
   if (NumBytes) {
     // Adjust SP after all the callee-save spills.
-    if (AFI->getNumAlignedDPRCS2Regs() == 0 &&
-        tryFoldSPUpdateIntoPushPop(STI, MF, &*LastPush, NumBytes))
+    if (tryFoldSPUpdateIntoPushPop(STI, MF, LastPush, NumBytes))
       DefCFAOffsetCandidates.addExtraBytes(LastPush, NumBytes);
     else {
       emitSPUpdate(isARM, MBB, MBBI, dl, TII, -NumBytes,
@@ -520,7 +517,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
   // that push.
   if (HasFP) {
     MachineBasicBlock::iterator AfterPush = std::next(GPRCS1Push);
-    unsigned PushSize = sizeOfSPAdjustment(*GPRCS1Push);
+    unsigned PushSize = sizeOfSPAdjustment(GPRCS1Push);
     emitRegPlusImmediate(!AFI->isThumbFunction(), MBB, AfterPush,
                          dl, TII, FramePtr, ARM::SP,
                          PushSize + FramePtrOffsetInPush,
@@ -557,7 +554,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
       case ARM::R10:
       case ARM::R11:
       case ARM::R12:
-        if (STI.splitFramePushPop())
+        if (STI.isTargetDarwin())
           break;
         // fallthrough
       case ARM::R0:
@@ -590,7 +587,7 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
       case ARM::R10:
       case ARM::R11:
       case ARM::R12:
-        if (STI.splitFramePushPop()) {
+        if (STI.isTargetDarwin()) {
           unsigned DwarfReg =  MRI->getDwarfRegNum(Reg, true);
           unsigned Offset = MFI->getObjectOffset(FI);
           unsigned CFIIndex = MMI.addFrameInst(
@@ -692,8 +689,60 @@ void ARMFrameLowering::emitPrologue(MachineFunction &MF,
     AFI->setShouldRestoreSPFromFP(true);
 }
 
+// Resolve TCReturn pseudo-instruction
+void ARMFrameLowering::fixTCReturn(MachineFunction &MF,
+                                   MachineBasicBlock &MBB) const {
+  MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
+  assert(MBBI->isReturn() && "Can only insert epilog into returning blocks");
+  unsigned RetOpcode = MBBI->getOpcode();
+  DebugLoc dl = MBBI->getDebugLoc();
+  const ARMBaseInstrInfo &TII =
+      *static_cast<const ARMBaseInstrInfo *>(MF.getSubtarget().getInstrInfo());
+
+  if (!(RetOpcode == ARM::TCRETURNdi || RetOpcode == ARM::TCRETURNri))
+    return;
+
+  // Tail call return: adjust the stack pointer and jump to callee.
+  MBBI = MBB.getLastNonDebugInstr();
+  MachineOperand &JumpTarget = MBBI->getOperand(0);
+
+  // Jump to label or value in register.
+  if (RetOpcode == ARM::TCRETURNdi) {
+    unsigned TCOpcode = STI.isThumb() ?
+             (STI.isTargetMachO() ? ARM::tTAILJMPd : ARM::tTAILJMPdND) :
+             ARM::TAILJMPd;
+    MachineInstrBuilder MIB = BuildMI(MBB, MBBI, dl, TII.get(TCOpcode));
+    if (JumpTarget.isGlobal())
+      MIB.addGlobalAddress(JumpTarget.getGlobal(), JumpTarget.getOffset(),
+                           JumpTarget.getTargetFlags());
+    else {
+      assert(JumpTarget.isSymbol());
+      MIB.addExternalSymbol(JumpTarget.getSymbolName(),
+                            JumpTarget.getTargetFlags());
+    }
+
+    // Add the default predicate in Thumb mode.
+    if (STI.isThumb()) MIB.addImm(ARMCC::AL).addReg(0);
+  } else if (RetOpcode == ARM::TCRETURNri) {
+    BuildMI(MBB, MBBI, dl,
+            TII.get(STI.isThumb() ? ARM::tTAILJMPr : ARM::TAILJMPr)).
+      addReg(JumpTarget.getReg(), RegState::Kill);
+  }
+
+  MachineInstr *NewMI = std::prev(MBBI);
+  for (unsigned i = 1, e = MBBI->getNumOperands(); i != e; ++i)
+    NewMI->addOperand(MBBI->getOperand(i));
+
+  // Delete the pseudo instruction TCRETURN.
+  MBB.erase(MBBI);
+  MBBI = NewMI;
+}
+
 void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
                                     MachineBasicBlock &MBB) const {
+  MachineBasicBlock::iterator MBBI = MBB.getLastNonDebugInstr();
+  assert(MBBI->isReturn() && "Can only insert epilog into returning blocks");
+  DebugLoc dl = MBBI->getDebugLoc();
   MachineFrameInfo *MFI = MF.getFrameInfo();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
   const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
@@ -709,12 +758,10 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
 
   // All calls are tail calls in GHC calling conv, and functions have no
   // prologue/epilogue.
-  if (MF.getFunction()->getCallingConv() == CallingConv::GHC)
+  if (MF.getFunction()->getCallingConv() == CallingConv::GHC) {
+    fixTCReturn(MF, MBB);
     return;
-
-  // First put ourselves on the first (from top) terminator instructions.
-  MachineBasicBlock::iterator MBBI = MBB.getFirstTerminator();
-  DebugLoc dl = MBBI != MBB.end() ? MBBI->getDebugLoc() : DebugLoc();
+  }
 
   if (!AFI->hasStackFrame()) {
     if (NumBytes - ArgRegsSaveSize != 0)
@@ -725,8 +772,8 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
     if (MBBI != MBB.begin()) {
       do {
         --MBBI;
-      } while (MBBI != MBB.begin() && isCSRestore(*MBBI, TII, CSRegs));
-      if (!isCSRestore(*MBBI, TII, CSRegs))
+      } while (MBBI != MBB.begin() && isCSRestore(MBBI, TII, CSRegs));
+      if (!isCSRestore(MBBI, TII, CSRegs))
         ++MBBI;
     }
 
@@ -772,8 +819,8 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
             .addReg(FramePtr));
       }
     } else if (NumBytes &&
-               !tryFoldSPUpdateIntoPushPop(STI, MF, &*MBBI, NumBytes))
-      emitSPUpdate(isARM, MBB, MBBI, dl, TII, NumBytes);
+               !tryFoldSPUpdateIntoPushPop(STI, MF, MBBI, NumBytes))
+        emitSPUpdate(isARM, MBB, MBBI, dl, TII, NumBytes);
 
     // Increment past our save areas.
     if (AFI->getDPRCalleeSavedAreaSize()) {
@@ -792,6 +839,8 @@ void ARMFrameLowering::emitEpilogue(MachineFunction &MF,
     if (AFI->getGPRCalleeSavedArea2Size()) MBBI++;
     if (AFI->getGPRCalleeSavedArea1Size()) MBBI++;
   }
+
+  fixTCReturn(MF, MBB);
 
   if (ArgRegsSaveSize)
     emitSPUpdate(isARM, MBB, MBBI, dl, TII, ArgRegsSaveSize);
@@ -883,6 +932,12 @@ ARMFrameLowering::ResolveFrameIndexReference(const MachineFunction &MF,
   return Offset;
 }
 
+int ARMFrameLowering::getFrameIndexOffset(const MachineFunction &MF,
+                                          int FI) const {
+  unsigned FrameReg;
+  return getFrameIndexReference(MF, FI, FrameReg);
+}
+
 void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
                                     MachineBasicBlock::iterator MI,
                                     const std::vector<CalleeSavedInfo> &CSI,
@@ -895,6 +950,7 @@ void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
 
   DebugLoc DL;
+  if (MI != MBB.end()) DL = MI->getDebugLoc();
 
   SmallVector<std::pair<unsigned,bool>, 4> Regs;
   unsigned i = CSI.size();
@@ -902,27 +958,33 @@ void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
     unsigned LastReg = 0;
     for (; i != 0; --i) {
       unsigned Reg = CSI[i-1].getReg();
-      if (!(Func)(Reg, STI.splitFramePushPop())) continue;
+      if (!(Func)(Reg, STI.isTargetDarwin())) continue;
 
       // D-registers in the aligned area DPRCS2 are NOT spilled here.
       if (Reg >= ARM::D8 && Reg < ARM::D8 + NumAlignedDPRCS2Regs)
         continue;
 
-      bool isLiveIn = MF.getRegInfo().isLiveIn(Reg);
-      if (!isLiveIn)
+      // Add the callee-saved register as live-in unless it's LR and
+      // @llvm.returnaddress is called. If LR is returned for
+      // @llvm.returnaddress then it's already added to the function and
+      // entry block live-in sets.
+      bool isKill = true;
+      if (Reg == ARM::LR) {
+        if (MF.getFrameInfo()->isReturnAddressTaken() &&
+            MF.getRegInfo().isLiveIn(Reg))
+          isKill = false;
+      }
+
+      if (isKill)
         MBB.addLiveIn(Reg);
+
       // If NoGap is true, push consecutive registers and then leave the rest
       // for other instructions. e.g.
       // vpush {d8, d10, d11} -> vpush {d8}, vpush {d10, d11}
       if (NoGap && LastReg && LastReg != Reg-1)
         break;
       LastReg = Reg;
-      // Do not set a kill flag on values that are also marked as live-in. This
-      // happens with the @llvm-returnaddress intrinsic and with arguments
-      // passed in callee saved registers.
-      // Omitting the kill flags is conservatively correct even if the live-in
-      // is not used after all.
-      Regs.push_back(std::make_pair(Reg, /*isKill=*/!isLiveIn));
+      Regs.push_back(std::make_pair(Reg, isKill));
     }
 
     if (Regs.empty())
@@ -946,8 +1008,7 @@ void ARMFrameLowering::emitPushInst(MachineBasicBlock &MBB,
     // Put any subsequent vpush instructions before this one: they will refer to
     // higher register numbers so need to be pushed first in order to preserve
     // monotonicity.
-    if (MI != MBB.begin())
-      --MI;
+    --MI;
   }
 }
 
@@ -961,20 +1022,12 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
   MachineFunction &MF = *MBB.getParent();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
-  DebugLoc DL;
-  bool isTailCall = false;
-  bool isInterrupt = false;
-  bool isTrap = false;
-  if (MBB.end() != MI) {
-    DL = MI->getDebugLoc();
-    unsigned RetOpcode = MI->getOpcode();
-    isTailCall = (RetOpcode == ARM::TCRETURNdi || RetOpcode == ARM::TCRETURNri);
-    isInterrupt =
-        RetOpcode == ARM::SUBS_PC_LR || RetOpcode == ARM::t2SUBS_PC_LR;
-    isTrap =
-        RetOpcode == ARM::TRAP || RetOpcode == ARM::TRAPNaCl ||
-        RetOpcode == ARM::tTRAP;
-  }
+  DebugLoc DL = MI->getDebugLoc();
+  unsigned RetOpcode = MI->getOpcode();
+  bool isTailCall = (RetOpcode == ARM::TCRETURNdi ||
+                     RetOpcode == ARM::TCRETURNri);
+  bool isInterrupt =
+      RetOpcode == ARM::SUBS_PC_LR || RetOpcode == ARM::t2SUBS_PC_LR;
 
   SmallVector<unsigned, 4> Regs;
   unsigned i = CSI.size();
@@ -983,21 +1036,18 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
     bool DeleteRet = false;
     for (; i != 0; --i) {
       unsigned Reg = CSI[i-1].getReg();
-      if (!(Func)(Reg, STI.splitFramePushPop())) continue;
+      if (!(Func)(Reg, STI.isTargetDarwin())) continue;
 
       // The aligned reloads from area DPRCS2 are not inserted here.
       if (Reg >= ARM::D8 && Reg < ARM::D8 + NumAlignedDPRCS2Regs)
         continue;
 
       if (Reg == ARM::LR && !isTailCall && !isVarArg && !isInterrupt &&
-          !isTrap && STI.hasV5TOps()) {
-        if (MBB.succ_empty()) {
-          Reg = ARM::PC;
-          DeleteRet = true;
-          LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_RET : ARM::LDMIA_RET;
-        } else
-          LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_UPD : ARM::LDMIA_UPD;
+          STI.hasV5TOps()) {
+        Reg = ARM::PC;
+        LdmOpc = AFI->isThumbFunction() ? ARM::t2LDMIA_RET : ARM::LDMIA_RET;
         // Fold the return instruction into the LDM.
+        DeleteRet = true;
       }
 
       // If NoGap is true, pop consecutive registers and then leave the rest
@@ -1018,8 +1068,8 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
                        .addReg(ARM::SP));
       for (unsigned i = 0, e = Regs.size(); i < e; ++i)
         MIB.addReg(Regs[i], getDefRegState(true));
-      if (DeleteRet && MI != MBB.end()) {
-        MIB.copyImplicitOps(*MI);
+      if (DeleteRet) {
+        MIB.copyImplicitOps(&*MI);
         MI->eraseFromParent();
       }
       MI = MIB;
@@ -1045,8 +1095,7 @@ void ARMFrameLowering::emitPopInst(MachineBasicBlock &MBB,
 
     // Put any subsequent vpop instructions after this one: they will refer to
     // higher register numbers so need to be popped afterwards.
-    if (MI != MBB.end())
-      ++MI;
+    ++MI;
   }
 }
 
@@ -1060,7 +1109,7 @@ static void emitAlignedDPRCS2Spills(MachineBasicBlock &MBB,
                                     const TargetRegisterInfo *TRI) {
   MachineFunction &MF = *MBB.getParent();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
-  DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
+  DebugLoc DL = MI->getDebugLoc();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
   MachineFrameInfo &MFI = *MF.getFrameInfo();
 
@@ -1069,7 +1118,7 @@ static void emitAlignedDPRCS2Spills(MachineBasicBlock &MBB,
   // slot offsets can be wrong. The offset for d8 will always be correct.
   for (unsigned i = 0, e = CSI.size(); i != e; ++i) {
     unsigned DNum = CSI[i].getReg() - ARM::D8;
-    if (DNum > NumAlignedDPRCS2Regs - 1)
+    if (DNum >= 8)
       continue;
     int FI = CSI[i].getFrameIdx();
     // The even-numbered registers will be 16-byte aligned, the odd-numbered
@@ -1220,7 +1269,7 @@ static void emitAlignedDPRCS2Restores(MachineBasicBlock &MBB,
                                       const TargetRegisterInfo *TRI) {
   MachineFunction &MF = *MBB.getParent();
   ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
-  DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc() : DebugLoc();
+  DebugLoc DL = MI->getDebugLoc();
   const TargetInstrInfo &TII = *MF.getSubtarget().getInstrInfo();
 
   // Find the frame index assigned to d8.
@@ -1359,7 +1408,7 @@ static unsigned GetFunctionSizeInBytes(const MachineFunction &MF,
   unsigned FnSize = 0;
   for (auto &MBB : MF) {
     for (auto &MI : MBB)
-      FnSize += TII.GetInstSizeInBytes(MI);
+      FnSize += TII.GetInstSizeInBytes(&MI);
   }
   return FnSize;
 }
@@ -1477,7 +1526,6 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
   bool CS1Spilled = false;
   bool LRSpilled = false;
   unsigned NumGPRSpills = 0;
-  unsigned NumFPRSpills = 0;
   SmallVector<unsigned, 4> UnspilledCS1GPRs;
   SmallVector<unsigned, 4> UnspilledCS2GPRs;
   const ARMBaseRegisterInfo *RegInfo = static_cast<const ARMBaseRegisterInfo *>(
@@ -1532,22 +1580,13 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
       CanEliminateFrame = false;
     }
 
-    if (!ARM::GPRRegClass.contains(Reg)) {
-      if (Spilled) {
-        if (ARM::SPRRegClass.contains(Reg))
-          NumFPRSpills++;
-        else if (ARM::DPRRegClass.contains(Reg))
-          NumFPRSpills += 2;
-        else if (ARM::QPRRegClass.contains(Reg))
-          NumFPRSpills += 4;
-      }
+    if (!ARM::GPRRegClass.contains(Reg))
       continue;
-    }
 
     if (Spilled) {
       NumGPRSpills++;
 
-      if (!STI.splitFramePushPop()) {
+      if (!STI.isTargetDarwin()) {
         if (Reg == ARM::LR)
           LRSpilled = true;
         CS1Spilled = true;
@@ -1569,7 +1608,7 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
         break;
       }
     } else {
-      if (!STI.splitFramePushPop()) {
+      if (!STI.isTargetDarwin()) {
         UnspilledCS1GPRs.push_back(Reg);
         continue;
       }
@@ -1615,21 +1654,14 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
   // FIXME: We could add logic to be more precise about negative offsets
   //        and which instructions will need a scratch register for them. Is it
   //        worth the effort and added fragility?
-  unsigned EstimatedStackSize =
-      MFI->estimateStackSize(MF) + 4 * (NumGPRSpills + NumFPRSpills);
-  if (hasFP(MF)) {
-    if (AFI->hasStackFrame())
-      EstimatedStackSize += 4;
-  } else {
-    // If FP is not used, SP will be used to access arguments, so count the
-    // size of arguments into the estimation.
-    EstimatedStackSize += MF.getInfo<ARMFunctionInfo>()->getArgumentStackSize();
-  }
-  EstimatedStackSize += 16; // For possible paddings.
+  bool BigStack =
+    (RS &&
+     (MFI->estimateStackSize(MF) +
+      ((hasFP(MF) && AFI->hasStackFrame()) ? 4:0) >=
+      estimateRSStackSizeLimit(MF, this)))
+    || MFI->hasVarSizedObjects()
+    || (MFI->adjustsStack() && !canSimplifyCallFramePseudos(MF));
 
-  bool BigStack = EstimatedStackSize >= estimateRSStackSizeLimit(MF, this) ||
-                  MFI->hasVarSizedObjects() ||
-                  (MFI->adjustsStack() && !canSimplifyCallFramePseudos(MF));
   bool ExtraCSSpill = false;
   if (BigStack || !CanEliminateFrame || RegInfo->cannotEliminateFrame(MF)) {
     AFI->setHasStackFrame(true);
@@ -1666,10 +1698,8 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
       if (CS1Spilled && !UnspilledCS1GPRs.empty()) {
         for (unsigned i = 0, e = UnspilledCS1GPRs.size(); i != e; ++i) {
           unsigned Reg = UnspilledCS1GPRs[i];
-          // Don't spill high register if the function is thumb.  In the case of
-          // Windows on ARM, accept R11 (frame pointer)
+          // Don't spill high register if the function is thumb
           if (!AFI->isThumbFunction() ||
-              (STI.isTargetWindows() && Reg == ARM::R11) ||
               isARMLowRegister(Reg) || Reg == ARM::LR) {
             SavedRegs.set(Reg);
             if (!MRI.isReserved(Reg))
@@ -1723,7 +1753,6 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
       } else if (!AFI->isThumb1OnlyFunction()) {
         // note: Thumb1 functions spill to R12, not the stack.  Reserve a slot
         // closest to SP or frame pointer.
-        assert(RS && "Register scavenging not provided");
         const TargetRegisterClass *RC = &ARM::GPRRegClass;
         RS->addScavengingFrameIndex(MFI->CreateStackObject(RC->getSize(),
                                                            RC->getAlignment(),
@@ -1738,23 +1767,25 @@ void ARMFrameLowering::determineCalleeSaves(MachineFunction &MF,
   }
 }
 
-MachineBasicBlock::iterator ARMFrameLowering::eliminateCallFramePseudoInstr(
-    MachineFunction &MF, MachineBasicBlock &MBB,
-    MachineBasicBlock::iterator I) const {
+
+void ARMFrameLowering::
+eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator I) const {
   const ARMBaseInstrInfo &TII =
       *static_cast<const ARMBaseInstrInfo *>(MF.getSubtarget().getInstrInfo());
   if (!hasReservedCallFrame(MF)) {
     // If we have alloca, convert as follows:
     // ADJCALLSTACKDOWN -> sub, sp, sp, amount
     // ADJCALLSTACKUP   -> add, sp, sp, amount
-    MachineInstr &Old = *I;
-    DebugLoc dl = Old.getDebugLoc();
-    unsigned Amount = Old.getOperand(0).getImm();
+    MachineInstr *Old = I;
+    DebugLoc dl = Old->getDebugLoc();
+    unsigned Amount = Old->getOperand(0).getImm();
     if (Amount != 0) {
       // We need to keep the stack aligned properly.  To do this, we round the
       // amount of space needed for the outgoing arguments up to the next
       // alignment boundary.
-      Amount = alignSPAdjust(Amount);
+      unsigned Align = getStackAlignment();
+      Amount = (Amount+Align-1)/Align*Align;
 
       ARMFunctionInfo *AFI = MF.getInfo<ARMFunctionInfo>();
       assert(!AFI->isThumb1OnlyFunction() &&
@@ -1762,26 +1793,25 @@ MachineBasicBlock::iterator ARMFrameLowering::eliminateCallFramePseudoInstr(
       bool isARM = !AFI->isThumbFunction();
 
       // Replace the pseudo instruction with a new instruction...
-      unsigned Opc = Old.getOpcode();
-      int PIdx = Old.findFirstPredOperandIdx();
-      ARMCC::CondCodes Pred =
-          (PIdx == -1) ? ARMCC::AL
-                       : (ARMCC::CondCodes)Old.getOperand(PIdx).getImm();
+      unsigned Opc = Old->getOpcode();
+      int PIdx = Old->findFirstPredOperandIdx();
+      ARMCC::CondCodes Pred = (PIdx == -1)
+        ? ARMCC::AL : (ARMCC::CondCodes)Old->getOperand(PIdx).getImm();
       if (Opc == ARM::ADJCALLSTACKDOWN || Opc == ARM::tADJCALLSTACKDOWN) {
         // Note: PredReg is operand 2 for ADJCALLSTACKDOWN.
-        unsigned PredReg = Old.getOperand(2).getReg();
+        unsigned PredReg = Old->getOperand(2).getReg();
         emitSPUpdate(isARM, MBB, I, dl, TII, -Amount, MachineInstr::NoFlags,
                      Pred, PredReg);
       } else {
         // Note: PredReg is operand 3 for ADJCALLSTACKUP.
-        unsigned PredReg = Old.getOperand(3).getReg();
+        unsigned PredReg = Old->getOperand(3).getReg();
         assert(Opc == ARM::ADJCALLSTACKUP || Opc == ARM::tADJCALLSTACKUP);
         emitSPUpdate(isARM, MBB, I, dl, TII, Amount, MachineInstr::NoFlags,
                      Pred, PredReg);
       }
     }
   }
-  return MBB.erase(I);
+  MBB.erase(I);
 }
 
 /// Get the minimum constant for ARM that is greater than or equal to the
@@ -1855,6 +1885,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
   if (!ST->isTargetAndroid() && !ST->isTargetLinux())
     report_fatal_error("Segmented stacks not supported on this platform.");
 
+  assert(&PrologueMBB == &MF.front() && "Shrink-wrapping not yet implemented");
   MachineFrameInfo *MFI = MF.getFrameInfo();
   MachineModuleInfo &MMI = MF.getMMI();
   MCContext &Context = MMI.getContext();
@@ -1882,48 +1913,21 @@ void ARMFrameLowering::adjustForSegmentedStacks(
   MachineBasicBlock *GetMBB = MF.CreateMachineBasicBlock();
   MachineBasicBlock *McrMBB = MF.CreateMachineBasicBlock();
 
-  // Grab everything that reaches PrologueMBB to update there liveness as well.
-  SmallPtrSet<MachineBasicBlock *, 8> BeforePrologueRegion;
-  SmallVector<MachineBasicBlock *, 2> WalkList;
-  WalkList.push_back(&PrologueMBB);
-
-  do {
-    MachineBasicBlock *CurMBB = WalkList.pop_back_val();
-    for (MachineBasicBlock *PredBB : CurMBB->predecessors()) {
-      if (BeforePrologueRegion.insert(PredBB).second)
-        WalkList.push_back(PredBB);
-    }
-  } while (!WalkList.empty());
-
-  // The order in that list is important.
-  // The blocks will all be inserted before PrologueMBB using that order.
-  // Therefore the block that should appear first in the CFG should appear
-  // first in the list.
-  MachineBasicBlock *AddedBlocks[] = {PrevStackMBB, McrMBB, GetMBB, AllocMBB,
-                                      PostStackMBB};
-
-  for (MachineBasicBlock *B : AddedBlocks)
-    BeforePrologueRegion.insert(B);
-
-  for (const auto &LI : PrologueMBB.liveins()) {
-    for (MachineBasicBlock *PredBB : BeforePrologueRegion)
-      PredBB->addLiveIn(LI);
+  for (MachineBasicBlock::livein_iterator i = PrologueMBB.livein_begin(),
+                                          e = PrologueMBB.livein_end();
+       i != e; ++i) {
+    AllocMBB->addLiveIn(*i);
+    GetMBB->addLiveIn(*i);
+    McrMBB->addLiveIn(*i);
+    PrevStackMBB->addLiveIn(*i);
+    PostStackMBB->addLiveIn(*i);
   }
 
-  // Remove the newly added blocks from the list, since we know
-  // we do not have to do the following updates for them.
-  for (MachineBasicBlock *B : AddedBlocks) {
-    BeforePrologueRegion.erase(B);
-    MF.insert(PrologueMBB.getIterator(), B);
-  }
-
-  for (MachineBasicBlock *MBB : BeforePrologueRegion) {
-    // Make sure the LiveIns are still sorted and unique.
-    MBB->sortUniqueLiveIns();
-    // Replace the edges to PrologueMBB by edges to the sequences
-    // we are about to add.
-    MBB->ReplaceUsesOfBlockWith(&PrologueMBB, AddedBlocks[0]);
-  }
+  MF.push_front(PostStackMBB);
+  MF.push_front(AllocMBB);
+  MF.push_front(GetMBB);
+  MF.push_front(McrMBB);
+  MF.push_front(PrevStackMBB);
 
   // The required stack size that is aligned to ARM constant criterion.
   AlignedStackSize = alignToARMConstant(StackSize);
@@ -1987,7 +1991,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
     ARMConstantPoolValue *NewCPV = ARMConstantPoolSymbol::Create(
         MF.getFunction()->getContext(), "__STACK_LIMIT", PCLabelId, 0);
     MachineConstantPool *MCP = MF.getConstantPool();
-    unsigned CPI = MCP->getConstantPoolIndex(NewCPV, 4);
+    unsigned CPI = MCP->getConstantPoolIndex(NewCPV, MF.getAlignment());
 
     // ldr SR0, [pc, offset(STACK_LIMIT)]
     AddDefaultPred(BuildMI(GetMBB, DL, TII.get(ARM::tLDRpci), ScratchReg0)
@@ -2174,7 +2178,7 @@ void ARMFrameLowering::adjustForSegmentedStacks(
 
   PrevStackMBB->addSuccessor(McrMBB);
 
-#ifdef EXPENSIVE_CHECKS
+#ifdef XDEBUG
   MF.verify();
 #endif
 }

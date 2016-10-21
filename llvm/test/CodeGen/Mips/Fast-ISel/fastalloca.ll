@@ -1,5 +1,5 @@
 ; RUN: llc -march=mipsel -relocation-model=pic -O0 -fast-isel-abort=1 -mcpu=mips32r2 \
-; RUN:     < %s -verify-machineinstrs | FileCheck %s
+; RUN:     < %s | FileCheck %s
 
 %struct.x = type { i32 }
 

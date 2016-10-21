@@ -11,52 +11,19 @@
 
 #include "llvm-pdbdump.h"
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Regex.h"
 
 #include <algorithm>
 
 using namespace llvm;
-using namespace llvm::pdb;
-
-namespace {
-bool IsItemExcluded(llvm::StringRef Item,
-                    std::list<llvm::Regex> &IncludeFilters,
-                    std::list<llvm::Regex> &ExcludeFilters) {
-  if (Item.empty())
-    return false;
-
-  auto match_pred = [Item](llvm::Regex &R) { return R.match(Item); };
-
-  // Include takes priority over exclude.  If the user specified include
-  // filters, and none of them include this item, them item is gone.
-  if (!IncludeFilters.empty() && !any_of(IncludeFilters, match_pred))
-    return true;
-
-  if (any_of(ExcludeFilters, match_pred))
-    return true;
-
-  return false;
-}
-}
-
-using namespace llvm;
 
 LinePrinter::LinePrinter(int Indent, llvm::raw_ostream &Stream)
     : OS(Stream), IndentSpaces(Indent), CurrentIndent(0) {
-  SetFilters(ExcludeTypeFilters, opts::pretty::ExcludeTypes.begin(),
-             opts::pretty::ExcludeTypes.end());
-  SetFilters(ExcludeSymbolFilters, opts::pretty::ExcludeSymbols.begin(),
-             opts::pretty::ExcludeSymbols.end());
-  SetFilters(ExcludeCompilandFilters, opts::pretty::ExcludeCompilands.begin(),
-             opts::pretty::ExcludeCompilands.end());
-
-  SetFilters(IncludeTypeFilters, opts::pretty::IncludeTypes.begin(),
-             opts::pretty::IncludeTypes.end());
-  SetFilters(IncludeSymbolFilters, opts::pretty::IncludeSymbols.begin(),
-             opts::pretty::IncludeSymbols.end());
-  SetFilters(IncludeCompilandFilters, opts::pretty::IncludeCompilands.begin(),
-             opts::pretty::IncludeCompilands.end());
+  SetFilters(TypeFilters, opts::ExcludeTypes.begin(), opts::ExcludeTypes.end());
+  SetFilters(SymbolFilters, opts::ExcludeSymbols.begin(),
+             opts::ExcludeSymbols.end());
+  SetFilters(CompilandFilters, opts::ExcludeCompilands.begin(),
+             opts::ExcludeCompilands.end());
 }
 
 void LinePrinter::Indent() { CurrentIndent += IndentSpaces; }
@@ -71,53 +38,87 @@ void LinePrinter::NewLine() {
 }
 
 bool LinePrinter::IsTypeExcluded(llvm::StringRef TypeName) {
-  return IsItemExcluded(TypeName, IncludeTypeFilters, ExcludeTypeFilters);
+  if (TypeName.empty())
+    return false;
+
+  for (auto &Expr : TypeFilters) {
+    if (Expr.match(TypeName))
+      return true;
+  }
+  return false;
 }
 
 bool LinePrinter::IsSymbolExcluded(llvm::StringRef SymbolName) {
-  return IsItemExcluded(SymbolName, IncludeSymbolFilters, ExcludeSymbolFilters);
+  if (SymbolName.empty())
+    return false;
+
+  for (auto &Expr : SymbolFilters) {
+    if (Expr.match(SymbolName))
+      return true;
+  }
+  return false;
 }
 
 bool LinePrinter::IsCompilandExcluded(llvm::StringRef CompilandName) {
-  return IsItemExcluded(CompilandName, IncludeCompilandFilters,
-                        ExcludeCompilandFilters);
+  if (CompilandName.empty())
+    return false;
+
+  for (auto &Expr : CompilandFilters) {
+    if (Expr.match(CompilandName))
+      return true;
+  }
+  return false;
 }
 
 WithColor::WithColor(LinePrinter &P, PDB_ColorItem C) : OS(P.OS) {
-  applyColor(C);
+  if (C == PDB_ColorItem::None)
+    OS.resetColor();
+  else {
+    raw_ostream::Colors Color;
+    bool Bold;
+    translateColor(C, Color, Bold);
+    OS.changeColor(Color, Bold);
+  }
 }
 
 WithColor::~WithColor() { OS.resetColor(); }
 
-void WithColor::applyColor(PDB_ColorItem C) {
+void WithColor::translateColor(PDB_ColorItem C, raw_ostream::Colors &Color,
+                               bool &Bold) const {
   switch (C) {
-  case PDB_ColorItem::None:
-    OS.resetColor();
-    return;
   case PDB_ColorItem::Address:
-    OS.changeColor(raw_ostream::YELLOW, /*bold=*/true);
+    Color = raw_ostream::YELLOW;
+    Bold = true;
     return;
   case PDB_ColorItem::Keyword:
-    OS.changeColor(raw_ostream::MAGENTA, true);
+    Color = raw_ostream::MAGENTA;
+    Bold = true;
     return;
   case PDB_ColorItem::Register:
   case PDB_ColorItem::Offset:
-    OS.changeColor(raw_ostream::YELLOW, false);
+    Color = raw_ostream::YELLOW;
+    Bold = false;
     return;
   case PDB_ColorItem::Type:
-    OS.changeColor(raw_ostream::CYAN, true);
+    Color = raw_ostream::CYAN;
+    Bold = true;
     return;
   case PDB_ColorItem::Identifier:
-    OS.changeColor(raw_ostream::CYAN, false);
+    Color = raw_ostream::CYAN;
+    Bold = false;
     return;
   case PDB_ColorItem::Path:
-    OS.changeColor(raw_ostream::CYAN, false);
+    Color = raw_ostream::CYAN;
+    Bold = false;
     return;
   case PDB_ColorItem::SectionHeader:
-    OS.changeColor(raw_ostream::RED, true);
+    Color = raw_ostream::RED;
+    Bold = true;
     return;
   case PDB_ColorItem::LiteralValue:
-    OS.changeColor(raw_ostream::GREEN, true);
+    Color = raw_ostream::GREEN;
+    Bold = true;
+  default:
     return;
   }
 }

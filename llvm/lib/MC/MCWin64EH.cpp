@@ -17,7 +17,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/Win64EH.h"
 
-using namespace llvm;
+namespace llvm {
 
 // NOTE: All relocations generated here are 4-byte image-relative.
 
@@ -218,29 +218,35 @@ static void EmitUnwindInfo(MCStreamer &streamer, WinEH::FrameInfo *info) {
   }
 }
 
-void llvm::Win64EH::UnwindEmitter::Emit(MCStreamer &Streamer) const {
+namespace Win64EH {
+void UnwindEmitter::Emit(MCStreamer &Streamer) const {
+  MCContext &Context = Streamer.getContext();
+
   // Emit the unwind info structs first.
-  for (WinEH::FrameInfo *CFI : Streamer.getWinFrameInfos()) {
-    MCSection *XData = Streamer.getAssociatedXDataSection(CFI->TextSection);
+  for (const auto &CFI : Streamer.getWinFrameInfos()) {
+    MCSection *XData = getXDataSection(CFI->Function, Context);
     Streamer.SwitchSection(XData);
-    ::EmitUnwindInfo(Streamer, CFI);
+    EmitUnwindInfo(Streamer, CFI);
   }
 
   // Now emit RUNTIME_FUNCTION entries.
-  for (WinEH::FrameInfo *CFI : Streamer.getWinFrameInfos()) {
-    MCSection *PData = Streamer.getAssociatedPDataSection(CFI->TextSection);
+  for (const auto &CFI : Streamer.getWinFrameInfos()) {
+    MCSection *PData = getPDataSection(CFI->Function, Context);
     Streamer.SwitchSection(PData);
     EmitRuntimeFunction(Streamer, CFI);
   }
 }
 
-void llvm::Win64EH::UnwindEmitter::EmitUnwindInfo(
-    MCStreamer &Streamer, WinEH::FrameInfo *info) const {
+void UnwindEmitter::EmitUnwindInfo(MCStreamer &Streamer,
+                                   WinEH::FrameInfo *info) const {
   // Switch sections (the static function above is meant to be called from
   // here and from Emit().
-  MCSection *XData = Streamer.getAssociatedXDataSection(info->TextSection);
-  Streamer.SwitchSection(XData);
+  MCContext &context = Streamer.getContext();
+  MCSection *xdataSect = getXDataSection(info->Function, context);
+  Streamer.SwitchSection(xdataSect);
 
-  ::EmitUnwindInfo(Streamer, info);
+  llvm::EmitUnwindInfo(Streamer, info);
 }
+}
+} // End of namespace llvm
 

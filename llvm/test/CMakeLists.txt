@@ -1,7 +1,3 @@
-if(LLVM_BUILD_EXAMPLES)
-  set(ENABLE_EXAMPLES 1)
-endif()
-
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.in
   ${CMAKE_CURRENT_BINARY_DIR}/lit.site.cfg
@@ -19,12 +15,11 @@ endif()
 # Set the depends list as a variable so that it can grow conditionally.
 # NOTE: Sync the substitutions in test/lit.cfg when adding to this list.
 set(LLVM_TEST_DEPENDS
-          BugpointPasses
-          FileCheck
-          LLVMHello
+          llvm-config
           UnitTests
+          BugpointPasses
+          LLVMHello
           bugpoint
-          count
           llc
           lli
           lli-child-target
@@ -32,43 +27,37 @@ set(LLVM_TEST_DEPENDS
           llvm-as
           llvm-bcanalyzer
           llvm-c-test
-          llvm-config
           llvm-cov
           llvm-cxxdump
           llvm-diff
           llvm-dis
           llvm-dsymutil
           llvm-dwarfdump
-          llvm-dwp
           llvm-extract
           llvm-lib
           llvm-link
+          llvm-lto
           llvm-mc
           llvm-mcmarkup
           llvm-nm
           llvm-objdump
-          llvm-pdbdump
           llvm-profdata
           llvm-ranlib
           llvm-readobj
           llvm-rtdyld
           llvm-size
-          llvm-split
           llvm-symbolizer
           llvm-tblgen
-          not
-          obj2yaml
+          macho-dump
           opt
-          sancov
-          sanstats
-          verify-uselistorder
+          FileCheck
+          count
+          not
           yaml-bench
           yaml2obj
+          obj2yaml
+          verify-uselistorder
         )
-
-if(TARGET llvm-lto)
-  set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} llvm-lto)
-endif()
 
 # If Intel JIT events are supported, depend on a tool that tests the listener.
 if( LLVM_USE_INTEL_JITEVENTS )
@@ -83,7 +72,7 @@ if(TARGET llvm-go)
   set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} llvm-go)
 endif()
 
-if(TARGET LTO)
+if(APPLE)
   set(LLVM_TEST_DEPENDS ${LLVM_TEST_DEPENDS} LTO)
 endif()
 
@@ -105,19 +94,6 @@ if(TARGET ocaml_llvm)
           ocaml_llvm_vectorize
         )
 endif()
-
-if(LLVM_BUILD_EXAMPLES)
-  list(APPEND LLVM_TEST_DEPENDS
-    Kaleidoscope-Ch3
-    Kaleidoscope-Ch4
-    Kaleidoscope-Ch5
-    Kaleidoscope-Ch6
-    Kaleidoscope-Ch7
-    )
-endif()
-
-add_custom_target(llvm-test-depends DEPENDS ${LLVM_TEST_DEPENDS})
-set_target_properties(llvm-test-depends PROPERTIES FOLDER "Tests")
 
 add_lit_testsuite(check-llvm "Running the LLVM regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}

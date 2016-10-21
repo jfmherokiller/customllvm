@@ -42,7 +42,6 @@ class DenseSet {
   static_assert(sizeof(typename MapTy::value_type) == sizeof(ValueT),
                 "DenseMap buckets unexpectedly large!");
   MapTy TheMap;
-
 public:
   typedef ValueT key_type;
   typedef ValueT value_type;
@@ -80,7 +79,6 @@ public:
   class Iterator {
     typename MapTy::iterator I;
     friend class DenseSet;
-
   public:
     typedef typename MapTy::iterator::difference_type difference_type;
     typedef ValueT value_type;
@@ -94,7 +92,6 @@ public:
     ValueT *operator->() { return &I->getFirst(); }
 
     Iterator& operator++() { ++I; return *this; }
-    Iterator operator++(int) { auto T = *this; ++I; return T; }
     bool operator==(const Iterator& X) const { return I == X.I; }
     bool operator!=(const Iterator& X) const { return I != X.I; }
   };
@@ -102,7 +99,6 @@ public:
   class ConstIterator {
     typename MapTy::const_iterator I;
     friend class DenseSet;
-
   public:
     typedef typename MapTy::const_iterator::difference_type difference_type;
     typedef ValueT value_type;
@@ -116,7 +112,6 @@ public:
     const ValueT *operator->() { return &I->getFirst(); }
 
     ConstIterator& operator++() { ++I; return *this; }
-    ConstIterator operator++(int) { auto T = *this; ++I; return T; }
     bool operator==(const ConstIterator& X) const { return I == X.I; }
     bool operator!=(const ConstIterator& X) const { return I != X.I; }
   };
@@ -153,20 +148,7 @@ public:
     detail::DenseSetEmpty Empty;
     return TheMap.insert(std::make_pair(V, Empty));
   }
-
-  /// Alternative version of insert that uses a different (and possibly less
-  /// expensive) key type.
-  template <typename LookupKeyT>
-  std::pair<iterator, bool> insert_as(const ValueT &V,
-                                      const LookupKeyT &LookupKey) {
-    return insert_as(ValueT(V), LookupKey);
-  }
-  template <typename LookupKeyT>
-  std::pair<iterator, bool> insert_as(ValueT &&V, const LookupKeyT &LookupKey) {
-    detail::DenseSetEmpty Empty;
-    return TheMap.insert_as(std::make_pair(std::move(V), Empty), LookupKey);
-  }
-
+  
   // Range insertion of values.
   template<typename InputIt>
   void insert(InputIt I, InputIt E) {

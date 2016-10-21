@@ -4,7 +4,8 @@
 ; FUNC-LABEL {{^}}sextload_i1_to_i32_trunc_cmp_eq_0:
 ; SI: buffer_load_ubyte [[LOAD:v[0-9]+]]
 ; SI: v_and_b32_e32 [[TMP:v[0-9]+]], 1, [[LOAD]]
-; SI: v_cmp_eq_i32_e32 vcc, 0, [[TMP]]{{$}}
+; SI: v_cmp_eq_i32_e32 vcc, 1, [[TMP]]{{$}}
+; SI: s_xor_b64 s{{\[[0-9]+:[0-9]+\]}}, vcc, -1{{$}}
 ; SI: v_cndmask_b32_e64
 ; SI: buffer_store_byte
 define void @sextload_i1_to_i32_trunc_cmp_eq_0(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
@@ -22,7 +23,7 @@ define void @sextload_i1_to_i32_trunc_cmp_eq_0(i1 addrspace(1)* %out, i1 addrspa
 ; SI: v_cmp_eq_i32_e32 vcc, 1, [[TMP]]{{$}}
 ; SI-NEXT: s_xor_b64 [[NEG:s\[[0-9]+:[0-9]+\]]], vcc, -1
 ; SI-NEXT: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, 1, [[NEG]]
-; SI: buffer_store_byte [[RESULT]]
+; SI-NEXT: buffer_store_byte [[RESULT]]
 define void @zextload_i1_to_i32_trunc_cmp_eq_0(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
   %load = load i1, i1 addrspace(1)* %in
   %ext = zext i1 %load to i32
@@ -45,7 +46,7 @@ define void @sextload_i1_to_i32_trunc_cmp_eq_1(i1 addrspace(1)* %out, i1 addrspa
 ; FUNC-LABEL: {{^}}zextload_i1_to_i32_trunc_cmp_eq_1:
 ; SI: buffer_load_ubyte [[LOAD:v[0-9]+]]
 ; SI: v_and_b32_e32 [[RESULT:v[0-9]+]], 1, [[LOAD]]
-; SI: buffer_store_byte [[RESULT]]
+; SI-NEXT: buffer_store_byte [[RESULT]]
 define void @zextload_i1_to_i32_trunc_cmp_eq_1(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
   %load = load i1, i1 addrspace(1)* %in
   %ext = zext i1 %load to i32
@@ -57,7 +58,7 @@ define void @zextload_i1_to_i32_trunc_cmp_eq_1(i1 addrspace(1)* %out, i1 addrspa
 ; FUNC-LABEL: {{^}}sextload_i1_to_i32_trunc_cmp_eq_neg1:
 ; SI: buffer_load_ubyte [[LOAD:v[0-9]+]]
 ; SI: v_and_b32_e32 [[RESULT:v[0-9]+]], 1, [[LOAD]]
-; SI: buffer_store_byte [[RESULT]]
+; SI-NEXT: buffer_store_byte [[RESULT]]
 define void @sextload_i1_to_i32_trunc_cmp_eq_neg1(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
   %load = load i1, i1 addrspace(1)* %in
   %ext = sext i1 %load to i32
@@ -81,7 +82,7 @@ define void @zextload_i1_to_i32_trunc_cmp_eq_neg1(i1 addrspace(1)* %out, i1 addr
 ; FUNC-LABEL {{^}}sextload_i1_to_i32_trunc_cmp_ne_0:
 ; SI: buffer_load_ubyte [[LOAD:v[0-9]+]]
 ; SI: v_and_b32_e32 [[TMP:v[0-9]+]], 1, [[LOAD]]
-; SI: buffer_store_byte [[RESULT]]
+; SI-NEXT: buffer_store_byte [[RESULT]]
 define void @sextload_i1_to_i32_trunc_cmp_ne_0(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
   %load = load i1, i1 addrspace(1)* %in
   %ext = sext i1 %load to i32
@@ -93,7 +94,7 @@ define void @sextload_i1_to_i32_trunc_cmp_ne_0(i1 addrspace(1)* %out, i1 addrspa
 ; FUNC-LABEL: {{^}}zextload_i1_to_i32_trunc_cmp_ne_0:
 ; SI: buffer_load_ubyte [[LOAD:v[0-9]+]]
 ; SI: v_and_b32_e32 [[TMP:v[0-9]+]], 1, [[LOAD]]
-; SI: buffer_store_byte [[RESULT]]
+; SI-NEXT: buffer_store_byte [[RESULT]]
 define void @zextload_i1_to_i32_trunc_cmp_ne_0(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
   %load = load i1, i1 addrspace(1)* %in
   %ext = zext i1 %load to i32
@@ -119,7 +120,7 @@ define void @sextload_i1_to_i32_trunc_cmp_ne_1(i1 addrspace(1)* %out, i1 addrspa
 ; SI: v_cmp_eq_i32_e32 vcc, 1, [[TMP]]{{$}}
 ; SI-NEXT: s_xor_b64 [[NEG:s\[[0-9]+:[0-9]+\]]], vcc, -1
 ; SI-NEXT: v_cndmask_b32_e64 [[RESULT:v[0-9]+]], 0, 1, [[NEG]]
-; SI: buffer_store_byte [[RESULT]]
+; SI-NEXT: buffer_store_byte [[RESULT]]
 define void @zextload_i1_to_i32_trunc_cmp_ne_1(i1 addrspace(1)* %out, i1 addrspace(1)* %in) nounwind {
   %load = load i1, i1 addrspace(1)* %in
   %ext = zext i1 %load to i32
@@ -158,7 +159,7 @@ define void @zextload_i1_to_i32_trunc_cmp_ne_neg1(i1 addrspace(1)* %out, i1 addr
 ; SI: buffer_load_sbyte [[LOAD:v[0-9]+]]
 ; SI: v_cmp_ne_i32_e32 vcc, -1, [[LOAD]]{{$}}
 ; SI-NEXT: v_cndmask_b32_e64
-; SI: buffer_store_byte
+; SI-NEXT: buffer_store_byte
 define void @masked_load_i1_to_i32_trunc_cmp_ne_neg1(i1 addrspace(1)* %out, i8 addrspace(1)* %in) nounwind {
   %load = load i8, i8 addrspace(1)* %in
   %masked = and i8 %load, 255

@@ -27,76 +27,84 @@
 #define LLVM_ADT_STATISTIC_H
 
 #include "llvm/Support/Atomic.h"
-#include "llvm/Support/Compiler.h"
-#include <atomic>
-#include <memory>
+#include "llvm/Support/Valgrind.h"
 
 namespace llvm {
 class raw_ostream;
-class raw_fd_ostream;
 
 class Statistic {
 public:
-  const char *DebugType;
   const char *Name;
   const char *Desc;
-  std::atomic<unsigned> Value;
+  volatile llvm::sys::cas_flag Value;
   bool Initialized;
 
-  unsigned getValue() const { return Value.load(std::memory_order_relaxed); }
-  const char *getDebugType() const { return DebugType; }
+  llvm::sys::cas_flag getValue() const { return Value; }
   const char *getName() const { return Name; }
   const char *getDesc() const { return Desc; }
 
   /// construct - This should only be called for non-global statistics.
-  void construct(const char *debugtype, const char *name, const char *desc) {
-    DebugType = debugtype;
-    Name = name;
-    Desc = desc;
-    Value = 0;
-    Initialized = false;
+  void construct(const char *name, const char *desc) {
+    Name = name; Desc = desc;
+    Value = 0; Initialized = false;
   }
 
   // Allow use of this class as the value itself.
-  operator unsigned() const { return getValue(); }
+  operator unsigned() const { return Value; }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_STATS)
    const Statistic &operator=(unsigned Val) {
-    Value.store(Val, std::memory_order_relaxed);
+    Value = Val;
     return init();
   }
 
   const Statistic &operator++() {
-    Value.fetch_add(1, std::memory_order_relaxed);
+    // FIXME: This function and all those that follow carefully use an
+    // atomic operation to update the value safely in the presence of
+    // concurrent accesses, but not to read the return value, so the
+    // return value is not thread safe.
+    sys::AtomicIncrement(&Value);
     return init();
   }
 
   unsigned operator++(int) {
     init();
-    return Value.fetch_add(1, std::memory_order_relaxed);
+    unsigned OldValue = Value;
+    sys::AtomicIncrement(&Value);
+    return OldValue;
   }
 
   const Statistic &operator--() {
-    Value.fetch_sub(1, std::memory_order_relaxed);
+    sys::AtomicDecrement(&Value);
     return init();
   }
 
   unsigned operator--(int) {
     init();
-    return Value.fetch_sub(1, std::memory_order_relaxed);
+    unsigned OldValue = Value;
+    sys::AtomicDecrement(&Value);
+    return OldValue;
   }
 
-  const Statistic &operator+=(unsigned V) {
-    if (V == 0)
-      return *this;
-    Value.fetch_add(V, std::memory_order_relaxed);
+  const Statistic &operator+=(const unsigned &V) {
+    if (!V) return *this;
+    sys::AtomicAdd(&Value, V);
     return init();
   }
 
-  const Statistic &operator-=(unsigned V) {
-    if (V == 0)
-      return *this;
-    Value.fetch_sub(V, std::memory_order_relaxed);
+  const Statistic &operator-=(const unsigned &V) {
+    if (!V) return *this;
+    sys::AtomicAdd(&Value, -V);
+    return init();
+  }
+
+  const Statistic &operator*=(const unsigned &V) {
+    sys::AtomicMul(&Value, V);
+    return init();
+  }
+
+  const Statistic &operator/=(const unsigned &V) {
+    sys::AtomicDiv(&Value, V);
     return init();
   }
 
@@ -130,6 +138,14 @@ public:
     return *this;
   }
 
+  const Statistic &operator*=(const unsigned &V) {
+    return *this;
+  }
+
+  const Statistic &operator/=(const unsigned &V) {
+    return *this;
+  }
+
 #endif  // !defined(NDEBUG) || defined(LLVM_ENABLE_STATS)
 
 protected:
@@ -145,8 +161,8 @@ protected:
 
 // STATISTIC - A macro to make definition of statistics really simple.  This
 // automatically passes the DEBUG_TYPE of the file into the statistic.
-#define STATISTIC(VARNAME, DESC)                                               \
-  static llvm::Statistic VARNAME = {DEBUG_TYPE, #VARNAME, DESC, {0}, 0}
+#define STATISTIC(VARNAME, DESC) \
+  static llvm::Statistic VARNAME = { DEBUG_TYPE, DESC, 0, 0 }
 
 /// \brief Enable the collection and printing of statistics.
 void EnableStatistics();
@@ -154,18 +170,12 @@ void EnableStatistics();
 /// \brief Check if statistics are enabled.
 bool AreStatisticsEnabled();
 
-/// \brief Return a file stream to print our output on.
-std::unique_ptr<raw_fd_ostream> CreateInfoOutputFile();
-
 /// \brief Print statistics to the file returned by CreateInfoOutputFile().
 void PrintStatistics();
 
 /// \brief Print statistics to the given output stream.
 void PrintStatistics(raw_ostream &OS);
 
-/// Print statistics in JSON format.
-void PrintStatisticsJSON(raw_ostream &OS);
+} // End llvm namespace
 
-} // end llvm namespace
-
-#endif // LLVM_ADT_STATISTIC_H
+#endif

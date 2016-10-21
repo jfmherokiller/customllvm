@@ -39,9 +39,8 @@ public:
   /// specified immediate.
   void
   emitLoadConstPool(MachineBasicBlock &MBB, MachineBasicBlock::iterator &MBBI,
-                    const DebugLoc &dl, unsigned DestReg, unsigned SubIdx,
-                    int Val, ARMCC::CondCodes Pred = ARMCC::AL,
-                    unsigned PredReg = 0,
+                    DebugLoc dl, unsigned DestReg, unsigned SubIdx, int Val,
+                    ARMCC::CondCodes Pred = ARMCC::AL, unsigned PredReg = 0,
                     unsigned MIFlags = MachineInstr::NoFlags) const override;
 
   // rewrite MI to access 'Offset' bytes from the FP. Update Offset to be

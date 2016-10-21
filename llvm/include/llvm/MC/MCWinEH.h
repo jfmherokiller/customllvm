@@ -13,9 +13,11 @@
 #include <vector>
 
 namespace llvm {
+class MCContext;
 class MCSection;
 class MCStreamer;
 class MCSymbol;
+class StringRef;
 
 namespace WinEH {
 struct Instruction {
@@ -29,35 +31,50 @@ struct Instruction {
 };
 
 struct FrameInfo {
-  const MCSymbol *Begin = nullptr;
-  const MCSymbol *End = nullptr;
-  const MCSymbol *ExceptionHandler = nullptr;
-  const MCSymbol *Function = nullptr;
-  const MCSymbol *PrologEnd = nullptr;
-  const MCSymbol *Symbol = nullptr;
-  const MCSection *TextSection = nullptr;
+  const MCSymbol *Begin;
+  const MCSymbol *End;
+  const MCSymbol *ExceptionHandler;
+  const MCSymbol *Function;
+  const MCSymbol *PrologEnd;
+  const MCSymbol *Symbol;
 
-  bool HandlesUnwind = false;
-  bool HandlesExceptions = false;
+  bool HandlesUnwind;
+  bool HandlesExceptions;
 
-  int LastFrameInst = -1;
-  const FrameInfo *ChainedParent = nullptr;
+  int LastFrameInst;
+  const FrameInfo *ChainedParent;
   std::vector<Instruction> Instructions;
 
-  FrameInfo() = default;
+  FrameInfo()
+    : Begin(nullptr), End(nullptr), ExceptionHandler(nullptr),
+      Function(nullptr), PrologEnd(nullptr), Symbol(nullptr),
+      HandlesUnwind(false), HandlesExceptions(false), LastFrameInst(-1),
+      ChainedParent(nullptr), Instructions() {}
   FrameInfo(const MCSymbol *Function, const MCSymbol *BeginFuncEHLabel)
-      : Begin(BeginFuncEHLabel), Function(Function) {}
+    : Begin(BeginFuncEHLabel), End(nullptr), ExceptionHandler(nullptr),
+      Function(Function), PrologEnd(nullptr), Symbol(nullptr),
+      HandlesUnwind(false), HandlesExceptions(false), LastFrameInst(-1),
+      ChainedParent(nullptr), Instructions() {}
   FrameInfo(const MCSymbol *Function, const MCSymbol *BeginFuncEHLabel,
             const FrameInfo *ChainedParent)
-      : Begin(BeginFuncEHLabel), Function(Function),
-        ChainedParent(ChainedParent) {}
+    : Begin(BeginFuncEHLabel), End(nullptr), ExceptionHandler(nullptr),
+      Function(Function), PrologEnd(nullptr), Symbol(nullptr),
+      HandlesUnwind(false), HandlesExceptions(false), LastFrameInst(-1),
+      ChainedParent(ChainedParent), Instructions() {}
 };
 
 class UnwindEmitter {
 public:
-  virtual ~UnwindEmitter();
+  static MCSection *getPDataSection(const MCSymbol *Function,
+                                    MCContext &Context);
+  static MCSection *getXDataSection(const MCSymbol *Function,
+                                    MCContext &Context);
 
-  /// This emits the unwind info sections (.pdata and .xdata in PE/COFF).
+  virtual ~UnwindEmitter() { }
+
+  //
+  // This emits the unwind info sections (.pdata and .xdata in PE/COFF).
+  //
   virtual void Emit(MCStreamer &Streamer) const = 0;
   virtual void EmitUnwindInfo(MCStreamer &Streamer, FrameInfo *FI) const = 0;
 };

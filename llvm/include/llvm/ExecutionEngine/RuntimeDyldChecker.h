@@ -10,14 +10,10 @@
 #ifndef LLVM_EXECUTIONENGINE_RUNTIMEDYLDCHECKER_H
 #define LLVM_EXECUTIONENGINE_RUNTIMEDYLDCHECKER_H
 
-#include <cstdint>
-#include <memory>
-#include <string>
-#include <utility>
+#include "llvm/ADT/StringRef.h"
 
 namespace llvm {
 
-class StringRef;
 class MCDisassembler;
 class MemoryBuffer;
 class MCInstPrinter;

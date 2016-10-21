@@ -22,6 +22,9 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/VirtRegMap.h"
 #include "llvm/Target/TargetRegisterInfo.h"
+#ifndef NDEBUG
+#include "llvm/ADT/SparseBitVector.h"
+#endif
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -149,13 +152,4 @@ void RegAllocBase::allocatePhysRegs() {
       ++NumNewQueued;
     }
   }
-}
-
-void RegAllocBase::postOptimization() {
-  spiller().postOptimization();
-  for (auto DeadInst : DeadRemats) {
-    LIS->RemoveMachineInstrFromMaps(*DeadInst);
-    DeadInst->eraseFromParent();
-  }
-  DeadRemats.clear();
 }

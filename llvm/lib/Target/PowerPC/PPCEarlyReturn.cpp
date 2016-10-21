@@ -12,10 +12,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PPC.h"
-#include "MCTargetDesc/PPCPredicates.h"
-#include "PPCInstrBuilder.h"
 #include "PPCInstrInfo.h"
+#include "MCTargetDesc/PPCPredicates.h"
+#include "PPC.h"
+#include "PPCInstrBuilder.h"
 #include "PPCMachineFunctionInfo.h"
 #include "PPCTargetMachine.h"
 #include "llvm/ADT/STLExtras.h"
@@ -26,6 +26,7 @@
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/MC/MCAsmInfo.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -70,20 +71,15 @@ protected:
       for (MachineBasicBlock::pred_iterator PI = ReturnMBB.pred_begin(),
            PIE = ReturnMBB.pred_end(); PI != PIE; ++PI) {
         bool OtherReference = false, BlockChanged = false;
-
-        if ((*PI)->empty())
-          continue;
-        
         for (MachineBasicBlock::iterator J = (*PI)->getLastNonDebugInstr();;) {
-          if (J == (*PI)->end())
-            break;
-
+          MachineInstrBuilder MIB;
           if (J->getOpcode() == PPC::B) {
             if (J->getOperand(0).getMBB() == &ReturnMBB) {
               // This is an unconditional branch to the return. Replace the
               // branch with a blr.
-              BuildMI(**PI, J, J->getDebugLoc(), TII->get(I->getOpcode()))
-                  .copyImplicitOps(*I);
+              MIB =
+                BuildMI(**PI, J, J->getDebugLoc(), TII->get(I->getOpcode()));
+              MIB.copyImplicitOps(I);
               MachineBasicBlock::iterator K = J--;
               K->eraseFromParent();
               BlockChanged = true;
@@ -94,10 +90,10 @@ protected:
             if (J->getOperand(2).getMBB() == &ReturnMBB) {
               // This is a conditional branch to the return. Replace the branch
               // with a bclr.
-              BuildMI(**PI, J, J->getDebugLoc(), TII->get(PPC::BCCLR))
-                  .addImm(J->getOperand(0).getImm())
-                  .addReg(J->getOperand(1).getReg())
-                  .copyImplicitOps(*I);
+              MIB = BuildMI(**PI, J, J->getDebugLoc(), TII->get(PPC::BCCLR))
+                      .addImm(J->getOperand(0).getImm())
+                      .addReg(J->getOperand(1).getReg());
+              MIB.copyImplicitOps(I);
               MachineBasicBlock::iterator K = J--;
               K->eraseFromParent();
               BlockChanged = true;
@@ -108,11 +104,11 @@ protected:
             if (J->getOperand(1).getMBB() == &ReturnMBB) {
               // This is a conditional branch to the return. Replace the branch
               // with a bclr.
-              BuildMI(
-                  **PI, J, J->getDebugLoc(),
-                  TII->get(J->getOpcode() == PPC::BC ? PPC::BCLR : PPC::BCLRn))
-                  .addReg(J->getOperand(0).getReg())
-                  .copyImplicitOps(*I);
+              MIB = BuildMI(**PI, J, J->getDebugLoc(),
+                            TII->get(J->getOpcode() == PPC::BC ?
+                                     PPC::BCLR : PPC::BCLRn))
+                      .addReg(J->getOperand(0).getReg());
+              MIB.copyImplicitOps(I);
               MachineBasicBlock::iterator K = J--;
               K->eraseFromParent();
               BlockChanged = true;
@@ -150,7 +146,7 @@ protected:
       }
 
       for (unsigned i = 0, ie = PredToRemove.size(); i != ie; ++i)
-        PredToRemove[i]->removeSuccessor(&ReturnMBB, true);
+        PredToRemove[i]->removeSuccessor(&ReturnMBB);
 
       if (Changed && !ReturnMBB.hasAddressTaken()) {
         // We now might be able to merge this blr-only block into its
@@ -160,7 +156,7 @@ protected:
           if (PrevMBB.isLayoutSuccessor(&ReturnMBB) && PrevMBB.canFallThrough()) {
             // Move the blr into the preceding block.
             PrevMBB.splice(PrevMBB.end(), &ReturnMBB, I);
-            PrevMBB.removeSuccessor(&ReturnMBB, true);
+            PrevMBB.removeSuccessor(&ReturnMBB);
           }
         }
 
@@ -173,9 +169,6 @@ protected:
 
 public:
     bool runOnMachineFunction(MachineFunction &MF) override {
-      if (skipFunction(*MF.getFunction()))
-        return false;
-
       TII = MF.getSubtarget().getInstrInfo();
 
       bool Changed = false;
@@ -194,11 +187,6 @@ public:
       return Changed;
     }
 
-    MachineFunctionProperties getRequiredProperties() const override {
-      return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::AllVRegsAllocated);
-    }
-
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       MachineFunctionPass::getAnalysisUsage(AU);
     }
@@ -211,3 +199,4 @@ INITIALIZE_PASS(PPCEarlyReturn, DEBUG_TYPE,
 char PPCEarlyReturn::ID = 0;
 FunctionPass*
 llvm::createPPCEarlyReturnPass() { return new PPCEarlyReturn(); }
+

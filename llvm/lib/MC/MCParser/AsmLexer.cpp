@@ -23,8 +23,7 @@ using namespace llvm;
 
 AsmLexer::AsmLexer(const MCAsmInfo &MAI) : MAI(MAI) {
   CurPtr = nullptr;
-  IsAtStartOfLine = true;
-  IsAtStartOfStatement = true;
+  isAtStartOfLine = true;
   AllowAtInIdentifier = !StringRef(MAI.getCommentString()).startswith("@");
 }
 
@@ -47,13 +46,24 @@ void AsmLexer::setBuffer(StringRef Buf, const char *ptr) {
 AsmToken AsmLexer::ReturnError(const char *Loc, const std::string &Msg) {
   SetError(SMLoc::getFromPointer(Loc), Msg);
 
-  return AsmToken(AsmToken::Error, StringRef(Loc, CurPtr - Loc));
+  return AsmToken(AsmToken::Error, StringRef(Loc, 0));
 }
 
 int AsmLexer::getNextChar() {
-  if (CurPtr == CurBuf.end())
+  char CurChar = *CurPtr++;
+  switch (CurChar) {
+  default:
+    return (unsigned char)CurChar;
+  case 0:
+    // A nul character in the stream is either the end of the current buffer or
+    // a random nul in the file.  Disambiguate that here.
+    if (CurPtr - 1 != CurBuf.end())
+      return 0;  // Just whitespace.
+
+    // Otherwise, return end of file.
+    --CurPtr;  // Another call to lex will return EOF again.
     return EOF;
-  return (unsigned char)*CurPtr++;
+  }
 }
 
 /// LexFloatLiteral: [0-9]*[.][0-9]*([eE][+-]?[0-9]*)?
@@ -158,53 +168,40 @@ AsmToken AsmLexer::LexIdentifier() {
 ///           C-Style Comment: /* ... */
 AsmToken AsmLexer::LexSlash() {
   switch (*CurPtr) {
-  case '*':
-    IsAtStartOfStatement = false;
-    break; // C style comment.
-  case '/':
-    ++CurPtr;
-    return LexLineComment();
-  default:
-    IsAtStartOfStatement = false;
-    return AsmToken(AsmToken::Slash, StringRef(TokStart, 1));
+  case '*': break; // C style comment.
+  case '/': return ++CurPtr, LexLineComment();
+  default:  return AsmToken(AsmToken::Slash, StringRef(CurPtr-1, 1));
   }
 
   // C Style comment.
   ++CurPtr;  // skip the star.
-  while (CurPtr != CurBuf.end()) {
-    switch (*CurPtr++) {
+  while (1) {
+    int CurChar = getNextChar();
+    switch (CurChar) {
+    case EOF:
+      return ReturnError(TokStart, "unterminated comment");
     case '*':
       // End of the comment?
-      if (*CurPtr != '/')
-        break;
+      if (CurPtr[0] != '/') break;
+
       ++CurPtr;   // End the */.
-      return AsmToken(AsmToken::Comment,
-                      StringRef(TokStart, CurPtr - TokStart));
+      return LexToken();
     }
   }
-  return ReturnError(TokStart, "unterminated comment");
 }
 
 /// LexLineComment: Comment: #[^\n]*
 ///                        : //[^\n]*
 AsmToken AsmLexer::LexLineComment() {
-  // Mark This as an end of statement with a body of the
-  // comment. While it would be nicer to leave this two tokens,
-  // backwards compatability with TargetParsers makes keeping this in this form
-  // better.
+  // FIXME: This is broken if we happen to a comment at the end of a file, which
+  // was .included, and which doesn't end with a newline.
   int CurChar = getNextChar();
   while (CurChar != '\n' && CurChar != '\r' && CurChar != EOF)
     CurChar = getNextChar();
 
-  IsAtStartOfLine = true;
-  // Whis is a whole line comment. leave newline
-  if (IsAtStartOfStatement)
-    return AsmToken(AsmToken::EndOfStatement,
-                    StringRef(TokStart, CurPtr - TokStart));
-  IsAtStartOfStatement = true;
-
-  return AsmToken(AsmToken::EndOfStatement,
-                  StringRef(TokStart, CurPtr - 1 - TokStart));
+  if (CurChar == EOF)
+    return AsmToken(AsmToken::Eof, StringRef(TokStart, 0));
+  return AsmToken(AsmToken::EndOfStatement, StringRef(TokStart, 0));
 }
 
 static void SkipIgnoredIntegerSuffix(const char *&CurPtr) {
@@ -283,7 +280,7 @@ AsmToken AsmLexer::LexDigit() {
     return intToken(Result, Value);
   }
 
-  if ((*CurPtr == 'b') || (*CurPtr == 'B')) {
+  if (*CurPtr == 'b') {
     ++CurPtr;
     // See if we actually have "0b" as part of something like "jmp 0b\n"
     if (!isdigit(CurPtr[0])) {
@@ -312,7 +309,7 @@ AsmToken AsmLexer::LexDigit() {
     return intToken(Result, Value);
   }
 
-  if ((*CurPtr == 'x') || (*CurPtr == 'X')) {
+  if (*CurPtr == 'x') {
     ++CurPtr;
     const char *NumStart = CurPtr;
     while (isxdigit(CurPtr[0]))
@@ -422,7 +419,8 @@ StringRef AsmLexer::LexUntilEndOfStatement() {
 
   while (!isAtStartOfComment(CurPtr) &&     // Start of line comment.
          !isAtStatementSeparator(CurPtr) && // End of statement marker.
-         *CurPtr != '\n' && *CurPtr != '\r' && CurPtr != CurBuf.end()) {
+         *CurPtr != '\n' && *CurPtr != '\r' &&
+         (*CurPtr != 0 || CurPtr != CurBuf.end())) {
     ++CurPtr;
   }
   return StringRef(TokStart, CurPtr-TokStart);
@@ -431,44 +429,33 @@ StringRef AsmLexer::LexUntilEndOfStatement() {
 StringRef AsmLexer::LexUntilEndOfLine() {
   TokStart = CurPtr;
 
-  while (*CurPtr != '\n' && *CurPtr != '\r' && CurPtr != CurBuf.end()) {
+  while (*CurPtr != '\n' && *CurPtr != '\r' &&
+         (*CurPtr != 0 || CurPtr != CurBuf.end())) {
     ++CurPtr;
   }
   return StringRef(TokStart, CurPtr-TokStart);
 }
 
-size_t AsmLexer::peekTokens(MutableArrayRef<AsmToken> Buf,
-                            bool ShouldSkipSpace) {
+const AsmToken AsmLexer::peekTok(bool ShouldSkipSpace) {
   const char *SavedTokStart = TokStart;
   const char *SavedCurPtr = CurPtr;
-  bool SavedAtStartOfLine = IsAtStartOfLine;
-  bool SavedAtStartOfStatement = IsAtStartOfStatement;
+  bool SavedAtStartOfLine = isAtStartOfLine;
   bool SavedSkipSpace = SkipSpace;
 
   std::string SavedErr = getErr();
   SMLoc SavedErrLoc = getErrLoc();
 
   SkipSpace = ShouldSkipSpace;
-
-  size_t ReadCount;
-  for (ReadCount = 0; ReadCount < Buf.size(); ++ReadCount) {
-    AsmToken Token = LexToken();
-
-    Buf[ReadCount] = Token;
-
-    if (Token.is(AsmToken::Eof))
-      break;
-  }
+  AsmToken Token = LexToken();
 
   SetError(SavedErrLoc, SavedErr);
 
   SkipSpace = SavedSkipSpace;
-  IsAtStartOfLine = SavedAtStartOfLine;
-  IsAtStartOfStatement = SavedAtStartOfStatement;
+  isAtStartOfLine = SavedAtStartOfLine;
   CurPtr = SavedCurPtr;
   TokStart = SavedTokStart;
 
-  return ReadCount;
+  return Token;
 }
 
 bool AsmLexer::isAtStartOfComment(const char *Ptr) {
@@ -494,45 +481,29 @@ AsmToken AsmLexer::LexToken() {
   // This always consumes at least one character.
   int CurChar = getNextChar();
 
-  if (CurChar == '#' && IsAtStartOfStatement) {
-    // If this starts with a '#', this may be a cpp
-    // hash directive and otherwise a line comment.
-    AsmToken TokenBuf[2];
-    MutableArrayRef<AsmToken> Buf(TokenBuf, 2);
-    size_t num = peekTokens(Buf, true);
-    // There cannot be a space preceeding this
-    if (IsAtStartOfLine && num == 2 && TokenBuf[0].is(AsmToken::Integer) &&
-        TokenBuf[1].is(AsmToken::String)) {
-      CurPtr = TokStart; // reset curPtr;
-      StringRef s = LexUntilEndOfLine();
-      UnLex(TokenBuf[1]);
-      UnLex(TokenBuf[0]);
-      return AsmToken(AsmToken::HashDirective, s);
-    }
+  if (isAtStartOfComment(TokStart)) {
+    // If this comment starts with a '#', then return the Hash token and let
+    // the assembler parser see if it can be parsed as a cpp line filename
+    // comment. We do this only if we are at the start of a line.
+    if (CurChar == '#' && isAtStartOfLine)
+      return AsmToken(AsmToken::Hash, StringRef(TokStart, 1));
+    isAtStartOfLine = true;
     return LexLineComment();
   }
-
-  if (isAtStartOfComment(TokStart))
-    return LexLineComment();
-
   if (isAtStatementSeparator(TokStart)) {
     CurPtr += strlen(MAI.getSeparatorString()) - 1;
-    IsAtStartOfLine = true;
-    IsAtStartOfStatement = true;
     return AsmToken(AsmToken::EndOfStatement,
                     StringRef(TokStart, strlen(MAI.getSeparatorString())));
   }
 
   // If we're missing a newline at EOF, make sure we still get an
   // EndOfStatement token before the Eof token.
-  if (CurChar == EOF && !IsAtStartOfStatement) {
-    IsAtStartOfLine = true;
-    IsAtStartOfStatement = true;
+  if (CurChar == EOF && !isAtStartOfLine) {
+    isAtStartOfLine = true;
     return AsmToken(AsmToken::EndOfStatement, StringRef(TokStart, 1));
   }
-  IsAtStartOfLine = false;
-  bool OldIsAtStartOfStatement = IsAtStartOfStatement;
-  IsAtStartOfStatement = false;
+
+  isAtStartOfLine = false;
   switch (CurChar) {
   default:
     // Handle identifier: [a-zA-Z_.][a-zA-Z0-9_$.@]*
@@ -541,24 +512,24 @@ AsmToken AsmLexer::LexToken() {
 
     // Unknown character, emit an error.
     return ReturnError(TokStart, "invalid character in input");
-  case EOF:
-    IsAtStartOfLine = true;
-    IsAtStartOfStatement = true;
-    return AsmToken(AsmToken::Eof, StringRef(TokStart, 0));
+  case EOF: return AsmToken(AsmToken::Eof, StringRef(TokStart, 0));
   case 0:
   case ' ':
   case '\t':
-    IsAtStartOfStatement = OldIsAtStartOfStatement;
-    while (*CurPtr == ' ' || *CurPtr == '\t')
-      CurPtr++;
-    if (SkipSpace)
-      return LexToken(); // Ignore whitespace.
-    else
-      return AsmToken(AsmToken::Space, StringRef(TokStart, CurPtr - TokStart));
-  case '\n':
+    if (SkipSpace) {
+      // Ignore whitespace.
+      return LexToken();
+    } else {
+      int len = 1;
+      while (*CurPtr==' ' || *CurPtr=='\t') {
+        CurPtr++;
+        len++;
+      }
+      return AsmToken(AsmToken::Space, StringRef(TokStart, len));
+    }
+  case '\n': // FALL THROUGH.
   case '\r':
-    IsAtStartOfLine = true;
-    IsAtStartOfStatement = true;
+    isAtStartOfLine = true;
     return AsmToken(AsmToken::EndOfStatement, StringRef(TokStart, 1));
   case ':': return AsmToken(AsmToken::Colon, StringRef(TokStart, 1));
   case '+': return AsmToken(AsmToken::Plus, StringRef(TokStart, 1));
@@ -576,34 +547,24 @@ AsmToken AsmLexer::LexToken() {
   case '@': return AsmToken(AsmToken::At, StringRef(TokStart, 1));
   case '\\': return AsmToken(AsmToken::BackSlash, StringRef(TokStart, 1));
   case '=':
-    if (*CurPtr == '=') {
-      ++CurPtr;
-      return AsmToken(AsmToken::EqualEqual, StringRef(TokStart, 2));
-    }
+    if (*CurPtr == '=')
+      return ++CurPtr, AsmToken(AsmToken::EqualEqual, StringRef(TokStart, 2));
     return AsmToken(AsmToken::Equal, StringRef(TokStart, 1));
   case '|':
-    if (*CurPtr == '|') {
-      ++CurPtr;
-      return AsmToken(AsmToken::PipePipe, StringRef(TokStart, 2));
-    }
+    if (*CurPtr == '|')
+      return ++CurPtr, AsmToken(AsmToken::PipePipe, StringRef(TokStart, 2));
     return AsmToken(AsmToken::Pipe, StringRef(TokStart, 1));
   case '^': return AsmToken(AsmToken::Caret, StringRef(TokStart, 1));
   case '&':
-    if (*CurPtr == '&') {
-      ++CurPtr;
-      return AsmToken(AsmToken::AmpAmp, StringRef(TokStart, 2));
-    }
+    if (*CurPtr == '&')
+      return ++CurPtr, AsmToken(AsmToken::AmpAmp, StringRef(TokStart, 2));
     return AsmToken(AsmToken::Amp, StringRef(TokStart, 1));
   case '!':
-    if (*CurPtr == '=') {
-      ++CurPtr;
-      return AsmToken(AsmToken::ExclaimEqual, StringRef(TokStart, 2));
-    }
+    if (*CurPtr == '=')
+      return ++CurPtr, AsmToken(AsmToken::ExclaimEqual, StringRef(TokStart, 2));
     return AsmToken(AsmToken::Exclaim, StringRef(TokStart, 1));
   case '%': return AsmToken(AsmToken::Percent, StringRef(TokStart, 1));
-  case '/':
-    IsAtStartOfStatement = OldIsAtStartOfStatement;
-    return LexSlash();
+  case '/': return LexSlash();
   case '#': return AsmToken(AsmToken::Hash, StringRef(TokStart, 1));
   case '\'': return LexSingleQuote();
   case '"': return LexQuote();
@@ -612,28 +573,21 @@ AsmToken AsmLexer::LexToken() {
     return LexDigit();
   case '<':
     switch (*CurPtr) {
-    case '<':
-      ++CurPtr;
-      return AsmToken(AsmToken::LessLess, StringRef(TokStart, 2));
-    case '=':
-      ++CurPtr;
-      return AsmToken(AsmToken::LessEqual, StringRef(TokStart, 2));
-    case '>':
-      ++CurPtr;
-      return AsmToken(AsmToken::LessGreater, StringRef(TokStart, 2));
-    default:
-      return AsmToken(AsmToken::Less, StringRef(TokStart, 1));
+    case '<': return ++CurPtr, AsmToken(AsmToken::LessLess,
+                                        StringRef(TokStart, 2));
+    case '=': return ++CurPtr, AsmToken(AsmToken::LessEqual,
+                                        StringRef(TokStart, 2));
+    case '>': return ++CurPtr, AsmToken(AsmToken::LessGreater,
+                                        StringRef(TokStart, 2));
+    default: return AsmToken(AsmToken::Less, StringRef(TokStart, 1));
     }
   case '>':
     switch (*CurPtr) {
-    case '>':
-      ++CurPtr;
-      return AsmToken(AsmToken::GreaterGreater, StringRef(TokStart, 2));
-    case '=':
-      ++CurPtr;
-      return AsmToken(AsmToken::GreaterEqual, StringRef(TokStart, 2));
-    default:
-      return AsmToken(AsmToken::Greater, StringRef(TokStart, 1));
+    case '>': return ++CurPtr, AsmToken(AsmToken::GreaterGreater,
+                                        StringRef(TokStart, 2));
+    case '=': return ++CurPtr, AsmToken(AsmToken::GreaterEqual,
+                                        StringRef(TokStart, 2));
+    default: return AsmToken(AsmToken::Greater, StringRef(TokStart, 1));
     }
 
   // TODO: Quoted identifiers (objc methods etc)

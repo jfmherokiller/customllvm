@@ -18,7 +18,6 @@
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/Passes.h"
-#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/IRPrintingPasses.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Verifier.h"
@@ -43,10 +42,6 @@ static cl::opt<cl::boolOrDefault>
 EnableFastISelOption("fast-isel", cl::Hidden,
   cl::desc("Enable the \"fast\" instruction selector"));
 
-static cl::opt<bool>
-    EnableGlobalISel("global-isel", cl::Hidden, cl::init(false),
-                     cl::desc("Enable the \"global\" instruction selector"));
-
 void LLVMTargetMachine::initAsmInfo() {
   MRI = TheTarget.createMCRegInfo(getTargetTriple().str());
   MII = TheTarget.createMCInstrInfo();
@@ -70,15 +65,8 @@ void LLVMTargetMachine::initAsmInfo() {
   if (Options.DisableIntegratedAS)
     TmpAsmInfo->setUseIntegratedAssembler(false);
 
-  TmpAsmInfo->setPreserveAsmComments(Options.MCOptions.PreserveAsmComments);
-
   if (Options.CompressDebugSections)
-    TmpAsmInfo->setCompressDebugSections(DebugCompressionType::DCT_ZlibGnu);
-
-  TmpAsmInfo->setRelaxELFRelocations(Options.RelaxELFRelocations);
-
-  if (Options.ExceptionModel != ExceptionHandling::None)
-    TmpAsmInfo->setExceptionsType(Options.ExceptionModel);
+    TmpAsmInfo->setCompressDebugSections(true);
 
   AsmInfo = TmpAsmInfo;
 }
@@ -90,30 +78,13 @@ LLVMTargetMachine::LLVMTargetMachine(const Target &T,
                                      Reloc::Model RM, CodeModel::Model CM,
                                      CodeGenOpt::Level OL)
     : TargetMachine(T, DataLayoutString, TT, CPU, FS, Options) {
-  T.adjustCodeGenOpts(TT, RM, CM);
-  this->RM = RM;
-  this->CMModel = CM;
-  this->OptLevel = OL;
+  CodeGenInfo = T.createMCCodeGenInfo(TT.str(), RM, CM, OL);
 }
 
 TargetIRAnalysis LLVMTargetMachine::getTargetIRAnalysis() {
-  return TargetIRAnalysis([this](const Function &F) {
+  return TargetIRAnalysis([this](Function &F) {
     return TargetTransformInfo(BasicTTIImpl(this, F));
   });
-}
-
-MachineModuleInfo &
-LLVMTargetMachine::addMachineModuleInfo(PassManagerBase &PM) const {
-  MachineModuleInfo *MMI = new MachineModuleInfo(*getMCAsmInfo(),
-                                                 *getMCRegisterInfo(),
-                                                 getObjFileLowering());
-  PM.add(MMI);
-  return *MMI;
-}
-
-void LLVMTargetMachine::addMachineFunctionAnalysis(PassManagerBase &PM,
-    MachineFunctionInitializer *MFInitializer) const {
-  PM.add(new MachineFunctionAnalysis(*this, MFInitializer));
 }
 
 /// addPassesToX helper drives creation and initialization of TargetPassConfig.
@@ -122,12 +93,6 @@ addPassesToGenerateCode(LLVMTargetMachine *TM, PassManagerBase &PM,
                         bool DisableVerify, AnalysisID StartBefore,
                         AnalysisID StartAfter, AnalysisID StopAfter,
                         MachineFunctionInitializer *MFInitializer = nullptr) {
-
-  // When in emulated TLS mode, add the LowerEmuTLS pass.
-  if (TM->Options.EmulatedTLS)
-    PM.add(createLowerEmuTLSPass(TM));
-
-  PM.add(createPreISelIntrinsicLoweringPass());
 
   // Add internal analysis passes from the target machine.
   PM.add(createTargetTransformInfoWrapperPass(TM->getTargetIRAnalysis()));
@@ -150,36 +115,30 @@ addPassesToGenerateCode(LLVMTargetMachine *TM, PassManagerBase &PM,
 
   PassConfig->addISelPrepare();
 
-  MachineModuleInfo &MMI = TM->addMachineModuleInfo(PM);
-  TM->addMachineFunctionAnalysis(PM, MFInitializer);
+  // Install a MachineModuleInfo class, which is an immutable pass that holds
+  // all the per-module stuff we're generating, including MCContext.
+  MachineModuleInfo *MMI = new MachineModuleInfo(
+      *TM->getMCAsmInfo(), *TM->getMCRegisterInfo(), TM->getObjFileLowering());
+  PM.add(MMI);
+
+  // Set up a MachineFunction for the rest of CodeGen to work on.
+  PM.add(new MachineFunctionAnalysis(*TM, MFInitializer));
 
   // Enable FastISel with -fast, but allow that to be overridden.
-  TM->setO0WantsFastISel(EnableFastISelOption != cl::BOU_FALSE);
   if (EnableFastISelOption == cl::BOU_TRUE ||
       (TM->getOptLevel() == CodeGenOpt::None &&
-       TM->getO0WantsFastISel()))
+       EnableFastISelOption != cl::BOU_FALSE))
     TM->setFastISel(true);
 
   // Ask the target for an isel.
-  if (LLVM_UNLIKELY(EnableGlobalISel)) {
-    if (PassConfig->addIRTranslator())
-      return nullptr;
-
-    // Before running the register bank selector, ask the target if it
-    // wants to run some passes.
-    PassConfig->addPreRegBankSelect();
-
-    if (PassConfig->addRegBankSelect())
-      return nullptr;
-
-  } else if (PassConfig->addInstSelector())
+  if (PassConfig->addInstSelector())
     return nullptr;
 
   PassConfig->addMachinePasses();
 
   PassConfig->setInitialized();
 
-  return &MMI.getContext();
+  return &MMI->getContext();
 }
 
 bool LLVMTargetMachine::addPassesToEmitFile(
@@ -194,7 +153,7 @@ bool LLVMTargetMachine::addPassesToEmitFile(
     return true;
 
   if (StopAfter) {
-    PM.add(createPrintMIRPass(Out));
+    PM.add(createPrintMIRPass(outs()));
     return false;
   }
 
@@ -243,7 +202,6 @@ bool LLVMTargetMachine::addPassesToEmitFile(
     Triple T(getTargetTriple().str());
     AsmStreamer.reset(getTarget().createMCObjectStreamer(
         T, *Context, *MAB, Out, MCE, STI, Options.MCOptions.MCRelaxAll,
-        Options.MCOptions.MCIncrementalLinkerCompatible,
         /*DWARFMustBeAtTheEnd*/ true));
     break;
   }
@@ -296,7 +254,6 @@ bool LLVMTargetMachine::addPassesToEmitMC(PassManagerBase &PM, MCContext *&Ctx,
   const MCSubtargetInfo &STI = *getMCSubtargetInfo();
   std::unique_ptr<MCStreamer> AsmStreamer(getTarget().createMCObjectStreamer(
       T, *Ctx, *MAB, Out, MCE, STI, Options.MCOptions.MCRelaxAll,
-      Options.MCOptions.MCIncrementalLinkerCompatible,
       /*DWARFMustBeAtTheEnd*/ true));
 
   // Create the AsmPrinter, which takes ownership of AsmStreamer if successful.

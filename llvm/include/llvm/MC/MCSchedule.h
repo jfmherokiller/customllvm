@@ -165,6 +165,9 @@ struct MCSchedModel {
   static const unsigned DefaultLoopMicroOpBufferSize = 0;
 
   // LoadLatency is the expected latency of load instructions.
+  //
+  // If MinLatency >= 0, this may be overriden for individual load opcodes by
+  // InstrItinerary OperandCycles.
   unsigned LoadLatency;
   static const unsigned DefaultLoadLatency = 4;
 
@@ -172,6 +175,7 @@ struct MCSchedModel {
   // See TargetInstrInfo::isHighLatencyDef().
   // By default, this is set to an arbitrarily high number of cycles
   // likely to have some impact on scheduling heuristics.
+  // If MinLatency >= 0, this may be overriden by InstrItinData OperandCycles.
   unsigned HighLatency;
   static const unsigned DefaultHighLatency = 10;
 
@@ -179,7 +183,7 @@ struct MCSchedModel {
   // takes to recover from a branch misprediction.
   unsigned MispredictPenalty;
   static const unsigned DefaultMispredictPenalty = 10;
-
+  
   bool PostRAScheduler; // default value is false
 
   bool CompleteModel;
@@ -201,9 +205,6 @@ struct MCSchedModel {
   /// Return true if this machine model data for all instructions with a
   /// scheduling class (itinerary class or SchedRW list).
   bool isComplete() const { return CompleteModel; }
-
-  /// Return true if machine supports out of order execution.
-  bool isOutOfOrder() const { return MicroOpBufferSize > 1; }
 
   unsigned getNumProcResourceKinds() const {
     return NumProcResourceKinds;

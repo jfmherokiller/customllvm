@@ -14,7 +14,6 @@
 #include "llvm/DebugInfo/PDB/IPDBRawSymbol.h"
 
 namespace llvm {
-namespace pdb {
 class DIASession;
 class DIARawSymbol : public IPDBRawSymbol {
 public:
@@ -59,7 +58,7 @@ public:
   uint32_t getLiveRangeStartAddressOffset() const override;
   uint32_t getLiveRangeStartAddressSection() const override;
   uint32_t getLiveRangeStartRelativeVirtualAddress() const override;
-  codeview::RegisterId getLocalBasePointerRegisterId() const override;
+  PDB_RegisterId getLocalBasePointerRegisterId() const override;
   uint32_t getLowerBoundId() const override;
   uint32_t getMemorySpaceKind() const override;
   std::string getName() const override;
@@ -74,7 +73,7 @@ public:
   uint32_t getOffsetInUdt() const override;
   PDB_Cpu getPlatform() const override;
   uint32_t getRank() const override;
-  codeview::RegisterId getRegisterId() const override;
+  PDB_RegisterId getRegisterId() const override;
   uint32_t getRegisterType() const override;
   uint32_t getRelativeVirtualAddress() const override;
   uint32_t getSamplerSlot() const override;
@@ -110,7 +109,7 @@ public:
   int32_t getVirtualBasePointerOffset() const override;
   PDB_LocType getLocationType() const override;
   PDB_Machine getMachineType() const override;
-  codeview::ThunkOrdinal getThunkOrdinal() const override;
+  PDB_ThunkOrdinal getThunkOrdinal() const override;
   uint64_t getLength() const override;
   uint64_t getLiveRangeLength() const override;
   uint64_t getVirtualAddress() const override;
@@ -202,7 +201,6 @@ private:
   const DIASession &Session;
   CComPtr<IDiaSymbol> Symbol;
 };
-}
 }
 
 #endif

@@ -19,8 +19,9 @@
 #ifndef LLVM_LIB_IR_CONSTANTFOLD_H
 #define LLVM_LIB_IR_CONSTANTFOLD_H
 
+#include "llvm/ADT/ArrayRef.h"
+
 namespace llvm {
-template <typename T> class ArrayRef;
   class Value;
   class Constant;
   class Type;
@@ -44,8 +45,12 @@ template <typename T> class ArrayRef;
                                                ArrayRef<unsigned> Idxs);
   Constant *ConstantFoldBinaryInstruction(unsigned Opcode, Constant *V1,
                                           Constant *V2);
-  Constant *ConstantFoldCompareInstruction(unsigned short predicate,
+  Constant *ConstantFoldCompareInstruction(unsigned short predicate, 
                                            Constant *C1, Constant *C2);
+  Constant *ConstantFoldGetElementPtr(Constant *C, bool inBounds,
+                                      ArrayRef<Constant *> Idxs);
+  Constant *ConstantFoldGetElementPtr(Constant *C, bool inBounds,
+                                      ArrayRef<Value *> Idxs);
   Constant *ConstantFoldGetElementPtr(Type *Ty, Constant *C, bool inBounds,
                                       ArrayRef<Constant *> Idxs);
   Constant *ConstantFoldGetElementPtr(Type *Ty, Constant *C, bool inBounds,

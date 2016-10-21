@@ -13,7 +13,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @AtomicRmwXchg
+; CHECK: @AtomicRmwXchg
 ; CHECK: store i32 0,
 ; CHECK: atomicrmw xchg {{.*}} seq_cst
 ; CHECK: store i32 0, {{.*}} @__msan_retval_tls
@@ -28,7 +28,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @AtomicRmwMax
+; CHECK: @AtomicRmwMax
 ; CHECK: store i32 0,
 ; CHECK: atomicrmw max {{.*}} seq_cst
 ; CHECK: store i32 0, {{.*}} @__msan_retval_tls
@@ -44,7 +44,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @Cmpxchg
+; CHECK: @Cmpxchg
 ; CHECK: store { i32, i1 } zeroinitializer,
 ; CHECK: icmp
 ; CHECK: br
@@ -63,7 +63,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @CmpxchgMonotonic
+; CHECK: @CmpxchgMonotonic
 ; CHECK: store { i32, i1 } zeroinitializer,
 ; CHECK: icmp
 ; CHECK: br
@@ -81,7 +81,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @AtomicLoad
+; CHECK: @AtomicLoad
 ; CHECK: load atomic i32, i32* {{.*}} seq_cst, align 16
 ; CHECK: [[SHADOW:%[01-9a-z_]+]] = load i32, i32* {{.*}}, align 16
 ; CHECK: store i32 {{.*}}[[SHADOW]], {{.*}} @__msan_retval_tls
@@ -96,7 +96,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @AtomicLoadAcquire
+; CHECK: @AtomicLoadAcquire
 ; CHECK: load atomic i32, i32* {{.*}} acquire, align 16
 ; CHECK: [[SHADOW:%[01-9a-z_]+]] = load i32, i32* {{.*}}, align 16
 ; CHECK: store i32 {{.*}}[[SHADOW]], {{.*}} @__msan_retval_tls
@@ -111,7 +111,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @AtomicLoadMonotonic
+; CHECK: @AtomicLoadMonotonic
 ; CHECK: load atomic i32, i32* {{.*}} acquire, align 16
 ; CHECK: [[SHADOW:%[01-9a-z_]+]] = load i32, i32* {{.*}}, align 16
 ; CHECK: store i32 {{.*}}[[SHADOW]], {{.*}} @__msan_retval_tls
@@ -126,7 +126,7 @@ entry:
   ret i32 %0
 }
 
-; CHECK-LABEL: @AtomicLoadUnordered
+; CHECK: @AtomicLoadUnordered
 ; CHECK: load atomic i32, i32* {{.*}} acquire, align 16
 ; CHECK: [[SHADOW:%[01-9a-z_]+]] = load i32, i32* {{.*}}, align 16
 ; CHECK: store i32 {{.*}}[[SHADOW]], {{.*}} @__msan_retval_tls
@@ -141,7 +141,7 @@ entry:
   ret void
 }
 
-; CHECK-LABEL: @AtomicStore
+; CHECK: @AtomicStore
 ; CHECK-NOT: @__msan_param_tls
 ; CHECK: store i32 0, i32* {{.*}}, align 16
 ; CHECK: store atomic i32 %x, i32* %p seq_cst, align 16
@@ -156,7 +156,7 @@ entry:
   ret void
 }
 
-; CHECK-LABEL: @AtomicStoreRelease
+; CHECK: @AtomicStoreRelease
 ; CHECK-NOT: @__msan_param_tls
 ; CHECK: store i32 0, i32* {{.*}}, align 16
 ; CHECK: store atomic i32 %x, i32* %p release, align 16
@@ -171,7 +171,7 @@ entry:
   ret void
 }
 
-; CHECK-LABEL: @AtomicStoreMonotonic
+; CHECK: @AtomicStoreMonotonic
 ; CHECK-NOT: @__msan_param_tls
 ; CHECK: store i32 0, i32* {{.*}}, align 16
 ; CHECK: store atomic i32 %x, i32* %p release, align 16
@@ -186,7 +186,7 @@ entry:
   ret void
 }
 
-; CHECK-LABEL: @AtomicStoreUnordered
+; CHECK: @AtomicStoreUnordered
 ; CHECK-NOT: @__msan_param_tls
 ; CHECK: store i32 0, i32* {{.*}}, align 16
 ; CHECK: store atomic i32 %x, i32* %p release, align 16

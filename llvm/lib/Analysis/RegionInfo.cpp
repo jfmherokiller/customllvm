@@ -15,13 +15,12 @@
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/RegionInfoImpl.h"
 #include "llvm/Analysis/RegionIterator.h"
-#include "llvm/IR/PassManager.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#ifndef NDEBUG
-#include "llvm/Analysis/RegionPrinter.h"
-#endif
+#include <algorithm>
+#include <iterator>
+#include <set>
 
 using namespace llvm;
 
@@ -104,12 +103,6 @@ void RegionInfo::recalculate(Function &F, DominatorTree *DT_,
   calculate(F);
 }
 
-#ifndef NDEBUG
-void RegionInfo::view() { viewRegion(this); }
-
-void RegionInfo::viewOnly() { viewRegionOnly(this); }
-#endif
-
 //===----------------------------------------------------------------------===//
 // RegionInfoPass implementation
 //
@@ -126,8 +119,8 @@ bool RegionInfoPass::runOnFunction(Function &F) {
   releaseMemory();
 
   auto DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-  auto PDT = &getAnalysis<PostDominatorTreeWrapperPass>().getPostDomTree();
-  auto DF = &getAnalysis<DominanceFrontierWrapperPass>().getDominanceFrontier();
+  auto PDT = &getAnalysis<PostDominatorTree>();
+  auto DF = &getAnalysis<DominanceFrontier>();
 
   RI.recalculate(F, DT, PDT, DF);
   return false;
@@ -144,8 +137,8 @@ void RegionInfoPass::verifyAnalysis() const {
 void RegionInfoPass::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
   AU.addRequiredTransitive<DominatorTreeWrapperPass>();
-  AU.addRequired<PostDominatorTreeWrapperPass>();
-  AU.addRequired<DominanceFrontierWrapperPass>();
+  AU.addRequired<PostDominatorTree>();
+  AU.addRequired<DominanceFrontier>();
 }
 
 void RegionInfoPass::print(raw_ostream &OS, const Module *) const {
@@ -153,7 +146,7 @@ void RegionInfoPass::print(raw_ostream &OS, const Module *) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void RegionInfoPass::dump() const {
+void RegionInfoPass::dump() const {
   RI.dump();
 }
 #endif
@@ -163,8 +156,8 @@ char RegionInfoPass::ID = 0;
 INITIALIZE_PASS_BEGIN(RegionInfoPass, "regions",
                 "Detect single entry single exit regions", true, true)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(PostDominatorTreeWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(DominanceFrontierWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(PostDominatorTree)
+INITIALIZE_PASS_DEPENDENCY(DominanceFrontier)
 INITIALIZE_PASS_END(RegionInfoPass, "regions",
                 "Detect single entry single exit regions", true, true)
 
@@ -178,36 +171,3 @@ namespace llvm {
   }
 }
 
-//===----------------------------------------------------------------------===//
-// RegionInfoAnalysis implementation
-//
-
-char RegionInfoAnalysis::PassID;
-
-RegionInfo RegionInfoAnalysis::run(Function &F, AnalysisManager<Function> &AM) {
-  RegionInfo RI;
-  auto *DT = &AM.getResult<DominatorTreeAnalysis>(F);
-  auto *PDT = &AM.getResult<PostDominatorTreeAnalysis>(F);
-  auto *DF = &AM.getResult<DominanceFrontierAnalysis>(F);
-
-  RI.recalculate(F, DT, PDT, DF);
-  return RI;
-}
-
-RegionInfoPrinterPass::RegionInfoPrinterPass(raw_ostream &OS)
-  : OS(OS) {}
-
-PreservedAnalyses RegionInfoPrinterPass::run(Function &F,
-                                             FunctionAnalysisManager &AM) {
-  OS << "Region Tree for function: " << F.getName() << "\n";
-  AM.getResult<RegionInfoAnalysis>(F).print(OS);
-
-  return PreservedAnalyses::all();
-}
-
-PreservedAnalyses RegionInfoVerifierPass::run(Function &F,
-                                              AnalysisManager<Function> &AM) {
-  AM.getResult<RegionInfoAnalysis>(F).verifyAnalysis();
-
-  return PreservedAnalyses::all();
-}

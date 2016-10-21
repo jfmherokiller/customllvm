@@ -149,10 +149,11 @@ public:
 
   void visitUsedExpr(MCStreamer &Streamer) const override;
 
-  MCFragment *findAssociatedFragment() const override;
+  MCSection *findAssociatedSection() const override;
 
-  bool evaluateAsRelocatableImpl(MCValue &Res, const MCAsmLayout *Layout,
-                                 const MCFixup *Fixup) const override;
+  bool evaluateAsRelocatableImpl(MCValue &Res,
+                                 const MCAsmLayout *Layout,
+				 const MCFixup *Fixup) const override;
 
   void fixELFSymbolsInTLSFixups(MCAssembler &Asm) const override;
 
@@ -161,6 +162,7 @@ public:
   }
 
   static bool classof(const AArch64MCExpr *) { return true; }
+
 };
 } // end namespace llvm
 

@@ -14,11 +14,10 @@
 
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/InlineCost.h"
-#include "llvm/Analysis/ProfileSummaryInfo.h"
-#include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/DataLayout.h"
@@ -36,22 +35,26 @@ namespace {
 
 /// \brief Inliner pass which only handles "always inline" functions.
 class AlwaysInliner : public Inliner {
+  InlineCostAnalysis *ICA;
 
 public:
-  AlwaysInliner() : Inliner(ID, /*InsertLifetime*/ true) {
+  // Use extremely low threshold.
+  AlwaysInliner() : Inliner(ID, -2000000000, /*InsertLifetime*/ true),
+                    ICA(nullptr) {
     initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
   }
 
-  AlwaysInliner(bool InsertLifetime) : Inliner(ID, InsertLifetime) {
+  AlwaysInliner(bool InsertLifetime)
+      : Inliner(ID, -2000000000, InsertLifetime), ICA(nullptr) {
     initializeAlwaysInlinerPass(*PassRegistry::getPassRegistry());
   }
-
-  /// Main run interface method.  We override here to avoid calling skipSCC().
-  bool runOnSCC(CallGraphSCC &SCC) override { return inlineCalls(SCC); }
 
   static char ID; // Pass identification, replacement for typeid
 
   InlineCost getInlineCost(CallSite CS) override;
+
+  void getAnalysisUsage(AnalysisUsage &AU) const override;
+  bool runOnSCC(CallGraphSCC &SCC) override;
 
   using llvm::Pass::doFinalization;
   bool doFinalization(CallGraph &CG) override {
@@ -64,10 +67,10 @@ public:
 char AlwaysInliner::ID = 0;
 INITIALIZE_PASS_BEGIN(AlwaysInliner, "always-inline",
                 "Inliner for always_inline functions", false, false)
+INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(CallGraphWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(ProfileSummaryInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(TargetLibraryInfoWrapperPass)
+INITIALIZE_PASS_DEPENDENCY(InlineCostAnalysis)
 INITIALIZE_PASS_END(AlwaysInliner, "always-inline",
                 "Inliner for always_inline functions", false, false)
 
@@ -96,8 +99,19 @@ InlineCost AlwaysInliner::getInlineCost(CallSite CS) {
   // that are viable for inlining. FIXME: We shouldn't even get here for
   // declarations.
   if (Callee && !Callee->isDeclaration() &&
-      CS.hasFnAttr(Attribute::AlwaysInline) && isInlineViable(*Callee))
+      CS.hasFnAttr(Attribute::AlwaysInline) &&
+      ICA->isInlineViable(*Callee))
     return InlineCost::getAlways();
 
   return InlineCost::getNever();
+}
+
+bool AlwaysInliner::runOnSCC(CallGraphSCC &SCC) {
+  ICA = &getAnalysis<InlineCostAnalysis>();
+  return Inliner::runOnSCC(SCC);
+}
+
+void AlwaysInliner::getAnalysisUsage(AnalysisUsage &AU) const {
+  AU.addRequired<InlineCostAnalysis>();
+  Inliner::getAnalysisUsage(AU);
 }

@@ -14,10 +14,12 @@
 
 #include "MipsSERegisterInfo.h"
 #include "Mips.h"
+#include "MipsAnalyzeImmediate.h"
 #include "MipsMachineFunction.h"
 #include "MipsSEInstrInfo.h"
 #include "MipsSubtarget.h"
 #include "MipsTargetMachine.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -27,6 +29,7 @@
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Type.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
@@ -60,11 +63,10 @@ MipsSERegisterInfo::intRegClass(unsigned Size) const {
   return &Mips::GPR64RegClass;
 }
 
-/// Get the size of the offset supported by the given load/store/inline asm.
+/// Get the size of the offset supported by the given load/store.
 /// The result includes the effects of any scale factors applied to the
 /// instruction immediate.
-static inline unsigned getLoadStoreOffsetSizeInBits(const unsigned Opcode,
-                                                    MachineOperand MO) {
+static inline unsigned getLoadStoreOffsetSizeInBits(const unsigned Opcode) {
   switch (Opcode) {
   case Mips::LD_B:
   case Mips::ST_B:
@@ -78,49 +80,6 @@ static inline unsigned getLoadStoreOffsetSizeInBits(const unsigned Opcode,
   case Mips::LD_D:
   case Mips::ST_D:
     return 10 + 3 /* scale factor */;
-  case Mips::LL:
-  case Mips::LL64:
-  case Mips::LLD:
-  case Mips::LLE:
-  case Mips::SC:
-  case Mips::SC64:
-  case Mips::SCD:
-  case Mips::SCE:
-    return 16;
-  case Mips::LLE_MM:
-  case Mips::LLE_MMR6:
-  case Mips::LL_MM:
-  case Mips::SCE_MM:
-  case Mips::SCE_MMR6:
-  case Mips::SC_MM:
-    return 12;
-  case Mips::LL64_R6:
-  case Mips::LL_R6:
-  case Mips::LLD_R6:
-  case Mips::SC64_R6:
-  case Mips::SCD_R6:
-  case Mips::SC_R6:
-    return 9;
-  case Mips::INLINEASM: {
-    unsigned ConstraintID = InlineAsm::getMemoryConstraintID(MO.getImm());
-    switch (ConstraintID) {
-    case InlineAsm::Constraint_ZC: {
-      const MipsSubtarget &Subtarget = MO.getParent()
-                                           ->getParent()
-                                           ->getParent()
-                                           ->getSubtarget<MipsSubtarget>();
-      if (Subtarget.inMicroMipsMode())
-        return 12;
-
-      if (Subtarget.hasMips32r6())
-        return 9;
-
-      return 16;
-    }
-    default:
-      return 16;
-    }
-  }
   default:
     return 16;
   }
@@ -167,19 +126,17 @@ void MipsSERegisterInfo::eliminateFI(MachineBasicBlock::iterator II,
   }
 
   bool EhDataRegFI = MipsFI->isEhDataRegFI(FrameIndex);
-  bool IsISRRegFI = MipsFI->isISRRegFI(FrameIndex);
+
   // The following stack frame objects are always referenced relative to $sp:
   //  1. Outgoing arguments.
   //  2. Pointer to dynamically allocated stack space.
   //  3. Locations for callee-saved registers.
   //  4. Locations for eh data registers.
-  //  5. Locations for ISR saved Coprocessor 0 registers 12 & 14.
   // Everything else is referenced relative to whatever register
   // getFrameRegister() returns.
   unsigned FrameReg;
 
-  if ((FrameIndex >= MinCSFI && FrameIndex <= MaxCSFI) || EhDataRegFI ||
-      IsISRRegFI)
+  if ((FrameIndex >= MinCSFI && FrameIndex <= MaxCSFI) || EhDataRegFI)
     FrameReg = ABI.GetStackPtr();
   else if (RegInfo->needsStackRealignment(MF)) {
     if (MFI->hasVarSizedObjects() && !MFI->isFixedObjectIndex(FrameIndex))
@@ -210,8 +167,7 @@ void MipsSERegisterInfo::eliminateFI(MachineBasicBlock::iterator II,
     // Make sure Offset fits within the field available.
     // For MSA instructions, this is a 10-bit signed immediate (scaled by
     // element size), otherwise it is a 16-bit signed immediate.
-    unsigned OffsetBitSize =
-        getLoadStoreOffsetSizeInBits(MI.getOpcode(), MI.getOperand(OpNo - 1));
+    unsigned OffsetBitSize = getLoadStoreOffsetSizeInBits(MI.getOpcode());
     unsigned OffsetAlign = getLoadStoreOffsetAlign(MI.getOpcode());
 
     if (OffsetBitSize < 16 && isInt<16>(Offset) &&

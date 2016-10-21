@@ -1,5 +1,4 @@
 ; RUN: llc < %s
-; REQUIRES: default_triple
 
 define <2 x i64> @_mm_insert_epi16(<2 x i64> %a, i32 %b, i32 %imm) nounwind readnone {
 entry:

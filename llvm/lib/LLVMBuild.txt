@@ -31,7 +31,6 @@ subdirectories =
  LTO
  MC
  Object
- ObjectYAML
  Option
  Passes
  ProfileData

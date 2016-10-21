@@ -15,7 +15,7 @@
 #ifndef LLVM_LIB_IR_CONSTANTSCONTEXT_H
 #define LLVM_LIB_IR_CONSTANTSCONTEXT_H
 
-#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
@@ -23,6 +23,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+#include <map>
+#include <tuple>
 
 #define DEBUG_TYPE "ir"
 
@@ -177,13 +179,6 @@ public:
 
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
-
-  static bool classof(const ConstantExpr *CE) {
-    return CE->getOpcode() == Instruction::ExtractValue;
-  }
-  static bool classof(const Value *V) {
-    return isa<ConstantExpr>(V) && classof(cast<ConstantExpr>(V));
-  }
 };
 
 /// InsertValueConstantExpr - This class is private to
@@ -210,25 +205,25 @@ public:
 
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
-
-  static bool classof(const ConstantExpr *CE) {
-    return CE->getOpcode() == Instruction::InsertValue;
-  }
-  static bool classof(const Value *V) {
-    return isa<ConstantExpr>(V) && classof(cast<ConstantExpr>(V));
-  }
 };
 
 /// GetElementPtrConstantExpr - This class is private to Constants.cpp, and is
 /// used behind the scenes to implement getelementpr constant exprs.
 class GetElementPtrConstantExpr : public ConstantExpr {
   Type *SrcElementTy;
-  Type *ResElementTy;
   void anchor() override;
   GetElementPtrConstantExpr(Type *SrcElementTy, Constant *C,
                             ArrayRef<Constant *> IdxList, Type *DestTy);
 
 public:
+  static GetElementPtrConstantExpr *Create(Constant *C,
+                                           ArrayRef<Constant*> IdxList,
+                                           Type *DestTy,
+                                           unsigned Flags) {
+    return Create(
+        cast<PointerType>(C->getType()->getScalarType())->getElementType(), C,
+        IdxList, DestTy, Flags);
+  }
   static GetElementPtrConstantExpr *Create(Type *SrcElementTy, Constant *C,
                                            ArrayRef<Constant *> IdxList,
                                            Type *DestTy, unsigned Flags) {
@@ -238,16 +233,8 @@ public:
     return Result;
   }
   Type *getSourceElementType() const;
-  Type *getResultElementType() const;
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
-
-  static bool classof(const ConstantExpr *CE) {
-    return CE->getOpcode() == Instruction::GetElementPtr;
-  }
-  static bool classof(const Value *V) {
-    return isa<ConstantExpr>(V) && classof(cast<ConstantExpr>(V));
-  }
 };
 
 // CompareConstantExpr - This class is private to Constants.cpp, and is used
@@ -270,14 +257,6 @@ public:
   }
   /// Transparently provide more efficient getOperand methods.
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
-
-  static bool classof(const ConstantExpr *CE) {
-    return CE->getOpcode() == Instruction::ICmp ||
-           CE->getOpcode() == Instruction::FCmp;
-  }
-  static bool classof(const Value *V) {
-    return isa<ConstantExpr>(V) && classof(cast<ConstantExpr>(V));
-  }
 };
 
 template <>
@@ -394,45 +373,41 @@ template <class ConstantClass> struct ConstantAggrKeyType {
 struct InlineAsmKeyType {
   StringRef AsmString;
   StringRef Constraints;
-  FunctionType *FTy;
   bool HasSideEffects;
   bool IsAlignStack;
   InlineAsm::AsmDialect AsmDialect;
 
   InlineAsmKeyType(StringRef AsmString, StringRef Constraints,
-                   FunctionType *FTy, bool HasSideEffects, bool IsAlignStack,
+                   bool HasSideEffects, bool IsAlignStack,
                    InlineAsm::AsmDialect AsmDialect)
-      : AsmString(AsmString), Constraints(Constraints), FTy(FTy),
+      : AsmString(AsmString), Constraints(Constraints),
         HasSideEffects(HasSideEffects), IsAlignStack(IsAlignStack),
         AsmDialect(AsmDialect) {}
   InlineAsmKeyType(const InlineAsm *Asm, SmallVectorImpl<Constant *> &)
       : AsmString(Asm->getAsmString()), Constraints(Asm->getConstraintString()),
-        FTy(Asm->getFunctionType()), HasSideEffects(Asm->hasSideEffects()),
+        HasSideEffects(Asm->hasSideEffects()),
         IsAlignStack(Asm->isAlignStack()), AsmDialect(Asm->getDialect()) {}
 
   bool operator==(const InlineAsmKeyType &X) const {
     return HasSideEffects == X.HasSideEffects &&
            IsAlignStack == X.IsAlignStack && AsmDialect == X.AsmDialect &&
-           AsmString == X.AsmString && Constraints == X.Constraints &&
-           FTy == X.FTy;
+           AsmString == X.AsmString && Constraints == X.Constraints;
   }
   bool operator==(const InlineAsm *Asm) const {
     return HasSideEffects == Asm->hasSideEffects() &&
            IsAlignStack == Asm->isAlignStack() &&
            AsmDialect == Asm->getDialect() &&
            AsmString == Asm->getAsmString() &&
-           Constraints == Asm->getConstraintString() &&
-           FTy == Asm->getFunctionType();
+           Constraints == Asm->getConstraintString();
   }
   unsigned getHash() const {
     return hash_combine(AsmString, Constraints, HasSideEffects, IsAlignStack,
-                        AsmDialect, FTy);
+                        AsmDialect);
   }
 
   typedef ConstantInfo<InlineAsm>::TypeClass TypeClass;
   InlineAsm *create(TypeClass *Ty) const {
-    assert(PointerType::getUnqual(FTy) == Ty);
-    return new InlineAsm(FTy, AsmString, Constraints, HasSideEffects,
+    return new InlineAsm(Ty, AsmString, Constraints, HasSideEffects,
                          IsAlignStack, AsmDialect);
   }
 };
@@ -544,9 +519,6 @@ public:
   typedef typename ConstantInfo<ConstantClass>::TypeClass TypeClass;
   typedef std::pair<TypeClass *, ValType> LookupKey;
 
-  /// Key and hash together, so that we compute the hash only once and reuse it.
-  typedef std::pair<unsigned, LookupKey> LookupKeyHashed;
-
 private:
   struct MapInfo {
     typedef DenseMapInfo<ConstantClass *> ConstantClassInfo;
@@ -557,7 +529,7 @@ private:
       return ConstantClassInfo::getTombstoneKey();
     }
     static unsigned getHashValue(const ConstantClass *CP) {
-      SmallVector<Constant *, 32> Storage;
+      SmallVector<Constant *, 8> Storage;
       return getHashValue(LookupKey(CP->getType(), ValType(CP, Storage)));
     }
     static bool isEqual(const ConstantClass *LHS, const ConstantClass *RHS) {
@@ -566,9 +538,6 @@ private:
     static unsigned getHashValue(const LookupKey &Val) {
       return hash_combine(Val.first, Val.second.getHash());
     }
-    static unsigned getHashValue(const LookupKeyHashed &Val) {
-      return Val.first;
-    }
     static bool isEqual(const LookupKey &LHS, const ConstantClass *RHS) {
       if (RHS == getEmptyKey() || RHS == getTombstoneKey())
         return false;
@@ -576,31 +545,30 @@ private:
         return false;
       return LHS.second == RHS;
     }
-    static bool isEqual(const LookupKeyHashed &LHS, const ConstantClass *RHS) {
-      return isEqual(LHS.second, RHS);
-    }
   };
 
 public:
-  typedef DenseSet<ConstantClass *, MapInfo> MapTy;
+  typedef DenseMap<ConstantClass *, char, MapInfo> MapTy;
 
 private:
   MapTy Map;
 
 public:
-  typename MapTy::iterator begin() { return Map.begin(); }
-  typename MapTy::iterator end() { return Map.end(); }
+  typename MapTy::iterator map_begin() { return Map.begin(); }
+  typename MapTy::iterator map_end() { return Map.end(); }
 
   void freeConstants() {
     for (auto &I : Map)
-      delete I; // Asserts that use_empty().
+      // Asserts that use_empty().
+      delete I.first;
   }
+
 private:
-  ConstantClass *create(TypeClass *Ty, ValType V, LookupKeyHashed &HashKey) {
+  ConstantClass *create(TypeClass *Ty, ValType V) {
     ConstantClass *Result = V.create(Ty);
 
     assert(Result->getType() == Ty && "Type specified is not correct!");
-    Map.insert_as(Result, HashKey);
+    insert(Result);
 
     return Result;
   }
@@ -608,27 +576,32 @@ private:
 public:
   /// Return the specified constant from the map, creating it if necessary.
   ConstantClass *getOrCreate(TypeClass *Ty, ValType V) {
-    LookupKey Key(Ty, V);
-    /// Hash once, and reuse it for the lookup and the insertion if needed.
-    LookupKeyHashed Lookup(MapInfo::getHashValue(Key), Key);
-
+    LookupKey Lookup(Ty, V);
     ConstantClass *Result = nullptr;
 
-    auto I = Map.find_as(Lookup);
+    auto I = find(Lookup);
     if (I == Map.end())
-      Result = create(Ty, V, Lookup);
+      Result = create(Ty, V);
     else
-      Result = *I;
+      Result = I->first;
     assert(Result && "Unexpected nullptr");
 
     return Result;
   }
 
+  /// Find the constant by lookup key.
+  typename MapTy::iterator find(LookupKey Lookup) {
+    return Map.find_as(Lookup);
+  }
+
+  /// Insert the constant into its proper slot.
+  void insert(ConstantClass *CP) { Map[CP] = '\0'; }
+
   /// Remove this constant from the map
   void remove(ConstantClass *CP) {
     typename MapTy::iterator I = Map.find(CP);
     assert(I != Map.end() && "Constant not found in constant table!");
-    assert(*I == CP && "Didn't find correct element?");
+    assert(I->first == CP && "Didn't find correct element?");
     Map.erase(I);
   }
 
@@ -636,13 +609,10 @@ public:
                                         ConstantClass *CP, Value *From,
                                         Constant *To, unsigned NumUpdated = 0,
                                         unsigned OperandNo = ~0u) {
-    LookupKey Key(CP->getType(), ValType(Operands, CP));
-    /// Hash once, and reuse it for the lookup and the insertion if needed.
-    LookupKeyHashed Lookup(MapInfo::getHashValue(Key), Key);
-
-    auto I = Map.find_as(Lookup);
+    LookupKey Lookup(CP->getType(), ValType(Operands, CP));
+    auto I = find(Lookup);
     if (I != Map.end())
-      return *I;
+      return I->first;
 
     // Update to the new value.  Optimize for the case when we have a single
     // operand that we're changing, but handle bulk updates efficiently.
@@ -656,7 +626,7 @@ public:
         if (CP->getOperand(I) == From)
           CP->setOperand(I, To);
     }
-    Map.insert_as(CP, Lookup);
+    insert(CP);
     return nullptr;
   }
 

@@ -56,7 +56,7 @@ declare zeroext i16 @t6();
 declare signext i8 @t7();
 declare zeroext i8 @t8();
 
-define i32 @t10(i32 %argc, i8** nocapture %argv) nounwind {
+define i32 @t10(i32 %argc, i8** nocapture %argv) {
 entry:
 ; ELF64: t10
   %call = call i32 @bar(i8 zeroext 0, i8 zeroext -8, i8 zeroext -69, i8 zeroext 28, i8 zeroext 40, i8 zeroext -70)
@@ -97,9 +97,9 @@ define i32 @bar0(i32 %i) nounwind {
 ;        ret i32 %tmp1
 ;}
 
-declare void @float_foo(float %f)
+declare void @float_foo(float %f) ssp
 
-define void @float_const() nounwind {
+define void @float_const() ssp {
 entry:
 ; ELF64: float_const
   call void @float_foo(float 0x401C666660000000)
@@ -108,7 +108,7 @@ entry:
   ret void
 }
 
-define void @float_reg(float %dummy, float %f) nounwind {
+define void @float_reg(float %dummy, float %f) ssp {
 entry:
 ; ELF64: float_reg
   call void @float_foo(float %f)
@@ -116,9 +116,9 @@ entry:
   ret void
 }
 
-declare void @double_foo(double %d)
+declare void @double_foo(double %d) ssp
 
-define void @double_const() nounwind {
+define void @double_const() ssp {
 entry:
 ; ELF64: double_const
   call void @double_foo(double 0x1397723CCABD0000401C666660000000)
@@ -127,7 +127,7 @@ entry:
   ret void
 }
 
-define void @double_reg(double %dummy, double %d) nounwind {
+define void @double_reg(double %dummy, double %d) ssp {
 entry:
 ; ELF64: double_reg
   call void @double_foo(double %d)

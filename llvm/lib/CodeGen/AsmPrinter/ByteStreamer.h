@@ -16,6 +16,7 @@
 #define LLVM_LIB_CODEGEN_ASMPRINTER_BYTESTREAMER_H
 
 #include "DIEHash.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/LEB128.h"
@@ -23,19 +24,16 @@
 
 namespace llvm {
 class ByteStreamer {
- protected:
-  ~ByteStreamer() = default;
-  ByteStreamer(const ByteStreamer&) = default;
-  ByteStreamer() = default;
-
  public:
+  virtual ~ByteStreamer() {}
+
   // For now we're just handling the calls we need for dwarf emission/hashing.
   virtual void EmitInt8(uint8_t Byte, const Twine &Comment = "") = 0;
   virtual void EmitSLEB128(uint64_t DWord, const Twine &Comment = "") = 0;
   virtual void EmitULEB128(uint64_t DWord, const Twine &Comment = "") = 0;
 };
 
-class APByteStreamer final : public ByteStreamer {
+class APByteStreamer : public ByteStreamer {
 private:
   AsmPrinter &AP;
 
@@ -55,7 +53,7 @@ public:
   }
 };
 
-class HashingByteStreamer final : public ByteStreamer {
+class HashingByteStreamer : public ByteStreamer {
  private:
   DIEHash &Hash;
  public:
@@ -71,7 +69,7 @@ class HashingByteStreamer final : public ByteStreamer {
   }
 };
 
-class BufferByteStreamer final : public ByteStreamer {
+class BufferByteStreamer : public ByteStreamer {
 private:
   SmallVectorImpl<char> &Buffer;
   SmallVectorImpl<std::string> &Comments;

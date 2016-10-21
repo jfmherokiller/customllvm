@@ -31,7 +31,7 @@ using namespace llvm;
 //
 //===----------------------------------------------------------------------===//
 
-int SystemZTTIImpl::getIntImmCost(const APInt &Imm, Type *Ty) {
+unsigned SystemZTTIImpl::getIntImmCost(const APInt &Imm, Type *Ty) {
   assert(Ty->isIntegerTy());
 
   unsigned BitSize = Ty->getPrimitiveSizeInBits();
@@ -63,8 +63,8 @@ int SystemZTTIImpl::getIntImmCost(const APInt &Imm, Type *Ty) {
   return 4 * TTI::TCC_Basic;
 }
 
-int SystemZTTIImpl::getIntImmCost(unsigned Opcode, unsigned Idx,
-                                  const APInt &Imm, Type *Ty) {
+unsigned SystemZTTIImpl::getIntImmCost(unsigned Opcode, unsigned Idx,
+                                       const APInt &Imm, Type *Ty) {
   assert(Ty->isIntegerTy());
 
   unsigned BitSize = Ty->getPrimitiveSizeInBits();
@@ -181,8 +181,8 @@ int SystemZTTIImpl::getIntImmCost(unsigned Opcode, unsigned Idx,
   return SystemZTTIImpl::getIntImmCost(Imm, Ty);
 }
 
-int SystemZTTIImpl::getIntImmCost(Intrinsic::ID IID, unsigned Idx,
-                                  const APInt &Imm, Type *Ty) {
+unsigned SystemZTTIImpl::getIntImmCost(Intrinsic::ID IID, unsigned Idx,
+                                       const APInt &Imm, Type *Ty) {
   assert(Ty->isIntegerTy());
 
   unsigned BitSize = Ty->getPrimitiveSizeInBits();

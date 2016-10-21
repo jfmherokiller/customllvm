@@ -17,7 +17,6 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileUtilities.h"
-#include "llvm/Support/Program.h"
 #include "llvm/Support/SystemUtils.h"
 #include "llvm/Support/raw_ostream.h"
 #include <fstream>
@@ -125,10 +124,11 @@ namespace {
                cl::ZeroOrMore, cl::PositionalEatsArgs);
 
   cl::opt<std::string>
-  CCBinary("gcc", cl::init(""), cl::desc("The gcc binary to use."));
+  GCCBinary("gcc", cl::init("gcc"),
+              cl::desc("The gcc binary to use. (default 'gcc')"));
 
   cl::list<std::string>
-  CCToolArgv("gcc-tool-args", cl::Positional,
+  GCCToolArgv("gcc-tool-args", cl::Positional,
               cl::desc("<gcc-tool arguments>..."),
               cl::ZeroOrMore, cl::PositionalEatsArgs);
 }
@@ -148,13 +148,6 @@ bool BugDriver::initializeExecutionEnvironment() {
   SafeInterpreter = nullptr;
   std::string Message;
 
-  if (CCBinary.empty()) {
-    if (sys::findProgramByName("clang"))
-      CCBinary = "clang";
-    else
-      CCBinary = "gcc";
-  }
-
   switch (InterpreterSel) {
   case AutoPick:
     if (!Interpreter) {
@@ -165,8 +158,8 @@ bool BugDriver::initializeExecutionEnvironment() {
     if (!Interpreter) {
       InterpreterSel = RunLLC;
       Interpreter = AbstractInterpreter::createLLC(getToolName(), Message,
-                                                   CCBinary, &ToolArgv,
-                                                   &CCToolArgv);
+                                                   GCCBinary, &ToolArgv,
+                                                   &GCCToolArgv);
     }
     if (!Interpreter) {
       InterpreterSel = RunLLI;
@@ -186,8 +179,8 @@ bool BugDriver::initializeExecutionEnvironment() {
   case RunLLCIA:
   case LLC_Safe:
     Interpreter = AbstractInterpreter::createLLC(getToolName(), Message,
-                                                 CCBinary, &ToolArgv,
-                                                 &CCToolArgv,
+                                                 GCCBinary, &ToolArgv,
+                                                 &GCCToolArgv,
                                                  InterpreterSel == RunLLCIA);
     break;
   case RunJIT:
@@ -220,9 +213,9 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       CCBinary,
+                                                       GCCBinary,
                                                        &SafeToolArgs,
-                                                       &CCToolArgv);
+                                                       &GCCToolArgv);
     }
 
     if (!SafeInterpreter &&
@@ -231,9 +224,9 @@ bool BugDriver::initializeExecutionEnvironment() {
       SafeInterpreterSel = RunLLC;
       SafeToolArgs.push_back("--relocation-model=pic");
       SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                       CCBinary,
+                                                       GCCBinary,
                                                        &SafeToolArgs,
-                                                       &CCToolArgv);
+                                                       &GCCToolArgv);
     }
     if (!SafeInterpreter) {
       SafeInterpreterSel = AutoPick;
@@ -244,8 +237,8 @@ bool BugDriver::initializeExecutionEnvironment() {
   case RunLLCIA:
     SafeToolArgs.push_back("--relocation-model=pic");
     SafeInterpreter = AbstractInterpreter::createLLC(Path.c_str(), Message,
-                                                     CCBinary, &SafeToolArgs,
-                                                     &CCToolArgv,
+                                                     GCCBinary, &SafeToolArgs,
+                                                     &GCCToolArgv,
                                                 SafeInterpreterSel == RunLLCIA);
     break;
   case Custom:
@@ -259,8 +252,8 @@ bool BugDriver::initializeExecutionEnvironment() {
   }
   if (!SafeInterpreter) { outs() << Message << "\nExiting.\n"; exit(1); }
 
-  cc = CC::create(Message, CCBinary, &CCToolArgv);
-  if (!cc) { outs() << Message << "\nExiting.\n"; exit(1); }
+  gcc = GCC::create(Message, GCCBinary, &GCCToolArgv);
+  if (!gcc) { outs() << Message << "\nExiting.\n"; exit(1); }
 
   // If there was an error creating the selected interpreter, quit with error.
   return Interpreter == nullptr;
@@ -384,7 +377,7 @@ std::string BugDriver::executeProgram(const Module *Program,
 /// backend, if reference output is not provided.
 ///
 std::string BugDriver::executeProgramSafely(const Module *Program,
-                                            const std::string &OutputFile,
+                                            std::string OutputFile,
                                             std::string *Error) const {
   return executeProgram(Program, OutputFile, "", "", SafeInterpreter, Error);
 }
@@ -395,13 +388,13 @@ std::string BugDriver::compileSharedObject(const std::string &BitcodeFile,
   std::string OutputFile;
 
   // Using the known-good backend.
-  CC::FileType FT = SafeInterpreter->OutputCode(BitcodeFile, OutputFile,
+  GCC::FileType FT = SafeInterpreter->OutputCode(BitcodeFile, OutputFile,
                                                  Error);
   if (!Error.empty())
     return "";
 
   std::string SharedObjectFile;
-  bool Failure = cc->MakeSharedObject(OutputFile, FT, SharedObjectFile,
+  bool Failure = gcc->MakeSharedObject(OutputFile, FT, SharedObjectFile,
                                        AdditionalLinkerArgs, Error);
   if (!Error.empty())
     return "";

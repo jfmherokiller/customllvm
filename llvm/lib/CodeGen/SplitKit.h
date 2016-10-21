@@ -18,7 +18,6 @@
 #include "LiveRangeCalc.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/IntervalMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 
@@ -37,40 +36,6 @@ class TargetRegisterInfo;
 class VirtRegMap;
 class VNInfo;
 class raw_ostream;
-
-/// Determines the latest safe point in a block in which we can insert a split,
-/// spill or other instruction related with CurLI.
-class LLVM_LIBRARY_VISIBILITY InsertPointAnalysis {
-private:
-  const LiveIntervals &LIS;
-
-  /// Last legal insert point in each basic block in the current function.
-  /// The first entry is the first terminator, the second entry is the
-  /// last valid point to insert a split or spill for a variable that is
-  /// live into a landing pad successor.
-  SmallVector<std::pair<SlotIndex, SlotIndex>, 8> LastInsertPoint;
-
-  SlotIndex computeLastInsertPoint(const LiveInterval &CurLI,
-                                   const MachineBasicBlock &MBB);
-
-public:
-  InsertPointAnalysis(const LiveIntervals &lis, unsigned BBNum);
-
-  /// Return the base index of the last valid insert point for \pCurLI in \pMBB.
-  SlotIndex getLastInsertPoint(const LiveInterval &CurLI,
-                               const MachineBasicBlock &MBB) {
-    unsigned Num = MBB.getNumber();
-    // Inline the common simple case.
-    if (LastInsertPoint[Num].first.isValid() &&
-        !LastInsertPoint[Num].second.isValid())
-      return LastInsertPoint[Num].first;
-    return computeLastInsertPoint(CurLI, MBB);
-  }
-
-  /// Returns the last insert point as an iterator for \pCurLI in \pMBB.
-  MachineBasicBlock::iterator getLastInsertPointIter(const LiveInterval &CurLI,
-                                                     MachineBasicBlock &MBB);
-};
 
 /// SplitAnalysis - Analyze a LiveInterval, looking for live range splitting
 /// opportunities.
@@ -118,11 +83,14 @@ private:
   // Current live interval.
   const LiveInterval *CurLI;
 
-  /// Insert Point Analysis.
-  InsertPointAnalysis IPA;
-
   // Sorted slot indexes of using instructions.
   SmallVector<SlotIndex, 8> UseSlots;
+
+  /// LastSplitPoint - Last legal split point in each basic block in the current
+  /// function. The first entry is the first terminator, the second entry is the
+  /// last valid split point for a variable that is live in to a landing pad
+  /// successor.
+  SmallVector<std::pair<SlotIndex, SlotIndex>, 8> LastSplitPoint;
 
   /// UseBlocks - Blocks where CurLI has uses.
   SmallVector<BlockInfo, 8> UseBlocks;
@@ -139,6 +107,8 @@ private:
 
   /// DidRepairRange - analyze was forced to shrinkToUses().
   bool DidRepairRange;
+
+  SlotIndex computeLastSplitPoint(unsigned Num);
 
   // Sumarize statistics by counting instructions using CurLI.
   void analyzeUses();
@@ -165,6 +135,19 @@ public:
 
   /// getParent - Return the last analyzed interval.
   const LiveInterval &getParent() const { return *CurLI; }
+
+  /// getLastSplitPoint - Return the base index of the last valid split point
+  /// in the basic block numbered Num.
+  SlotIndex getLastSplitPoint(unsigned Num) {
+    // Inline the common simple case.
+    if (LastSplitPoint[Num].first.isValid() &&
+        !LastSplitPoint[Num].second.isValid())
+      return LastSplitPoint[Num].first;
+    return computeLastSplitPoint(Num);
+  }
+
+  /// getLastSplitPointIter - Returns the last split point as an iterator.
+  MachineBasicBlock::iterator getLastSplitPointIter(MachineBasicBlock*);
 
   /// isOriginalEndpoint - Return true if the original live range was killed or
   /// (re-)defined at Idx. Idx should be the 'def' slot for a normal kill/def,
@@ -211,14 +194,6 @@ public:
   /// @param BI           The block to be isolated.
   /// @param SingleInstrs True when single instructions should be isolated.
   bool shouldSplitSingleBlock(const BlockInfo &BI, bool SingleInstrs) const;
-
-  SlotIndex getLastSplitPoint(unsigned Num) {
-    return IPA.getLastInsertPoint(*CurLI, *MF.getBlockNumbered(Num));
-  }
-
-  MachineBasicBlock::iterator getLastSplitPointIter(MachineBasicBlock *BB) {
-    return IPA.getLastInsertPointIter(*CurLI, *BB);
-  }
 };
 
 
@@ -235,7 +210,6 @@ public:
 ///
 class LLVM_LIBRARY_VISIBILITY SplitEditor {
   SplitAnalysis &SA;
-  AliasAnalysis &AA;
   LiveIntervals &LIS;
   VirtRegMap &VRM;
   MachineRegisterInfo &MRI;
@@ -355,14 +329,9 @@ private:
   MachineBasicBlock *findShallowDominator(MachineBasicBlock *MBB,
                                           MachineBasicBlock *DefMBB);
 
-  /// Find out all the backCopies dominated by others.
-  void computeRedundantBackCopies(DenseSet<unsigned> &NotToHoistSet,
-                                  SmallVectorImpl<VNInfo *> &BackCopies);
-
-  /// Hoist back-copies to the complement interval. It tries to hoist all
-  /// the back-copies to one BB if it is beneficial, or else simply remove
-  /// redundant backcopies dominated by others.
-  void hoistCopies();
+  /// hoistCopiesForSize - Hoist back-copies to the complement interval in a
+  /// way that minimizes code size. This implements the SM_Size spill mode.
+  void hoistCopiesForSize();
 
   /// transferValues - Transfer values to the new ranges.
   /// Return true if any ranges were skipped.
@@ -381,9 +350,8 @@ private:
 public:
   /// Create a new SplitEditor for editing the LiveInterval analyzed by SA.
   /// Newly created intervals will be appended to newIntervals.
-  SplitEditor(SplitAnalysis &SA, AliasAnalysis &AA, LiveIntervals&,
-              VirtRegMap&, MachineDominatorTree&,
-              MachineBlockFrequencyInfo &);
+  SplitEditor(SplitAnalysis &SA, LiveIntervals&, VirtRegMap&,
+              MachineDominatorTree&, MachineBlockFrequencyInfo &);
 
   /// reset - Prepare for a new split.
   void reset(LiveRangeEdit&, ComplementSpillMode = SM_Partition);

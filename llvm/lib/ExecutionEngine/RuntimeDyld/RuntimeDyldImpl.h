@@ -14,6 +14,7 @@
 #ifndef LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDIMPL_H
 #define LLVM_LIB_EXECUTIONENGINE_RUNTIMEDYLD_RUNTIMEDYLDIMPL_H
 
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/Triple.h"
@@ -27,8 +28,8 @@
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Mutex.h"
 #include "llvm/Support/SwapByteOrder.h"
+#include "llvm/Support/raw_ostream.h"
 #include <map>
-#include <unordered_map>
 #include <system_error>
 
 using namespace llvm;
@@ -36,15 +37,20 @@ using namespace llvm::object;
 
 namespace llvm {
 
-class Twine;
+  // Helper for extensive error checking in debug builds.
+inline std::error_code Check(std::error_code Err) {
+  if (Err) {
+    report_fatal_error(Err.message());
+  }
+  return Err;
+}
 
-#define UNIMPLEMENTED_RELOC(RelType) \
-  case RelType: \
-    return make_error<RuntimeDyldError>("Unimplemented relocation: " #RelType)
+class Twine;
 
 /// SectionEntry - represents a section emitted into memory by the dynamic
 /// linker.
 class SectionEntry {
+public:
   /// Name - section name.
   std::string Name;
 
@@ -64,54 +70,15 @@ class SectionEntry {
   /// relocations (like ARM).
   uintptr_t StubOffset;
 
-  /// The total amount of space allocated for this section.  This includes the
-  /// section size and the maximum amount of space that the stubs can occupy.
-  size_t AllocationSize;
-
   /// ObjAddress - address of the section in the in-memory object file.  Used
   /// for calculating relocations in some object formats (like MachO).
   uintptr_t ObjAddress;
 
-public:
   SectionEntry(StringRef name, uint8_t *address, size_t size,
-               size_t allocationSize, uintptr_t objAddress)
+               uintptr_t objAddress)
       : Name(name), Address(address), Size(size),
         LoadAddress(reinterpret_cast<uintptr_t>(address)), StubOffset(size),
-        AllocationSize(allocationSize), ObjAddress(objAddress) {
-    // AllocationSize is used only in asserts, prevent an "unused private field"
-    // warning:
-    (void)AllocationSize;
-  }
-
-  StringRef getName() const { return Name; }
-
-  uint8_t *getAddress() const { return Address; }
-
-  /// \brief Return the address of this section with an offset.
-  uint8_t *getAddressWithOffset(unsigned OffsetBytes) const {
-    assert(OffsetBytes <= AllocationSize && "Offset out of bounds!");
-    return Address + OffsetBytes;
-  }
-
-  size_t getSize() const { return Size; }
-
-  uint64_t getLoadAddress() const { return LoadAddress; }
-  void setLoadAddress(uint64_t LA) { LoadAddress = LA; }
-
-  /// \brief Return the load address of this section with an offset.
-  uint64_t getLoadAddressWithOffset(unsigned OffsetBytes) const {
-    assert(OffsetBytes <= AllocationSize && "Offset out of bounds!");
-    return LoadAddress + OffsetBytes;
-  }
-
-  uintptr_t getStubOffset() const { return StubOffset; }
-
-  void advanceStubOffset(unsigned StubSize) {
-    StubOffset += StubSize;
-    assert(StubOffset <= AllocationSize && "Not enough space allocated!");
-  }
-
-  uintptr_t getObjAddress() const { return ObjAddress; }
+        ObjAddress(objAddress) {}
 };
 
 /// RelocationEntry - used to represent relocations internally in the dynamic
@@ -221,8 +188,6 @@ class RuntimeDyldImpl {
   friend class RuntimeDyld::LoadedObjectInfo;
   friend class RuntimeDyldCheckerImpl;
 protected:
-  static const unsigned AbsoluteSymbolSection = ~0U;
-
   // The MemoryManager to load objects into.
   RuntimeDyld::MemoryManager &MemMgr;
 
@@ -259,7 +224,7 @@ protected:
   // Relocations to sections already loaded. Indexed by SectionID which is the
   // source of the address. The target where the address will be written is
   // SectionID/Offset in the relocation itself.
-  std::unordered_map<unsigned, RelocationList> Relocations;
+  DenseMap<unsigned, RelocationList> Relocations;
 
   // Relocations to external symbols that are not yet resolved.  Symbols are
   // external when they aren't found in the global symbol table of all loaded
@@ -296,12 +261,19 @@ protected:
   bool HasError;
   std::string ErrorStr;
 
+  // Set the error state and record an error string.
+  bool Error(const Twine &Msg) {
+    ErrorStr = Msg.str();
+    HasError = true;
+    return true;
+  }
+
   uint64_t getSectionLoadAddress(unsigned SectionID) const {
-    return Sections[SectionID].getLoadAddress();
+    return Sections[SectionID].LoadAddress;
   }
 
   uint8_t *getSectionAddress(unsigned SectionID) const {
-    return Sections[SectionID].getAddress();
+    return (uint8_t *)Sections[SectionID].Address;
   }
 
   void writeInt16BE(uint8_t *Addr, uint16_t Value) {
@@ -348,25 +320,22 @@ protected:
   /// \brief Given the common symbols discovered in the object file, emit a
   /// new section for them and update the symbol mappings in the object and
   /// symbol table.
-  Error emitCommonSymbols(const ObjectFile &Obj,
-                          CommonSymbolList &CommonSymbols);
+  void emitCommonSymbols(const ObjectFile &Obj, CommonSymbolList &CommonSymbols);
 
   /// \brief Emits section data from the object file to the MemoryManager.
   /// \param IsCode if it's true then allocateCodeSection() will be
   ///        used for emits, else allocateDataSection() will be used.
   /// \return SectionID.
-  Expected<unsigned> emitSection(const ObjectFile &Obj,
-                                 const SectionRef &Section,
-                                 bool IsCode);
+  unsigned emitSection(const ObjectFile &Obj, const SectionRef &Section,
+                       bool IsCode);
 
   /// \brief Find Section in LocalSections. If the secton is not found - emit
   ///        it and store in LocalSections.
   /// \param IsCode if it's true then allocateCodeSection() will be
   ///        used for emmits, else allocateDataSection() will be used.
   /// \return SectionID.
-  Expected<unsigned> findOrEmitSection(const ObjectFile &Obj,
-                                       const SectionRef &Section, bool IsCode,
-                                       ObjSectionToIDMap &LocalSections);
+  unsigned findOrEmitSection(const ObjectFile &Obj, const SectionRef &Section,
+                             bool IsCode, ObjSectionToIDMap &LocalSections);
 
   // \brief Add a relocation entry that uses the given section.
   void addRelocationForSection(const RelocationEntry &RE, unsigned SectionID);
@@ -391,7 +360,7 @@ protected:
   ///        relocation pairs) and stores it to Relocations or SymbolRelocations
   ///        (this depends on the object file type).
   /// \return Iterator to the next relocation that needs to be parsed.
-  virtual Expected<relocation_iterator>
+  virtual relocation_iterator
   processRelocationRef(unsigned SectionID, relocation_iterator RelI,
                        const ObjectFile &Obj, ObjSectionToIDMap &ObjSectionToID,
                        StubMap &Stubs) = 0;
@@ -401,22 +370,15 @@ protected:
 
   // \brief Compute an upper bound of the memory that is required to load all
   // sections
-  Error computeTotalAllocSize(const ObjectFile &Obj,
-                              uint64_t &CodeSize, uint32_t &CodeAlign,
-                              uint64_t &RODataSize, uint32_t &RODataAlign,
-                              uint64_t &RWDataSize, uint32_t &RWDataAlign);
+  void computeTotalAllocSize(const ObjectFile &Obj, uint64_t &CodeSize,
+                             uint64_t &DataSizeRO, uint64_t &DataSizeRW);
 
   // \brief Compute the stub buffer size required for a section
   unsigned computeSectionStubBufSize(const ObjectFile &Obj,
                                      const SectionRef &Section);
 
   // \brief Implementation of the generic part of the loadObject algorithm.
-  Expected<ObjSectionToIDMap> loadObjectImpl(const object::ObjectFile &Obj);
-
-  // \brief Return true if the relocation R may require allocating a stub.
-  virtual bool relocationNeedsStub(const RelocationRef &R) const {
-    return true;    // Conservative answer
-  }
+  std::pair<unsigned, unsigned> loadObjectImpl(const object::ObjectFile &Obj);
 
 public:
   RuntimeDyldImpl(RuntimeDyld::MemoryManager &MemMgr,
@@ -445,9 +407,6 @@ public:
     if (pos == GlobalSymbolTable.end())
       return nullptr;
     const auto &SymInfo = pos->second;
-    // Absolute symbols do not have a local address.
-    if (SymInfo.getSectionID() == AbsoluteSymbolSection)
-      return nullptr;
     return getSectionAddress(SymInfo.getSectionID()) + SymInfo.getOffset();
   }
 
@@ -458,10 +417,8 @@ public:
     if (pos == GlobalSymbolTable.end())
       return nullptr;
     const auto &SymEntry = pos->second;
-    uint64_t SectionAddr = 0;
-    if (SymEntry.getSectionID() != AbsoluteSymbolSection)
-      SectionAddr = getSectionLoadAddress(SymEntry.getSectionID());
-    uint64_t TargetAddr = SectionAddr + SymEntry.getOffset();
+    uint64_t TargetAddr =
+      getSectionLoadAddress(SymEntry.getSectionID()) + SymEntry.getOffset();
     return RuntimeDyld::SymbolInfo(TargetAddr, SymEntry.getFlags());
   }
 
@@ -486,10 +443,8 @@ public:
 
   virtual void deregisterEHFrames();
 
-  virtual Error finalizeLoad(const ObjectFile &ObjImg,
-                             ObjSectionToIDMap &SectionMap) {
-    return Error::success();
-  }
+  virtual void finalizeLoad(const ObjectFile &ObjImg,
+                            ObjSectionToIDMap &SectionMap) {}
 };
 
 } // end namespace llvm

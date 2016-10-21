@@ -16,6 +16,7 @@
 #include "NVPTXRegisterInfo.h"
 #include "NVPTXSubtarget.h"
 #include "NVPTXTargetMachine.h"
+#include "llvm/ADT/BitVector.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
@@ -34,7 +35,7 @@ void NVPTXFrameLowering::emitPrologue(MachineFunction &MF,
                                       MachineBasicBlock &MBB) const {
   if (MF.getFrameInfo()->hasStackObjects()) {
     assert(&MF.front() == &MBB && "Shrink-wrapping not yet supported");
-    MachineInstr *MI = &MBB.front();
+    MachineInstr *MI = MBB.begin();
     MachineRegisterInfo &MR = MF.getRegInfo();
 
     // This instruction really occurs before first instruction
@@ -69,10 +70,10 @@ void NVPTXFrameLowering::emitEpilogue(MachineFunction &MF,
 
 // This function eliminates ADJCALLSTACKDOWN,
 // ADJCALLSTACKUP pseudo instructions
-MachineBasicBlock::iterator NVPTXFrameLowering::eliminateCallFramePseudoInstr(
+void NVPTXFrameLowering::eliminateCallFramePseudoInstr(
     MachineFunction &MF, MachineBasicBlock &MBB,
     MachineBasicBlock::iterator I) const {
   // Simply discard ADJCALLSTACKDOWN,
   // ADJCALLSTACKUP instructions.
-  return MBB.erase(I);
+  MBB.erase(I);
 }

@@ -15,8 +15,6 @@
 #define LLVM_OBJECT_SYMBOLICFILE_H
 
 #include "llvm/Object/Binary.h"
-#include "llvm/Support/Format.h"
-#include <utility>
 
 namespace llvm {
 namespace object {
@@ -30,12 +28,6 @@ union DataRefImpl {
   uintptr_t p;
   DataRefImpl() { std::memset(this, 0, sizeof(DataRefImpl)); }
 };
-
-template <typename OStream>
-OStream& operator<<(OStream &OS, const DataRefImpl &D) {
-  OS << "(" << format("0x%x8", D.p) << " (" << format("0x%x8", D.d.a) << ", " << format("0x%x8", D.d.b) << "))";
-  return OS;
-}
 
 inline bool operator==(const DataRefImpl &a, const DataRefImpl &b) {
   // Check bitwise identical. This is the only legal way to compare a union w/o
@@ -59,7 +51,7 @@ class content_iterator
   content_type Current;
 
 public:
-  content_iterator(content_type symb) : Current(std::move(symb)) {}
+  content_iterator(content_type symb) : Current(symb) {}
 
   const content_type *operator->() const { return &Current; }
 
@@ -102,7 +94,6 @@ public:
                                  // (e.g. section symbols)
     SF_Thumb = 1U << 8,          // Thumb symbol in a 32-bit ARM binary
     SF_Hidden = 1U << 9,         // Symbol has hidden visibility
-    SF_Const = 1U << 10,         // Symbol value is constant
   };
 
   BasicSymbolRef() : OwningObject(nullptr) { }
@@ -154,15 +145,15 @@ public:
   }
 
   // construction aux.
-  static Expected<std::unique_ptr<SymbolicFile>>
+  static ErrorOr<std::unique_ptr<SymbolicFile>>
   createSymbolicFile(MemoryBufferRef Object, sys::fs::file_magic Type,
                      LLVMContext *Context);
 
-  static Expected<std::unique_ptr<SymbolicFile>>
+  static ErrorOr<std::unique_ptr<SymbolicFile>>
   createSymbolicFile(MemoryBufferRef Object) {
     return createSymbolicFile(Object, sys::fs::file_magic::unknown, nullptr);
   }
-  static Expected<OwningBinary<SymbolicFile>>
+  static ErrorOr<OwningBinary<SymbolicFile>>
   createSymbolicFile(StringRef ObjectPath);
 
   static inline bool classof(const Binary *v) {

@@ -72,7 +72,7 @@ namespace llvm {
 
     /// Heuristics for estimating register pressure.
     unsigned ParallelLiveRanges;
-    int HorizontalVerticalBalance;
+    signed HorizontalVerticalBalance;
 
   public:
     ResourcePriorityQueue(SelectionDAGISel *IS);
@@ -103,14 +103,14 @@ namespace llvm {
 
     /// Single cost function reflecting benefit of scheduling SU
     /// in the current cycle.
-    int SUSchedulingCost (SUnit *SU);
+    signed SUSchedulingCost (SUnit *SU);
 
     /// InitNumRegDefsLeft - Determine the # of regs defined by this node.
     ///
     void initNumRegDefsLeft(SUnit *SU);
     void updateNumRegDefsLeft(SUnit *SU);
-    int regPressureDelta(SUnit *SU, bool RawPressure = false);
-    int rawRegPressureDelta (SUnit *SU, unsigned RCId);
+    signed regPressureDelta(SUnit *SU, bool RawPressure = false);
+    signed rawRegPressureDelta (SUnit *SU, unsigned RCId);
 
     bool empty() const override { return Queue.empty(); }
 

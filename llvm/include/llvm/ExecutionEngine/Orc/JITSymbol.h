@@ -15,7 +15,6 @@
 #define LLVM_EXECUTIONENGINE_ORC_JITSYMBOL_H
 
 #include "llvm/ExecutionEngine/JITSymbolFlags.h"
-#include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/Support/DataTypes.h"
 #include <cassert>
 #include <functional>
@@ -53,10 +52,6 @@ public:
   JITSymbol(GetAddressFtor GetAddress, JITSymbolFlags Flags)
       : JITSymbolBase(Flags), GetAddress(std::move(GetAddress)), CachedAddr(0) {}
 
-  /// @brief Create a JITSymbol from a RuntimeDyld::SymbolInfo.
-  JITSymbol(const RuntimeDyld::SymbolInfo &Sym)
-    : JITSymbolBase(Sym.getFlags()), CachedAddr(Sym.getAddress()) {}
-
   /// @brief Returns true if the symbol exists, false otherwise.
   explicit operator bool() const { return CachedAddr || GetAddress; }
 
@@ -69,11 +64,6 @@ public:
       GetAddress = nullptr;
     }
     return CachedAddr;
-  }
-
-  /// @brief Convert this JITSymbol to a RuntimeDyld::SymbolInfo.
-  RuntimeDyld::SymbolInfo toRuntimeDyldSymbol() {
-    return RuntimeDyld::SymbolInfo(getAddress(), getFlags());
   }
 
 private:

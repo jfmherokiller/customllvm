@@ -8,9 +8,10 @@ declare void @foo(i64 *)
 define void @f1(i64 *%ptr, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f1:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: stg %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i64 , i64 *%ptr
@@ -23,9 +24,10 @@ define void @f1(i64 *%ptr, i64 %alt, i32 %limit) {
 define void @f2(i64 *%ptr, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f2:
 ; CHECK-NOT: %r2
-; CHECK: bher %r14
+; CHECK: jhe [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: stg %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %cond = icmp ult i32 %limit, 420
   %orig = load i64 , i64 *%ptr
@@ -38,9 +40,10 @@ define void @f2(i64 *%ptr, i64 %alt, i32 %limit) {
 define void @f3(i64 *%base, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f3:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: stg %r3, 524280(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i64, i64 *%base, i64 65535
   %cond = icmp ult i32 %limit, 420
@@ -55,10 +58,11 @@ define void @f3(i64 *%base, i64 %alt, i32 %limit) {
 define void @f4(i64 *%base, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f4:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: agfi %r2, 524288
 ; CHECK: stg %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i64, i64 *%base, i64 65536
   %cond = icmp ult i32 %limit, 420
@@ -72,9 +76,10 @@ define void @f4(i64 *%base, i64 %alt, i32 %limit) {
 define void @f5(i64 *%base, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f5:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: stg %r3, -524288(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i64, i64 *%base, i64 -65536
   %cond = icmp ult i32 %limit, 420
@@ -89,10 +94,11 @@ define void @f5(i64 *%base, i64 %alt, i32 %limit) {
 define void @f6(i64 *%base, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f6:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: agfi %r2, -524296
 ; CHECK: stg %r3, 0(%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %ptr = getelementptr i64, i64 *%base, i64 -65537
   %cond = icmp ult i32 %limit, 420
@@ -106,9 +112,10 @@ define void @f6(i64 *%base, i64 %alt, i32 %limit) {
 define void @f7(i64 %base, i64 %index, i64 %alt, i32 %limit) {
 ; CHECK-LABEL: f7:
 ; CHECK-NOT: %r2
-; CHECK: blr %r14
+; CHECK: jl [[LABEL:[^ ]*]]
 ; CHECK-NOT: %r2
 ; CHECK: stg %r4, 524287(%r3,%r2)
+; CHECK: [[LABEL]]:
 ; CHECK: br %r14
   %add1 = add i64 %base, %index
   %add2 = add i64 %add1, 524287

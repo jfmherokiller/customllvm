@@ -19,7 +19,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/IR/Constant.h"
@@ -62,14 +61,11 @@ FunctionPass *llvm::createConstantPropagationPass() {
 }
 
 bool ConstantPropagation::runOnFunction(Function &F) {
-  if (skipFunction(F))
-    return false;
-
   // Initialize the worklist to all of the instructions ready to process...
   std::set<Instruction*> WorkList;
-  for (Instruction &I: instructions(&F))
-    WorkList.insert(&I);
-
+  for(inst_iterator i = inst_begin(F), e = inst_end(F); i != e; ++i) {
+      WorkList.insert(&*i);
+  }
   bool Changed = false;
   const DataLayout &DL = F.getParent()->getDataLayout();
   TargetLibraryInfo *TLI =
@@ -91,13 +87,11 @@ bool ConstantPropagation::runOnFunction(Function &F) {
 
         // Remove the dead instruction.
         WorkList.erase(I);
-        if (isInstructionTriviallyDead(I, TLI)) {
-          I->eraseFromParent();
-          ++NumInstKilled;
-        }
+        I->eraseFromParent();
 
         // We made a change to the function...
         Changed = true;
+        ++NumInstKilled;
       }
   }
   return Changed;

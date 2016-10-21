@@ -84,8 +84,12 @@ public:
   void removeReg(unsigned Reg) {
     assert(TRI && "LivePhysRegs is not initialized.");
     assert(Reg <= TRI->getNumRegs() && "Expected a physical register.");
-    for (MCRegAliasIterator R(Reg, TRI, true); R.isValid(); ++R)
-      LiveRegs.erase(*R);
+    for (MCSubRegIterator SubRegs(Reg, TRI, /*IncludeSelf=*/true);
+         SubRegs.isValid(); ++SubRegs)
+      LiveRegs.erase(*SubRegs);
+    for (MCSuperRegIterator SuperRegs(Reg, TRI, /*IncludeSelf=*/false);
+         SuperRegs.isValid(); ++SuperRegs)
+      LiveRegs.erase(*SuperRegs);
   }
 
   /// \brief Removes physical registers clobbered by the regmask operand @p MO.
@@ -93,14 +97,9 @@ public:
         SmallVectorImpl<std::pair<unsigned, const MachineOperand*>> *Clobbers);
 
   /// \brief Returns true if register @p Reg is contained in the set. This also
-  /// works if only the super register of @p Reg has been defined, because
-  /// addReg() always adds all sub-registers to the set as well.
-  /// Note: Returns false if just some sub registers are live, use available()
-  /// when searching a free register.
+  /// works if only the super register of @p Reg has been defined, because we
+  /// always add also all sub-registers to the set.
   bool contains(unsigned Reg) const { return LiveRegs.count(Reg); }
-
-  /// Returns true if register \p Reg and no aliasing register is in the set.
-  bool available(const MachineRegisterInfo &MRI, unsigned Reg) const;
 
   /// \brief Simulates liveness when stepping backwards over an
   /// instruction(bundle): Remove Defs, add uses. This is the recommended way of
@@ -110,27 +109,22 @@ public:
   /// \brief Simulates liveness when stepping forward over an
   /// instruction(bundle): Remove killed-uses, add defs. This is the not
   /// recommended way, because it depends on accurate kill flags. If possible
-  /// use stepBackward() instead of this function.
+  /// use stepBackwards() instead of this function.
   /// The clobbers set will be the list of registers either defined or clobbered
   /// by a regmask.  The operand will identify whether this is a regmask or
   /// register operand.
   void stepForward(const MachineInstr &MI,
         SmallVectorImpl<std::pair<unsigned, const MachineOperand*>> &Clobbers);
 
-  /// Adds all live-in registers of basic block @p MBB.
-  /// Live in registers are the registers in the blocks live-in list and the
+  /// \brief Adds all live-in registers of basic block @p MBB; After prologue/
+  /// epilogue insertion \p AddPristines should be set to true to insert the
   /// pristine registers.
-  void addLiveIns(const MachineBasicBlock &MBB);
+  void addLiveIns(const MachineBasicBlock *MBB, bool AddPristines = false);
 
-  /// Adds all live-out registers of basic block @p MBB.
-  /// Live out registers are the union of the live-in registers of the successor
-  /// blocks and pristine registers. Live out registers of the end block are the
-  /// callee saved registers.
-  void addLiveOuts(const MachineBasicBlock &MBB);
-
-  /// Like addLiveOuts() but does not add pristine registers/callee saved
-  /// registers.
-  void addLiveOutsNoPristines(const MachineBasicBlock &MBB);
+  /// \brief Adds all live-out registers of basic block @p MBB; After prologue/
+  /// epilogue insertion \p AddPristines should be set to true to insert the
+  /// pristine registers.
+  void addLiveOuts(const MachineBasicBlock *MBB, bool AddPristines = false);
 
   typedef SparseSet<unsigned>::const_iterator const_iterator;
   const_iterator begin() const { return LiveRegs.begin(); }

@@ -18,7 +18,7 @@ exit:
   ret i32 %z
 }
 
-; CHECK-LABEL: @Func
+; CHECK: @Func
 ; CHECK: store i32 0, {{.*}} @__msan_retval_tls
 ; CHECK: ret i32 42
 
@@ -34,6 +34,6 @@ xxx:
   br label %zzz
 }
 
-; CHECK-LABEL: @UnreachableLoop
+; CHECK: @UnreachableLoop
 ; CHECK: store i32 0, {{.*}} @__msan_retval_tls
 ; CHECK: ret i32 0

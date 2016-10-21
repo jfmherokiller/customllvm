@@ -1,27 +1,27 @@
-; RUN: llc -spec-exec-max-speculation-cost=0 -march=r600 -r600-ir-structurize=0 -mcpu=redwood < %s | FileCheck %s
+; RUN: llc < %s -march=r600 -mattr=disable-irstructurizer -mcpu=redwood | FileCheck %s
 
 ; These tests make sure the compiler is optimizing branches using predicates
 ; when it is legal to do so.
 
-; CHECK-LABEL: {{^}}simple_if:
+; CHECK: {{^}}simple_if:
 ; CHECK: PRED_SET{{[EGN][ET]*}}_INT * Pred,
 ; CHECK: LSHL * T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}, 1, Pred_sel
 define void @simple_if(i32 addrspace(1)* %out, i32 %in) {
 entry:
-  %cmp0 = icmp sgt i32 %in, 0
-  br i1 %cmp0, label %IF, label %ENDIF
+  %0 = icmp sgt i32 %in, 0
+  br i1 %0, label %IF, label %ENDIF
 
 IF:
-  %tmp1 = shl i32 %in, 1
+  %1 = shl i32 %in, 1
   br label %ENDIF
 
 ENDIF:
-  %tmp2 = phi i32 [ %in, %entry ], [ %tmp1, %IF ]
-  store i32 %tmp2, i32 addrspace(1)* %out
+  %2 = phi i32 [ %in, %entry ], [ %1, %IF ]
+  store i32 %2, i32 addrspace(1)* %out
   ret void
 }
 
-; CHECK-LABEL: {{^}}simple_if_else:
+; CHECK: {{^}}simple_if_else:
 ; CHECK: PRED_SET{{[EGN][ET]*}}_INT * Pred,
 ; CHECK: LSH{{[LR] \* T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}, 1, Pred_sel
 ; CHECK: LSH{{[LR] \* T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}, 1, Pred_sel
@@ -44,7 +44,7 @@ ENDIF:
   ret void
 }
 
-; CHECK-LABEL: {{^}}nested_if:
+; CHECK: {{^}}nested_if:
 ; CHECK: ALU_PUSH_BEFORE
 ; CHECK: JUMP
 ; CHECK: POP
@@ -71,7 +71,7 @@ ENDIF:
   ret void
 }
 
-; CHECK-LABEL: {{^}}nested_if_else:
+; CHECK: {{^}}nested_if_else:
 ; CHECK: ALU_PUSH_BEFORE
 ; CHECK: JUMP
 ; CHECK: POP

@@ -1,13 +1,14 @@
-; RUN: llc < %s -march=amdgcn -verify-machineinstrs | FileCheck %s --check-prefix=SI
-; RUN: llc < %s -march=amdgcn -mcpu=tonga -verify-machineinstrs | FileCheck %s --check-prefix=SI
 ; RUN: llc < %s -march=r600 -mcpu=redwood | FileCheck %s --check-prefix=R600
+; RUN: llc < %s -march=amdgcn -mcpu=SI -verify-machineinstrs | FileCheck %s --check-prefix=SI
+; RUN: llc < %s -march=amdgcn -mcpu=tonga -verify-machineinstrs | FileCheck %s --check-prefix=SI
 
 ; R600: {{^}}test:
 ; R600: MEM_RAT_CACHELESS STORE_RAW
 ; R600: MEM_RAT_CACHELESS STORE_RAW
 
 ; SI: {{^}}test:
-; SI: v_mov_b32_e32 v[[V_ZERO:[0-9]]], 0{{$}}
+; SI: s_mov_b32 [[ZERO:s[0-9]]], 0{{$}}
+; SI: v_mov_b32_e32 v[[V_ZERO:[0-9]]], [[ZERO]]
 ; SI: buffer_store_dwordx2 v[0:[[V_ZERO]]{{\]}}
 define void @test(i64 addrspace(1)* %out, i32 %a, i32 %b, i32 %c) {
 entry:

@@ -3,7 +3,7 @@
 
 ; Test calling function pointer passed in struct
 
-;    The function argument `h' in
+;    The fuction argument `h' in
 
 ;    struct foo {
 ;      void (*f) (void);

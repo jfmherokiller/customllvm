@@ -68,9 +68,6 @@ namespace {
       : ModulePass(ID), Named(GVs.begin(), GVs.end()), deleteStuff(deleteS) {}
 
     bool runOnModule(Module &M) override {
-      if (skipModule(M))
-        return false;
-
       // Visit the global inline asm.
       if (!deleteStuff)
         M.setModuleInlineAsm("");
@@ -86,7 +83,7 @@ namespace {
       for (Module::global_iterator I = M.global_begin(), E = M.global_end();
            I != E; ++I) {
         bool Delete =
-            deleteStuff == (bool)Named.count(&*I) && !I->isDeclaration();
+          deleteStuff == (bool)Named.count(I) && !I->isDeclaration();
         if (!Delete) {
           if (I->hasAvailableExternallyLinkage())
             continue;
@@ -104,20 +101,20 @@ namespace {
       }
 
       // Visit the Functions.
-      for (Function &F : M) {
+      for (Module::iterator I = M.begin(), E = M.end(); I != E; ++I) {
         bool Delete =
-            deleteStuff == (bool)Named.count(&F) && !F.isDeclaration();
+          deleteStuff == (bool)Named.count(I) && !I->isDeclaration();
         if (!Delete) {
-          if (F.hasAvailableExternallyLinkage())
+          if (I->hasAvailableExternallyLinkage())
             continue;
         }
 
-        makeVisible(F, Delete);
+        makeVisible(*I, Delete);
 
         if (Delete) {
           // Make this a declaration and drop it's comdat.
-          F.deleteBody();
-          F.setComdat(nullptr);
+          I->deleteBody();
+          I->setComdat(nullptr);
         }
       }
 
@@ -127,11 +124,11 @@ namespace {
         Module::alias_iterator CurI = I;
         ++I;
 
-        bool Delete = deleteStuff == (bool)Named.count(&*CurI);
+        bool Delete = deleteStuff == (bool)Named.count(CurI);
         makeVisible(*CurI, Delete);
 
         if (Delete) {
-          Type *Ty =  CurI->getValueType();
+          Type *Ty =  CurI->getType()->getElementType();
 
           CurI->removeFromParent();
           llvm::Value *Declaration;
@@ -146,7 +143,7 @@ namespace {
 
           }
           CurI->replaceAllUsesWith(Declaration);
-          delete &*CurI;
+          delete CurI;
         }
       }
 

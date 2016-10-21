@@ -40,9 +40,8 @@ class MipsTargetMachine : public LLVMTargetMachine {
 
 public:
   MipsTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
-                    StringRef FS, const TargetOptions &Options,
-                    Optional<Reloc::Model> RM, CodeModel::Model CM,
-                    CodeGenOpt::Level OL, bool isLittle);
+                    StringRef FS, const TargetOptions &Options, Reloc::Model RM,
+                    CodeModel::Model CM, CodeGenOpt::Level OL, bool isLittle);
   ~MipsTargetMachine() override;
 
   TargetIRAnalysis getTargetIRAnalysis() override;
@@ -69,25 +68,25 @@ public:
   const MipsABIInfo &getABI() const { return ABI; }
 };
 
-/// Mips32/64 big endian target machine.
+/// MipsebTargetMachine - Mips32/64 big endian target machine.
 ///
 class MipsebTargetMachine : public MipsTargetMachine {
   virtual void anchor();
 public:
   MipsebTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                       StringRef FS, const TargetOptions &Options,
-                      Optional<Reloc::Model> RM, CodeModel::Model CM,
+                      Reloc::Model RM, CodeModel::Model CM,
                       CodeGenOpt::Level OL);
 };
 
-/// Mips32/64 little endian target machine.
+/// MipselTargetMachine - Mips32/64 little endian target machine.
 ///
 class MipselTargetMachine : public MipsTargetMachine {
   virtual void anchor();
 public:
   MipselTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
                       StringRef FS, const TargetOptions &Options,
-                      Optional<Reloc::Model> RM, CodeModel::Model CM,
+                      Reloc::Model RM, CodeModel::Model CM,
                       CodeGenOpt::Level OL);
 };
 

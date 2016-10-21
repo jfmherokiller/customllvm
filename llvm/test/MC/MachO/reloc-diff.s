@@ -1,4 +1,30 @@
-// RUN: llvm-mc -triple i386-apple-darwin9 %s -filetype=obj -o - | llvm-readobj -r | FileCheck %s
+// RUN: llvm-mc -triple i386-apple-darwin9 %s -filetype=obj -o - | macho-dump | FileCheck %s
+
+// CHECK: # Relocation 0
+// CHECK: (('word-0', 0xa4000010),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 1
+// CHECK: (('word-0', 0xa1000000),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 2
+// CHECK: (('word-0', 0xa4000008),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 3
+// CHECK: (('word-0', 0xa1000000),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 4
+// CHECK: (('word-0', 0xa4000004),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 5
+// CHECK: (('word-0', 0xa1000000),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 6
+// CHECK: (('word-0', 0xa2000000),
+// CHECK:  ('word-1', 0x0)),
+// CHECK: # Relocation 7
+// CHECK: (('word-0', 0xa1000000),
+// CHECK:  ('word-1', 0x0)),
+// CHECK-NEXT: ])
 
 _local_def:
         .globl _external_def
@@ -15,16 +41,3 @@ Ltemp:
 
         .long _local_def - Ltemp
         .long _external_def - Ltemp
-
-// CHECK: Relocations [
-// CHECK-NEXT:   Section __data {
-// CHECK-NEXT:     0x10 0 2 n/a GENERIC_RELOC_LOCAL_SECTDIFF 1 0x0
-// CHECK-NEXT:     0x0 0 2 n/a GENERIC_RELOC_PAIR 1 0x0
-// CHECK-NEXT:     0x8 0 2 n/a GENERIC_RELOC_LOCAL_SECTDIFF 1 0x0
-// CHECK-NEXT:     0x0 0 2 n/a GENERIC_RELOC_PAIR 1 0x0
-// CHECK-NEXT:     0x4 0 2 n/a GENERIC_RELOC_LOCAL_SECTDIFF 1 0x0
-// CHECK-NEXT:     0x0 0 2 n/a GENERIC_RELOC_PAIR 1 0x0
-// CHECK-NEXT:     0x0 0 2 n/a GENERIC_RELOC_SECTDIFF 1 0x0
-// CHECK-NEXT:     0x0 0 2 n/a GENERIC_RELOC_PAIR 1 0x0
-// CHECK-NEXT:   }
-// CHECK-NEXT: ]

@@ -109,13 +109,13 @@ public:
       return true;
 
     SmallPtrSet<const NodeT *, 4> OtherChildren;
-    for (const DomTreeNodeBase *I : *Other) {
-      const NodeT *Nd = I->getBlock();
+    for (const_iterator I = Other->begin(), E = Other->end(); I != E; ++I) {
+      const NodeT *Nd = (*I)->getBlock();
       OtherChildren.insert(Nd);
     }
 
-    for (const DomTreeNodeBase *I : *this) {
-      const NodeT *N = I->getBlock();
+    for (const_iterator I = begin(), E = end(); I != E; ++I) {
+      const NodeT *N = (*I)->getBlock();
       if (OtherChildren.count(N) == 0)
         return true;
     }
@@ -138,9 +138,8 @@ public:
     }
   }
 
-  /// getDFSNumIn/getDFSNumOut - These return the DFS visitation order for nodes
-  /// in the dominator tree. They are only guaranteed valid if
-  /// updateDFSNumbers() has been called.
+  /// getDFSNumIn/getDFSNumOut - These are an internal implementation detail, do
+  /// not call them.
   unsigned getDFSNumIn() const { return DFSNumIn; }
   unsigned getDFSNumOut() const { return DFSNumOut; }
 
@@ -349,14 +348,17 @@ public:
     if (DomTreeNodes.size() != OtherDomTreeNodes.size())
       return true;
 
-    for (const auto &DomTreeNode : this->DomTreeNodes) {
-      NodeT *BB = DomTreeNode.first;
+    for (typename DomTreeNodeMapType::const_iterator
+             I = this->DomTreeNodes.begin(),
+             E = this->DomTreeNodes.end();
+         I != E; ++I) {
+      NodeT *BB = I->first;
       typename DomTreeNodeMapType::const_iterator OI =
           OtherDomTreeNodes.find(BB);
       if (OI == OtherDomTreeNodes.end())
         return true;
 
-      DomTreeNodeBase<NodeT> &MyNd = *DomTreeNode.second;
+      DomTreeNodeBase<NodeT> &MyNd = *I->second;
       DomTreeNodeBase<NodeT> &OtherNd = *OI->second;
 
       if (MyNd.compare(&OtherNd))
@@ -369,9 +371,8 @@ public:
   void releaseMemory() { reset(); }
 
   /// getNode - return the (Post)DominatorTree node for the specified basic
-  /// block.  This is the same as using operator[] on this class.  The result
-  /// may (but is not required to) be null for a forward (backwards)
-  /// statically unreachable block.
+  /// block.  This is the same as using operator[] on this class.
+  ///
   DomTreeNodeBase<NodeT> *getNode(NodeT *BB) const {
     auto I = DomTreeNodes.find(BB);
     if (I != DomTreeNodes.end())
@@ -379,7 +380,6 @@ public:
     return nullptr;
   }
 
-  /// See getNode.
   DomTreeNodeBase<NodeT> *operator[](NodeT *BB) const { return getNode(BB); }
 
   /// getRootNode - This returns the entry node for the CFG of the function.  If
@@ -451,7 +451,7 @@ public:
 
     // Compare the result of the tree walk and the dfs numbers, if expensive
     // checks are enabled.
-#ifdef EXPENSIVE_CHECKS
+#ifdef XDEBUG
     assert((!DFSInfoValid ||
             (dominatedBySlowTreeWalk(A, B) == B->DominatedBy(A))) &&
            "Tree walk disagrees with dfs numbers!");
@@ -722,16 +722,24 @@ public:
     if (!this->IsPostDominators) {
       // Initialize root
       NodeT *entry = TraitsTy::getEntryNode(&F);
-      addRoot(entry);
+      this->Roots.push_back(entry);
+      this->IDoms[entry] = nullptr;
+      this->DomTreeNodes[entry] = nullptr;
 
       Calculate<FT, NodeT *>(*this, F);
     } else {
       // Initialize the roots list
       for (typename TraitsTy::nodes_iterator I = TraitsTy::nodes_begin(&F),
                                              E = TraitsTy::nodes_end(&F);
-           I != E; ++I)
-        if (TraitsTy::child_begin(&*I) == TraitsTy::child_end(&*I))
-          addRoot(&*I);
+           I != E; ++I) {
+        if (TraitsTy::child_begin(I) == TraitsTy::child_end(I))
+          addRoot(I);
+
+        // Prepopulate maps so that we don't get iterator invalidation issues
+        // later.
+        this->IDoms[I] = nullptr;
+        this->DomTreeNodes[I] = nullptr;
+      }
 
       Calculate<FT, Inverse<NodeT *>>(*this, F);
     }

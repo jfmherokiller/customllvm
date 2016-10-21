@@ -149,10 +149,10 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
                                     PE = I->first.end(); PI != PE; ++PI) {
       OS << "\"" << *PI << "\" COMMA ";
     }
-    OS << "nullptr})\n";
+    OS << "0})\n";
   }
   OS << "#undef COMMA\n";
-  OS << "#endif // PREFIX\n\n";
+  OS << "#endif\n\n";
 
   OS << "/////////\n";
   OS << "// Groups\n\n";
@@ -164,7 +164,7 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
     OS << "OPTION(";
 
     // The option prefix;
-    OS << "nullptr";
+    OS << "0";
 
     // The option string.
     OS << ", \"" << R.getValueAsString("Name") << '"';
@@ -183,7 +183,7 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
       OS << "INVALID";
 
     // The other option arguments (unused for groups).
-    OS << ", INVALID, nullptr, 0, 0";
+    OS << ", INVALID, 0, 0, 0";
 
     // The option help text.
     if (!isa<UnsetInit>(R.getValueInit("HelpText"))) {
@@ -191,10 +191,10 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
       OS << "       ";
       write_cstring(OS, R.getValueAsString("HelpText"));
     } else
-      OS << ", nullptr";
+      OS << ", 0";
 
     // The option meta-variable name (unused).
-    OS << ", nullptr)\n";
+    OS << ", 0)\n";
   }
   OS << "\n";
 
@@ -242,7 +242,7 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
     OS << ", ";
     std::vector<std::string> AliasArgs = R.getValueAsListOfStrings("AliasArgs");
     if (AliasArgs.size() == 0) {
-      OS << "nullptr";
+      OS << "0";
     } else {
       OS << "\"";
       for (size_t i = 0, e = AliasArgs.size(); i != e; ++i)
@@ -274,17 +274,17 @@ void EmitOptParser(RecordKeeper &Records, raw_ostream &OS) {
       OS << "       ";
       write_cstring(OS, R.getValueAsString("HelpText"));
     } else
-      OS << ", nullptr";
+      OS << ", 0";
 
     // The option meta-variable name.
     OS << ", ";
     if (!isa<UnsetInit>(R.getValueInit("MetaVarName")))
       write_cstring(OS, R.getValueAsString("MetaVarName"));
     else
-      OS << "nullptr";
+      OS << "0";
 
     OS << ")\n";
   }
-  OS << "#endif // OPTION\n";
+  OS << "#endif\n";
 }
 } // end namespace llvm

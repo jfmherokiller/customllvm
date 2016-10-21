@@ -20,28 +20,21 @@
 #include "llvm-c/Core.h"
 using namespace llvm;
 
-/// This is not as easy as it might seem because we have to worry about making
-/// copies of global variables and functions, and making their (initializers and
-/// references, respectively) refer to the right globals.
+/// CloneModule - Return an exact copy of the specified module.  This is not as
+/// easy as it might seem because we have to worry about making copies of global
+/// variables and functions, and making their (initializers and references,
+/// respectively) refer to the right globals.
 ///
-std::unique_ptr<Module> llvm::CloneModule(const Module *M) {
+Module *llvm::CloneModule(const Module *M) {
   // Create the value map that maps things from the old module over to the new
   // module.
   ValueToValueMapTy VMap;
   return CloneModule(M, VMap);
 }
 
-std::unique_ptr<Module> llvm::CloneModule(const Module *M,
-                                          ValueToValueMapTy &VMap) {
-  return CloneModule(M, VMap, [](const GlobalValue *GV) { return true; });
-}
-
-std::unique_ptr<Module> llvm::CloneModule(
-    const Module *M, ValueToValueMapTy &VMap,
-    function_ref<bool(const GlobalValue *)> ShouldCloneDefinition) {
+Module *llvm::CloneModule(const Module *M, ValueToValueMapTy &VMap) {
   // First off, we need to create the new module.
-  std::unique_ptr<Module> New =
-      llvm::make_unique<Module>(M->getModuleIdentifier(), M->getContext());
+  Module *New = new Module(M->getModuleIdentifier(), M->getContext());
   New->setDataLayout(M->getDataLayout());
   New->setTargetTriple(M->getTargetTriple());
   New->setModuleInlineAsm(M->getModuleInlineAsm());
@@ -53,53 +46,32 @@ std::unique_ptr<Module> llvm::CloneModule(
   for (Module::const_global_iterator I = M->global_begin(), E = M->global_end();
        I != E; ++I) {
     GlobalVariable *GV = new GlobalVariable(*New, 
-                                            I->getValueType(),
+                                            I->getType()->getElementType(),
                                             I->isConstant(), I->getLinkage(),
                                             (Constant*) nullptr, I->getName(),
                                             (GlobalVariable*) nullptr,
                                             I->getThreadLocalMode(),
                                             I->getType()->getAddressSpace());
-    GV->copyAttributesFrom(&*I);
-    VMap[&*I] = GV;
+    GV->copyAttributesFrom(I);
+    VMap[I] = GV;
   }
 
   // Loop over the functions in the module, making external functions as before
-  for (const Function &I : *M) {
-    Function *NF = Function::Create(cast<FunctionType>(I.getValueType()),
-                                    I.getLinkage(), I.getName(), New.get());
-    NF->copyAttributesFrom(&I);
-    VMap[&I] = NF;
+  for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {
+    Function *NF =
+      Function::Create(cast<FunctionType>(I->getType()->getElementType()),
+                       I->getLinkage(), I->getName(), New);
+    NF->copyAttributesFrom(I);
+    VMap[I] = NF;
   }
 
   // Loop over the aliases in the module
   for (Module::const_alias_iterator I = M->alias_begin(), E = M->alias_end();
        I != E; ++I) {
-    if (!ShouldCloneDefinition(&*I)) {
-      // An alias cannot act as an external reference, so we need to create
-      // either a function or a global variable depending on the value type.
-      // FIXME: Once pointee types are gone we can probably pick one or the
-      // other.
-      GlobalValue *GV;
-      if (I->getValueType()->isFunctionTy())
-        GV = Function::Create(cast<FunctionType>(I->getValueType()),
-                              GlobalValue::ExternalLinkage, I->getName(),
-                              New.get());
-      else
-        GV = new GlobalVariable(
-            *New, I->getValueType(), false, GlobalValue::ExternalLinkage,
-            (Constant *)nullptr, I->getName(), (GlobalVariable *)nullptr,
-            I->getThreadLocalMode(), I->getType()->getAddressSpace());
-      VMap[&*I] = GV;
-      // We do not copy attributes (mainly because copying between different
-      // kinds of globals is forbidden), but this is generally not required for
-      // correctness.
-      continue;
-    }
-    auto *GA = GlobalAlias::create(I->getValueType(),
-                                   I->getType()->getPointerAddressSpace(),
-                                   I->getLinkage(), I->getName(), New.get());
-    GA->copyAttributesFrom(&*I);
-    VMap[&*I] = GA;
+    auto *PTy = cast<PointerType>(I->getType());
+    auto *GA = GlobalAlias::create(PTy, I->getLinkage(), I->getName(), New);
+    GA->copyAttributesFrom(I);
+    VMap[I] = GA;
   }
   
   // Now that all of the things that global variable initializer can refer to
@@ -108,55 +80,36 @@ std::unique_ptr<Module> llvm::CloneModule(
   //
   for (Module::const_global_iterator I = M->global_begin(), E = M->global_end();
        I != E; ++I) {
-    if (I->isDeclaration())
-      continue;
-
-    GlobalVariable *GV = cast<GlobalVariable>(VMap[&*I]);
-    if (!ShouldCloneDefinition(&*I)) {
-      // Skip after setting the correct linkage for an external reference.
-      GV->setLinkage(GlobalValue::ExternalLinkage);
-      continue;
-    }
+    GlobalVariable *GV = cast<GlobalVariable>(VMap[I]);
     if (I->hasInitializer())
       GV->setInitializer(MapValue(I->getInitializer(), VMap));
   }
 
   // Similarly, copy over function bodies now...
   //
-  for (const Function &I : *M) {
-    if (I.isDeclaration())
-      continue;
+  for (Module::const_iterator I = M->begin(), E = M->end(); I != E; ++I) {
+    Function *F = cast<Function>(VMap[I]);
+    if (!I->isDeclaration()) {
+      Function::arg_iterator DestI = F->arg_begin();
+      for (Function::const_arg_iterator J = I->arg_begin(); J != I->arg_end();
+           ++J) {
+        DestI->setName(J->getName());
+        VMap[J] = DestI++;
+      }
 
-    Function *F = cast<Function>(VMap[&I]);
-    if (!ShouldCloneDefinition(&I)) {
-      // Skip after setting the correct linkage for an external reference.
-      F->setLinkage(GlobalValue::ExternalLinkage);
-      // Personality function is not valid on a declaration.
-      F->setPersonalityFn(nullptr);
-      continue;
+      SmallVector<ReturnInst*, 8> Returns;  // Ignore returns cloned.
+      CloneFunctionInto(F, I, VMap, /*ModuleLevelChanges=*/true, Returns);
+
     }
 
-    Function::arg_iterator DestI = F->arg_begin();
-    for (Function::const_arg_iterator J = I.arg_begin(); J != I.arg_end();
-         ++J) {
-      DestI->setName(J->getName());
-      VMap[&*J] = &*DestI++;
-    }
-
-    SmallVector<ReturnInst *, 8> Returns; // Ignore returns cloned.
-    CloneFunctionInto(F, &I, VMap, /*ModuleLevelChanges=*/true, Returns);
-
-    if (I.hasPersonalityFn())
-      F->setPersonalityFn(MapValue(I.getPersonalityFn(), VMap));
+    if (I->hasPersonalityFn())
+      F->setPersonalityFn(MapValue(I->getPersonalityFn(), VMap));
   }
 
   // And aliases
   for (Module::const_alias_iterator I = M->alias_begin(), E = M->alias_end();
        I != E; ++I) {
-    // We already dealt with undefined aliases above.
-    if (!ShouldCloneDefinition(&*I))
-      continue;
-    GlobalAlias *GA = cast<GlobalAlias>(VMap[&*I]);
+    GlobalAlias *GA = cast<GlobalAlias>(VMap[I]);
     if (const Constant *C = I->getAliasee())
       GA->setAliasee(MapValue(C, VMap));
   }
@@ -176,7 +129,7 @@ std::unique_ptr<Module> llvm::CloneModule(
 extern "C" {
 
 LLVMModuleRef LLVMCloneModule(LLVMModuleRef M) {
-  return wrap(CloneModule(unwrap(M)).release());
+  return wrap(CloneModule(unwrap(M)));
 }
 
 }

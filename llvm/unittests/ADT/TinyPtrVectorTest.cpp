@@ -14,9 +14,11 @@
 #include "llvm/ADT/TinyPtrVector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/type_traits.h"
 #include "gtest/gtest.h"
 #include <algorithm>
+#include <list>
 #include <vector>
 
 using namespace llvm;

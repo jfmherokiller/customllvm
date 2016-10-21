@@ -14,7 +14,6 @@
 #include "llvm/DebugInfo/PDB/IPDBLineNumber.h"
 
 namespace llvm {
-namespace pdb {
 class DIALineNumber : public IPDBLineNumber {
 public:
   explicit DIALineNumber(CComPtr<IDiaLineNumber> DiaLineNumber);
@@ -36,5 +35,5 @@ private:
   CComPtr<IDiaLineNumber> LineNumber;
 };
 }
-}
+
 #endif

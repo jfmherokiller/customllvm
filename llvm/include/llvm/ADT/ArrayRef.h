@@ -10,12 +10,12 @@
 #ifndef LLVM_ADT_ARRAYREF_H
 #define LLVM_ADT_ARRAYREF_H
 
-#include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
 #include <vector>
 
 namespace llvm {
+
   /// ArrayRef - Represent a constant reference to an array (0 or more elements
   /// consecutively in memory), i.e. a start pointer and a length.  It allows
   /// various APIs to take consecutive elements easily and conveniently.
@@ -85,26 +85,25 @@ namespace llvm {
 
     /// Construct an ArrayRef from a std::initializer_list.
     /*implicit*/ ArrayRef(const std::initializer_list<T> &Vec)
-    : Data(Vec.begin() == Vec.end() ? (T*)nullptr : Vec.begin()),
+    : Data(Vec.begin() == Vec.end() ? (T*)0 : Vec.begin()),
       Length(Vec.size()) {}
 
     /// Construct an ArrayRef<const T*> from ArrayRef<T*>. This uses SFINAE to
     /// ensure that only ArrayRefs of pointers can be converted.
     template <typename U>
-    ArrayRef(
-        const ArrayRef<U *> &A,
-        typename std::enable_if<
-           std::is_convertible<U *const *, T const *>::value>::type * = nullptr)
+    ArrayRef(const ArrayRef<U *> &A,
+             typename std::enable_if<
+                 std::is_convertible<U *const *, T const *>::value>::type* = 0)
       : Data(A.data()), Length(A.size()) {}
 
     /// Construct an ArrayRef<const T*> from a SmallVector<T*>. This is
     /// templated in order to avoid instantiating SmallVectorTemplateCommon<T>
     /// whenever we copy-construct an ArrayRef.
     template<typename U, typename DummyT>
-    /*implicit*/ ArrayRef(
-      const SmallVectorTemplateCommon<U *, DummyT> &Vec,
-      typename std::enable_if<
-          std::is_convertible<U *const *, T const *>::value>::type * = nullptr)
+    /*implicit*/ ArrayRef(const SmallVectorTemplateCommon<U*, DummyT> &Vec,
+                          typename std::enable_if<
+                              std::is_convertible<U *const *,
+                                                  T const *>::value>::type* = 0)
       : Data(Vec.data()), Length(Vec.size()) {
     }
 
@@ -149,7 +148,7 @@ namespace llvm {
     // copy - Allocate copy in Allocator and return ArrayRef<T> to it.
     template <typename Allocator> ArrayRef<T> copy(Allocator &A) {
       T *Buff = A.template Allocate<T>(Length);
-      std::uninitialized_copy(begin(), end(), Buff);
+      std::copy(begin(), end(), Buff);
       return ArrayRef<T>(Buff, Length);
     }
 
@@ -157,30 +156,26 @@ namespace llvm {
     bool equals(ArrayRef RHS) const {
       if (Length != RHS.Length)
         return false;
+      if (Length == 0)
+        return true;
       return std::equal(begin(), end(), RHS.begin());
     }
 
     /// slice(n) - Chop off the first N elements of the array.
-    ArrayRef<T> slice(size_t N) const {
+    ArrayRef<T> slice(unsigned N) const {
       assert(N <= size() && "Invalid specifier");
       return ArrayRef<T>(data()+N, size()-N);
     }
 
     /// slice(n, m) - Chop off the first N elements of the array, and keep M
     /// elements in the array.
-    ArrayRef<T> slice(size_t N, size_t M) const {
+    ArrayRef<T> slice(unsigned N, unsigned M) const {
       assert(N+M <= size() && "Invalid specifier");
       return ArrayRef<T>(data()+N, M);
     }
 
-    /// \brief Drop the first \p N elements of the array.
-    ArrayRef<T> drop_front(size_t N = 1) const {
-      assert(size() >= N && "Dropping more elements than exist");
-      return slice(N, size() - N);
-    }
-
-    /// \brief Drop the last \p N elements of the array.
-    ArrayRef<T> drop_back(size_t N = 1) const {
+    // \brief Drop the last \p N elements of the array.
+    ArrayRef<T> drop_back(unsigned N = 1) const {
       assert(size() >= N && "Dropping more elements than exist");
       return slice(0, size() - N);
     }
@@ -279,25 +274,19 @@ namespace llvm {
     }
 
     /// slice(n) - Chop off the first N elements of the array.
-    MutableArrayRef<T> slice(size_t N) const {
+    MutableArrayRef<T> slice(unsigned N) const {
       assert(N <= this->size() && "Invalid specifier");
       return MutableArrayRef<T>(data()+N, this->size()-N);
     }
 
     /// slice(n, m) - Chop off the first N elements of the array, and keep M
     /// elements in the array.
-    MutableArrayRef<T> slice(size_t N, size_t M) const {
+    MutableArrayRef<T> slice(unsigned N, unsigned M) const {
       assert(N+M <= this->size() && "Invalid specifier");
       return MutableArrayRef<T>(data()+N, M);
     }
 
-    /// \brief Drop the first \p N elements of the array.
-    MutableArrayRef<T> drop_front(size_t N = 1) const {
-      assert(this->size() >= N && "Dropping more elements than exist");
-      return slice(N, this->size() - N);
-    }
-
-    MutableArrayRef<T> drop_back(size_t N = 1) const {
+    MutableArrayRef<T> drop_back(unsigned N) const {
       assert(this->size() >= N && "Dropping more elements than exist");
       return slice(0, this->size() - N);
     }
@@ -350,16 +339,6 @@ namespace llvm {
     return Vec;
   }
 
-  /// Construct an ArrayRef from an ArrayRef (no-op) (const)
-  template <typename T> ArrayRef<T> makeArrayRef(const ArrayRef<T> &Vec) {
-    return Vec;
-  }
-
-  /// Construct an ArrayRef from an ArrayRef (no-op)
-  template <typename T> ArrayRef<T> &makeArrayRef(ArrayRef<T> &Vec) {
-    return Vec;
-  }
-
   /// Construct an ArrayRef from a C array.
   template<typename T, size_t N>
   ArrayRef<T> makeArrayRef(const T (&Arr)[N]) {
@@ -387,10 +366,6 @@ namespace llvm {
   template <typename T> struct isPodLike<ArrayRef<T> > {
     static const bool value = true;
   };
+}
 
-  template <typename T> hash_code hash_value(ArrayRef<T> S) {
-    return hash_combine_range(S.begin(), S.end());
-  }
-} // end namespace llvm
-
-#endif // LLVM_ADT_ARRAYREF_H
+#endif

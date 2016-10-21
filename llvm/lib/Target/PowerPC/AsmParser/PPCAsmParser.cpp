@@ -1,4 +1,4 @@
-//===-- PPCAsmParser.cpp - Parse PowerPC asm to MCInst instructions -------===//
+//===-- PPCAsmParser.cpp - Parse PowerPC asm to MCInst instructions ---------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,10 +7,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "MCTargetDesc/PPCMCExpr.h"
 #include "MCTargetDesc/PPCMCTargetDesc.h"
+#include "MCTargetDesc/PPCMCExpr.h"
 #include "PPCTargetStreamer.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCContext.h"
@@ -20,11 +22,11 @@
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
-#include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
-#include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbolELF.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
@@ -241,6 +243,7 @@ namespace {
 struct PPCOperand;
 
 class PPCAsmParser : public MCTargetAsmParser {
+  MCSubtargetInfo &STI;
   const MCInstrInfo &MII;
   bool IsPPC64;
   bool IsDarwin;
@@ -288,11 +291,11 @@ class PPCAsmParser : public MCTargetAsmParser {
 
 
 public:
-  PPCAsmParser(const MCSubtargetInfo &STI, MCAsmParser &,
-               const MCInstrInfo &MII, const MCTargetOptions &Options)
-    : MCTargetAsmParser(Options, STI), MII(MII) {
+  PPCAsmParser(MCSubtargetInfo &STI, MCAsmParser &, const MCInstrInfo &MII,
+               const MCTargetOptions &Options)
+      : MCTargetAsmParser(), STI(STI), MII(MII) {
     // Check for 64-bit vs. 32-bit pointer mode.
-    const Triple &TheTriple = STI.getTargetTriple();
+    Triple TheTriple(STI.getTargetTriple());
     IsPPC64 = (TheTriple.getArch() == Triple::ppc64 ||
                TheTriple.getArch() == Triple::ppc64le);
     IsDarwin = TheTriple.isMacOSX();
@@ -376,10 +379,6 @@ public:
     }
   }
 
-  // Disable use of sized deallocation due to overallocation of PPCOperand
-  // objects in CreateTokenWithStringCopy.
-  void operator delete(void *p) { ::operator delete(p); }
-
   /// getStartLoc - Get the location of the first token of this operand.
   SMLoc getStartLoc() const override { return StartLoc; }
 
@@ -394,15 +393,13 @@ public:
     return Imm.Val;
   }
   int64_t getImmS16Context() const {
-    assert((Kind == Immediate || Kind == ContextImmediate) &&
-           "Invalid access!");
+    assert((Kind == Immediate || Kind == ContextImmediate) && "Invalid access!");
     if (Kind == Immediate)
       return Imm.Val;
     return static_cast<int16_t>(Imm.Val);
   }
   int64_t getImmU16Context() const {
-    assert((Kind == Immediate || Kind == ContextImmediate) &&
-           "Invalid access!");
+    assert((Kind == Immediate || Kind == ContextImmediate) && "Invalid access!");
     return Imm.Val;
   }
 
@@ -447,9 +444,7 @@ public:
   }
 
   bool isToken() const override { return Kind == Token; }
-  bool isImm() const override {
-    return Kind == Immediate || Kind == Expression;
-  }
+  bool isImm() const override { return Kind == Immediate || Kind == Expression; }
   bool isU1Imm() const { return Kind == Immediate && isUInt<1>(getImm()); }
   bool isU2Imm() const { return Kind == Immediate && isUInt<2>(getImm()); }
   bool isU3Imm() const { return Kind == Immediate && isUInt<3>(getImm()); }
@@ -460,15 +455,13 @@ public:
   bool isU6ImmX2() const { return Kind == Immediate &&
                                   isUInt<6>(getImm()) &&
                                   (getImm() & 1) == 0; }
-  bool isU7Imm() const { return Kind == Immediate && isUInt<7>(getImm()); }
   bool isU7ImmX4() const { return Kind == Immediate &&
                                   isUInt<7>(getImm()) &&
                                   (getImm() & 3) == 0; }
-  bool isU8Imm() const { return Kind == Immediate && isUInt<8>(getImm()); }
   bool isU8ImmX8() const { return Kind == Immediate &&
                                   isUInt<8>(getImm()) &&
                                   (getImm() & 7) == 0; }
-
+  
   bool isU10Imm() const { return Kind == Immediate && isUInt<10>(getImm()); }
   bool isU12Imm() const { return Kind == Immediate && isUInt<12>(getImm()); }
   bool isU16Imm() const {
@@ -496,9 +489,6 @@ public:
   bool isS16ImmX4() const { return Kind == Expression ||
                                    (Kind == Immediate && isInt<16>(getImm()) &&
                                     (getImm() & 3) == 0); }
-  bool isS16ImmX16() const { return Kind == Expression ||
-                                    (Kind == Immediate && isInt<16>(getImm()) &&
-                                     (getImm() & 15) == 0); }
   bool isS17Imm() const {
     switch (Kind) {
       case Expression:
@@ -532,9 +522,7 @@ public:
                                  (Kind == Immediate && isInt<16>(getImm()) &&
                                   (getImm() & 3) == 0); }
   bool isRegNumber() const { return Kind == Immediate && isUInt<5>(getImm()); }
-  bool isVSRegNumber() const {
-    return Kind == Immediate && isUInt<6>(getImm());
-  }
+  bool isVSRegNumber() const { return Kind == Immediate && isUInt<6>(getImm()); }
   bool isCCRegNumber() const { return (Kind == Expression
                                        && isUInt<3>(getExprCRVal())) ||
                                       (Kind == Immediate
@@ -1197,33 +1185,10 @@ void PPCAsmParser::ProcessInstruction(MCInst &Inst,
     break;
   }
   case PPC::MFTB: {
-    if (getSTI().getFeatureBits()[PPC::FeatureMFTB]) {
+    if (STI.getFeatureBits()[PPC::FeatureMFTB]) {
       assert(Inst.getNumOperands() == 2 && "Expecting two operands");
       Inst.setOpcode(PPC::MFSPR);
     }
-    break;
-  }
-  case PPC::CP_COPYx:
-  case PPC::CP_COPY_FIRST: {
-    MCInst TmpInst;
-    TmpInst.setOpcode(PPC::CP_COPY);
-    TmpInst.addOperand(Inst.getOperand(0));
-    TmpInst.addOperand(Inst.getOperand(1));
-    TmpInst.addOperand(MCOperand::createImm(Opcode == PPC::CP_COPYx ? 0 : 1));
-
-    Inst = TmpInst;
-    break;
-  }
-  case PPC::CP_PASTEx :
-  case PPC::CP_PASTE_LAST: {
-    MCInst TmpInst;
-    TmpInst.setOpcode(Opcode == PPC::CP_PASTEx ?
-                      PPC::CP_PASTE : PPC::CP_PASTEo);
-    TmpInst.addOperand(Inst.getOperand(0));
-    TmpInst.addOperand(Inst.getOperand(1));
-    TmpInst.addOperand(MCOperand::createImm(Opcode == PPC::CP_PASTEx ? 0 : 1));
-
-    Inst = TmpInst;
     break;
   }
   }
@@ -1240,7 +1205,7 @@ bool PPCAsmParser::MatchAndEmitInstruction(SMLoc IDLoc, unsigned &Opcode,
     // Post-process instructions (typically extended mnemonics)
     ProcessInstruction(Inst, Operands);
     Inst.setLoc(IDLoc);
-    Out.EmitInstruction(Inst, getSTI());
+    Out.EmitInstruction(Inst, STI);
     return false;
   case Match_MissingFeature:
     return Error(IDLoc, "instruction use requires an option to be enabled");
@@ -1490,8 +1455,8 @@ ParseExpression(const MCExpr *&EVal) {
 /// This differs from the default "parseExpression" in that it handles detection
 /// of the \code hi16(), ha16() and lo16() \endcode modifiers.  At present,
 /// parseExpression() doesn't recognise the modifiers when in the Darwin/MachO
-/// syntax form so it is done here.  TODO: Determine if there is merit in
-/// arranging for this to be done at a higher level.
+/// syntax form so it is done here.  TODO: Determine if there is merit in arranging
+/// for this to be done at a higher level.
 bool PPCAsmParser::
 ParseDarwinExpression(const MCExpr *&EVal) {
   MCAsmParser &Parser = getParser();
@@ -1710,7 +1675,7 @@ bool PPCAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   while (getLexer().isNot(AsmToken::EndOfStatement) &&
          getLexer().is(AsmToken::Comma)) {
     // Consume the comma token
-    Lex();
+    getLexer().Lex();
 
     // Parse the next operand
     if (ParseOperand(Operands))
@@ -1725,7 +1690,7 @@ bool PPCAsmParser::ParseInstruction(ParseInstructionInfo &Info, StringRef Name,
   //  where th can be omitted when it is 0. dcbtst is the same. We take the
   //  server form to be the default, so swap the operands if we're parsing for
   //  an embedded core (they'll be swapped again upon printing).
-  if (getSTI().getFeatureBits()[PPC::FeatureBookE] &&
+  if (STI.getFeatureBits()[PPC::FeatureBookE] &&
       Operands.size() == 4 &&
       (Name == "dcbt" || Name == "dcbtst")) {
     std::swap(Operands[1], Operands[3]);
@@ -1765,19 +1730,10 @@ bool PPCAsmParser::ParseDirectiveWord(unsigned Size, SMLoc L) {
   if (getLexer().isNot(AsmToken::EndOfStatement)) {
     for (;;) {
       const MCExpr *Value;
-      SMLoc ExprLoc = getLexer().getLoc();
       if (getParser().parseExpression(Value))
         return false;
 
-      if (const auto *MCE = dyn_cast<MCConstantExpr>(Value)) {
-        assert(Size <= 8 && "Invalid size");
-        uint64_t IntValue = MCE->getValue();
-        if (!isUIntN(8 * Size, IntValue) && !isIntN(8 * Size, IntValue))
-          return Error(ExprLoc, "literal value out of range for directive");
-        getStreamer().EmitIntValue(IntValue, Size);
-      } else {
-        getStreamer().EmitValue(Value, Size, ExprLoc);
-      }
+      getParser().getStreamer().EmitValue(Value, Size);
 
       if (getLexer().is(AsmToken::EndOfStatement))
         break;

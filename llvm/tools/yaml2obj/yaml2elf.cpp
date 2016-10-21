@@ -16,7 +16,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/MC/StringTableBuilder.h"
 #include "llvm/Object/ELFObjectFile.h"
-#include "llvm/ObjectYAML/ELFYAML.h"
+#include "llvm/Object/ELFYAML.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/YAMLTraits.h"
@@ -38,7 +38,7 @@ class ContiguousBlobAccumulator {
     if (Align == 0)
       Align = 1;
     uint64_t CurrentOffset = InitialOffset + OS.tell();
-    uint64_t AlignedOffset = alignTo(CurrentOffset, Align);
+    uint64_t AlignedOffset = RoundUpToAlignment(CurrentOffset, Align);
     for (; CurrentOffset != AlignedOffset; ++CurrentOffset)
       OS.write('\0');
     return AlignedOffset; // == CurrentOffset;
@@ -105,10 +105,10 @@ class ELFState {
   typedef typename object::ELFFile<ELFT>::Elf_Rela Elf_Rela;
 
   /// \brief The future ".strtab" section.
-  StringTableBuilder DotStrtab{StringTableBuilder::ELF};
+  StringTableBuilder DotStrtab;
 
   /// \brief The future ".shstrtab" section.
-  StringTableBuilder DotShStrtab{StringTableBuilder::ELF};
+  StringTableBuilder DotShStrtab;
 
   NameToIdxMap SN2I;
   NameToIdxMap SymN2I;
@@ -193,7 +193,7 @@ bool ELFState<ELFT>::initSectionHeaders(std::vector<Elf_Shdr> &SHeaders,
 
   for (const auto &Sec : Doc.Sections)
     DotShStrtab.add(Sec->Name);
-  DotShStrtab.finalize();
+  DotShStrtab.finalize(StringTableBuilder::ELF);
 
   for (const auto &Sec : Doc.Sections) {
     zero(SHeader);
@@ -222,11 +222,9 @@ bool ELFState<ELFT>::initSectionHeaders(std::vector<Elf_Shdr> &SHeaders,
 
       unsigned Index;
       if (SN2I.lookup(S->Info, Index)) {
-        if (S->Info.getAsInteger(0, Index)) {
-          errs() << "error: Unknown section referenced: '" << S->Info
-                 << "' at YAML section '" << S->Name << "'.\n";
-          return false;
-        }
+        errs() << "error: Unknown section referenced: '" << S->Info
+               << "' at YAML section '" << S->Name << "'.\n";
+        return false;
       }
       SHeader.sh_info = Index;
 
@@ -286,7 +284,7 @@ void ELFState<ELFT>::initSymtabSectionHeader(Elf_Shdr &SHeader,
     DotStrtab.add(Sym.Name);
   for (const auto &Sym : Doc.Symbols.Weak)
     DotStrtab.add(Sym.Name);
-  DotStrtab.finalize();
+  DotStrtab.finalize(StringTableBuilder::ELF);
 
   addSymbols(Doc.Symbols.Local, Syms, ELF::STB_LOCAL);
   addSymbols(Doc.Symbols.Global, Syms, ELF::STB_GLOBAL);
@@ -558,7 +556,13 @@ static bool isLittleEndian(const ELFYAML::Object &Doc) {
   return Doc.Header.Data == ELFYAML::ELF_ELFDATA(ELF::ELFDATA2LSB);
 }
 
-int yaml2elf(llvm::ELFYAML::Object &Doc, raw_ostream &Out) {
+int yaml2elf(yaml::Input &YIn, raw_ostream &Out) {
+  ELFYAML::Object Doc;
+  YIn >> Doc;
+  if (YIn.error()) {
+    errs() << "yaml2obj: Failed to parse YAML file!\n";
+    return 1;
+  }
   using object::ELFType;
   typedef ELFType<support::little, true> LE64;
   typedef ELFType<support::big, true> BE64;

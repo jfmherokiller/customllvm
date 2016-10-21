@@ -16,6 +16,7 @@
 #ifndef LLVM_OBJECT_RELOCVISITOR_H
 #define LLVM_OBJECT_RELOCVISITOR_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachO.h"
@@ -174,14 +175,6 @@ private:
         case llvm::ELF::R_ARM_ABS32:
           return visitELF_ARM_ABS32(R, Value);
         }
-      case Triple::lanai:
-        switch (RelocType) {
-        case llvm::ELF::R_LANAI_32:
-          return visitELF_Lanai_32(R, Value);
-        default:
-          HasError = true;
-          return RelocToApply();
-        }
       case Triple::mipsel:
       case Triple::mips:
         switch (RelocType) {
@@ -313,13 +306,6 @@ private:
 
   /// PPC32 ELF
   RelocToApply visitELF_PPC_ADDR32(RelocationRef R, uint64_t Value) {
-    int64_t Addend = getELFAddend(R);
-    uint32_t Res = (Value + Addend) & 0xFFFFFFFF;
-    return RelocToApply(Res, 4);
-  }
-
-  /// Lanai ELF
-  RelocToApply visitELF_Lanai_32(RelocationRef R, uint64_t Value) {
     int64_t Addend = getELFAddend(R);
     uint32_t Res = (Value + Addend) & 0xFFFFFFFF;
     return RelocToApply(Res, 4);

@@ -101,13 +101,6 @@ class MachineFrameInfo {
     // cannot alias any other memory objects.
     bool isSpillSlot;
 
-    /// If true, this stack slot is used to spill a value (could be deopt
-    /// and/or GC related) over a statepoint. We know that the address of the
-    /// slot can't alias any LLVM IR value.  This is very similiar to a Spill
-    /// Slot, but is created by statepoint lowering is SelectionDAG, not the
-    /// register allocator. 
-    bool isStatepointSpillSlot;
-
     /// If this stack object is originated from an Alloca instruction
     /// this value saves the original IR allocation. Can be NULL.
     const AllocaInst *Alloca;
@@ -122,38 +115,17 @@ class MachineFrameInfo {
     // arguments have ABI-prescribed offsets).
     bool isAliased;
 
-    /// If true, the object has been zero-extended.
-    bool isZExt;
-
-    /// If true, the object has been zero-extended.
-    bool isSExt;
-
     StackObject(uint64_t Sz, unsigned Al, int64_t SP, bool IM,
                 bool isSS, const AllocaInst *Val, bool A)
       : SPOffset(SP), Size(Sz), Alignment(Al), isImmutable(IM),
-        isSpillSlot(isSS), isStatepointSpillSlot(false), Alloca(Val),
-        PreAllocated(false), isAliased(A), isZExt(false), isSExt(false) {}
+        isSpillSlot(isSS), Alloca(Val), PreAllocated(false), isAliased(A) {}
   };
 
   /// The alignment of the stack.
   unsigned StackAlignment;
 
-  /// Can the stack be realigned. This can be false if the target does not
-  /// support stack realignment, or if the user asks us not to realign the
-  /// stack. In this situation, overaligned allocas are all treated as dynamic
-  /// allocations and the target must handle them as part of DYNAMIC_STACKALLOC
-  /// lowering. All non-alloca stack objects have their alignment clamped to the
-  /// base ABI stack alignment.
-  /// FIXME: There is room for improvement in this case, in terms of
-  /// grouping overaligned allocas into a "secondary stack frame" and
-  /// then only use a single alloca to allocate this frame and only a
-  /// single virtual register to access it. Currently, without such an
-  /// optimization, each such alloca gets it's own dynamic
-  /// realignment.
+  /// Can the stack be realigned.
   bool StackRealignable;
-
-  /// Whether the function has the \c alignstack attribute.
-  bool ForcedRealign;
 
   /// The list of stack objects allocated.
   std::vector<StackObject> Objects;
@@ -161,33 +133,33 @@ class MachineFrameInfo {
   /// This contains the number of fixed objects contained on
   /// the stack.  Because fixed objects are stored at a negative index in the
   /// Objects list, this is also the index to the 0th object in the list.
-  unsigned NumFixedObjects = 0;
+  unsigned NumFixedObjects;
 
   /// This boolean keeps track of whether any variable
   /// sized objects have been allocated yet.
-  bool HasVarSizedObjects = false;
+  bool HasVarSizedObjects;
 
   /// This boolean keeps track of whether there is a call
   /// to builtin \@llvm.frameaddress.
-  bool FrameAddressTaken = false;
+  bool FrameAddressTaken;
 
   /// This boolean keeps track of whether there is a call
   /// to builtin \@llvm.returnaddress.
-  bool ReturnAddressTaken = false;
+  bool ReturnAddressTaken;
 
   /// This boolean keeps track of whether there is a call
   /// to builtin \@llvm.experimental.stackmap.
-  bool HasStackMap = false;
+  bool HasStackMap;
 
   /// This boolean keeps track of whether there is a call
   /// to builtin \@llvm.experimental.patchpoint.
-  bool HasPatchPoint = false;
+  bool HasPatchPoint;
 
   /// The prolog/epilog code inserter calculates the final stack
   /// offsets for all of the fixed size objects, updating the Objects list
   /// above.  It then updates StackSize to contain the number of bytes that need
   /// to be allocated on entry to the function.
-  uint64_t StackSize = 0;
+  uint64_t StackSize;
 
   /// The amount that a frame offset needs to be adjusted to
   /// have the actual offset from the stack/frame pointer.  The exact usage of
@@ -196,9 +168,9 @@ class MachineFrameInfo {
   /// SP then OffsetAdjustment is zero; if FP is used, OffsetAdjustment is set
   /// to the distance between the initial SP and the value in FP.  For many
   /// targets, this value is only used when generating debug info (via
-  /// TargetRegisterInfo::getFrameIndexReference); when generating code, the
+  /// TargetRegisterInfo::getFrameIndexOffset); when generating code, the
   /// corresponding adjustments are performed directly.
-  int OffsetAdjustment = 0;
+  int OffsetAdjustment;
 
   /// The prolog/epilog code inserter may process objects that require greater
   /// alignment than the default alignment the target provides.
@@ -207,27 +179,27 @@ class MachineFrameInfo {
   /// native alignment maintained by the compiler, dynamic alignment code will
   /// be needed.
   ///
-  unsigned MaxAlignment = 0;
+  unsigned MaxAlignment;
 
   /// Set to true if this function adjusts the stack -- e.g.,
   /// when calling another function. This is only valid during and after
   /// prolog/epilog code insertion.
-  bool AdjustsStack = false;
+  bool AdjustsStack;
 
   /// Set to true if this function has any function calls.
-  bool HasCalls = false;
+  bool HasCalls;
 
   /// The frame index for the stack protector.
-  int StackProtectorIdx = -1;
+  int StackProtectorIdx;
 
   /// The frame index for the function context. Used for SjLj exceptions.
-  int FunctionContextIdx = -1;
+  int FunctionContextIdx;
 
   /// This contains the size of the largest call frame if the target uses frame
   /// setup/destroy pseudo instructions (as defined in the TargetFrameInfo
   /// class).  This information is important for frame pointer elimination.
-  /// It is only valid during and after prolog/epilog code insertion.
-  unsigned MaxCallFrameSize = 0;
+  /// If is only valid during and after prolog/epilog code insertion.
+  unsigned MaxCallFrameSize;
 
   /// The prolog/epilog code inserter fills in this vector with each
   /// callee saved register saved in the frame.  Beyond its use by the prolog/
@@ -236,53 +208,74 @@ class MachineFrameInfo {
   std::vector<CalleeSavedInfo> CSInfo;
 
   /// Has CSInfo been set yet?
-  bool CSIValid = false;
+  bool CSIValid;
 
   /// References to frame indices which are mapped
   /// into the local frame allocation block. <FrameIdx, LocalOffset>
   SmallVector<std::pair<int, int64_t>, 32> LocalFrameObjects;
 
   /// Size of the pre-allocated local frame block.
-  int64_t LocalFrameSize = 0;
+  int64_t LocalFrameSize;
 
   /// Required alignment of the local object blob, which is the strictest
   /// alignment of any object in it.
-  unsigned LocalFrameMaxAlign = 0;
+  unsigned LocalFrameMaxAlign;
 
   /// Whether the local object blob needs to be allocated together. If not,
   /// PEI should ignore the isPreAllocated flags on the stack objects and
   /// just allocate them normally.
-  bool UseLocalStackAllocationBlock = false;
+  bool UseLocalStackAllocationBlock;
+
+  /// Whether the "realign-stack" option is on.
+  bool RealignOption;
 
   /// True if the function dynamically adjusts the stack pointer through some
   /// opaque mechanism like inline assembly or Win32 EH.
-  bool HasOpaqueSPAdjustment = false;
-
-  /// True if the function contains operations which will lower down to
-  /// instructions which manipulate the stack pointer.
-  bool HasCopyImplyingStackAdjustment = false;
+  bool HasOpaqueSPAdjustment;
 
   /// True if the function contains a call to the llvm.vastart intrinsic.
-  bool HasVAStart = false;
+  bool HasVAStart;
 
   /// True if this is a varargs function that contains a musttail call.
-  bool HasMustTailInVarArgFunc = false;
+  bool HasMustTailInVarArgFunc;
 
   /// True if this function contains a tail call. If so immutable objects like
   /// function arguments are no longer so. A tail call *can* override fixed
   /// stack objects like arguments so we can't treat them as immutable.
-  bool HasTailCall = false;
+  bool HasTailCall;
 
   /// Not null, if shrink-wrapping found a better place for the prologue.
-  MachineBasicBlock *Save = nullptr;
+  MachineBasicBlock *Save;
   /// Not null, if shrink-wrapping found a better place for the epilogue.
-  MachineBasicBlock *Restore = nullptr;
+  MachineBasicBlock *Restore;
 
 public:
-  explicit MachineFrameInfo(unsigned StackAlignment, bool StackRealignable,
-                            bool ForcedRealign)
-      : StackAlignment(StackAlignment), StackRealignable(StackRealignable),
-        ForcedRealign(ForcedRealign) {}
+  explicit MachineFrameInfo(unsigned StackAlign, bool isStackRealign,
+                            bool RealignOpt)
+      : StackAlignment(StackAlign), StackRealignable(isStackRealign),
+        RealignOption(RealignOpt) {
+    StackSize = NumFixedObjects = OffsetAdjustment = MaxAlignment = 0;
+    HasVarSizedObjects = false;
+    FrameAddressTaken = false;
+    ReturnAddressTaken = false;
+    HasStackMap = false;
+    HasPatchPoint = false;
+    AdjustsStack = false;
+    HasCalls = false;
+    StackProtectorIdx = -1;
+    FunctionContextIdx = -1;
+    MaxCallFrameSize = 0;
+    CSIValid = false;
+    LocalFrameSize = 0;
+    LocalFrameMaxAlign = 0;
+    UseLocalStackAllocationBlock = false;
+    HasOpaqueSPAdjustment = false;
+    HasVAStart = false;
+    HasMustTailInVarArgFunc = false;
+    Save = nullptr;
+    Restore = nullptr;
+    HasTailCall = false;
+  }
 
   /// Return true if there are any stack objects in this function.
   bool hasStackObjects() const { return !Objects.empty(); }
@@ -295,7 +288,6 @@ public:
   /// Return the index for the stack protector object.
   int getStackProtectorIndex() const { return StackProtectorIdx; }
   void setStackProtectorIndex(int I) { StackProtectorIdx = I; }
-  bool hasStackProtectorIndex() const { return StackProtectorIdx != -1; }
 
   /// Return the index for the function context object.
   /// This object is used for SjLj exceptions.
@@ -345,14 +337,14 @@ public:
   }
 
   /// Get the local offset mapping for a for an object.
-  std::pair<int, int64_t> getLocalFrameObjectMap(int i) const {
+  std::pair<int, int64_t> getLocalFrameObjectMap(int i) {
     assert (i >= 0 && (unsigned)i < LocalFrameObjects.size() &&
             "Invalid local object reference!");
     return LocalFrameObjects[i];
   }
 
   /// Return the number of objects allocated into the local object block.
-  int64_t getLocalFrameObjectCount() const { return LocalFrameObjects.size(); }
+  int64_t getLocalFrameObjectCount() { return LocalFrameObjects.size(); }
 
   /// Set the size of the local object blob.
   void setLocalFrameSize(int64_t sz) { LocalFrameSize = sz; }
@@ -369,9 +361,7 @@ public:
 
   /// Get whether the local allocation blob should be allocated together or
   /// let PEI allocate the locals in it directly.
-  bool getUseLocalStackAllocationBlock() const {
-    return UseLocalStackAllocationBlock;
-  }
+  bool getUseLocalStackAllocationBlock() {return UseLocalStackAllocationBlock;}
 
   /// setUseLocalStackAllocationBlock - Set whether the local allocation blob
   /// should be allocated together or let PEI allocate the locals in it
@@ -434,30 +424,6 @@ public:
     return Objects[ObjectIdx+NumFixedObjects].SPOffset;
   }
 
-  bool isObjectZExt(int ObjectIdx) const {
-    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
-           "Invalid Object Idx!");
-    return Objects[ObjectIdx+NumFixedObjects].isZExt;
-  }
-
-  void setObjectZExt(int ObjectIdx, bool IsZExt) {
-    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
-           "Invalid Object Idx!");
-    Objects[ObjectIdx+NumFixedObjects].isZExt = IsZExt;
-  }
-
-  bool isObjectSExt(int ObjectIdx) const {
-    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
-           "Invalid Object Idx!");
-    return Objects[ObjectIdx+NumFixedObjects].isSExt;
-  }
-
-  void setObjectSExt(int ObjectIdx, bool IsSExt) {
-    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
-           "Invalid Object Idx!");
-    Objects[ObjectIdx+NumFixedObjects].isSExt = IsSExt;
-  }
-
   /// Set the stack frame offset of the specified object. The
   /// offset is relative to the stack pointer on entry to the function.
   void setObjectOffset(int ObjectIdx, int64_t SPOffset) {
@@ -505,15 +471,6 @@ public:
   /// Returns true if the function contains opaque dynamic stack adjustments.
   bool hasOpaqueSPAdjustment() const { return HasOpaqueSPAdjustment; }
   void setHasOpaqueSPAdjustment(bool B) { HasOpaqueSPAdjustment = B; }
-
-  /// Returns true if the function contains operations which will lower down to
-  /// instructions which manipulate the stack pointer.
-  bool hasCopyImplyingStackAdjustment() const {
-    return HasCopyImplyingStackAdjustment;
-  }
-  void setHasCopyImplyingStackAdjustment(bool B) {
-    HasCopyImplyingStackAdjustment = B;
-  }
 
   /// Returns true if the function calls the llvm.va_start intrinsic.
   bool hasVAStart() const { return HasVAStart; }
@@ -577,12 +534,6 @@ public:
     return Objects[ObjectIdx+NumFixedObjects].isSpillSlot;
   }
 
-  bool isStatepointSpillSlotObjectIndex(int ObjectIdx) const {
-    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
-           "Invalid Object Idx!");
-    return Objects[ObjectIdx+NumFixedObjects].isStatepointSpillSlot;
-  }
-
   /// Returns true if the specified index corresponds to a dead object.
   bool isDeadObjectIndex(int ObjectIdx) const {
     assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
@@ -596,13 +547,6 @@ public:
     assert(unsigned(ObjectIdx + NumFixedObjects) < Objects.size() &&
            "Invalid Object Idx!");
     return Objects[ObjectIdx + NumFixedObjects].Size == 0;
-  }
-
-  void markAsStatepointSpillSlotObjectIndex(int ObjectIdx) {
-    assert(unsigned(ObjectIdx+NumFixedObjects) < Objects.size() &&
-           "Invalid Object Idx!");
-    Objects[ObjectIdx+NumFixedObjects].isStatepointSpillSlot = true;
-    assert(isStatepointSpillSlotObjectIndex(ObjectIdx) && "inconsistent");
   }
 
   /// Create a new statically sized stack object, returning

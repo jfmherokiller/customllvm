@@ -172,7 +172,6 @@ MACHO-X86-64-NEXT:      SomeInstructions (0x4)
 MACHO-X86-64-NEXT:    ]
 MACHO-X86-64-NEXT:    Reserved1: 0x0
 MACHO-X86-64-NEXT:    Reserved2: 0x0
-MACHO-X86-64-NEXT:    Reserved3: 0x0
 MACHO-X86-64-NEXT:  }
 MACHO-X86-64-NEXT:  Section {
 MACHO-X86-64-NEXT:    Index: 1
@@ -189,7 +188,6 @@ MACHO-X86-64-NEXT:    Attributes [ (0x0)
 MACHO-X86-64-NEXT:    ]
 MACHO-X86-64-NEXT:    Reserved1: 0x0
 MACHO-X86-64-NEXT:    Reserved2: 0x0
-MACHO-X86-64-NEXT:    Reserved3: 0x0
 MACHO-X86-64-NEXT:  }
 MACHO-X86-64-NEXT:]
 
@@ -298,7 +296,6 @@ MACHO-PPC64-NEXT:       SomeInstructions (0x4)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x0
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:   }
 MACHO-PPC64-NEXT:   Section {
 MACHO-PPC64-NEXT:     Index: 1
@@ -317,7 +314,6 @@ MACHO-PPC64-NEXT:       SomeInstructions (0x4)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x0
 MACHO-PPC64-NEXT:     Reserved2: 0x20
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:   }
 MACHO-PPC64-NEXT:   Section {
 MACHO-PPC64-NEXT:     Index: 2
@@ -334,7 +330,6 @@ MACHO-PPC64-NEXT:     Attributes [ (0x0)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x0
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:   }
 MACHO-PPC64-NEXT:   Section {
 MACHO-PPC64-NEXT:     Index: 3
@@ -351,7 +346,6 @@ MACHO-PPC64-NEXT:     Attributes [ (0x0)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x1
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:   }
 MACHO-PPC64-NEXT:   Section {
 MACHO-PPC64-NEXT:     Index: 4
@@ -368,7 +362,6 @@ MACHO-PPC64-NEXT:     Attributes [ (0x0)
 MACHO-PPC64-NEXT:     ]
 MACHO-PPC64-NEXT:     Reserved1: 0x2
 MACHO-PPC64-NEXT:     Reserved2: 0x0
-MACHO-PPC64-NEXT:     Reserved3: 0x0
 MACHO-PPC64-NEXT:   }
 MACHO-PPC64-NEXT: ]
 

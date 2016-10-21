@@ -15,7 +15,6 @@
 #include <memory>
 
 namespace llvm {
-namespace pdb {
 
 template <typename ChildType>
 class ConcreteSymbolEnumerator : public IPDBEnumChildren<ChildType> {
@@ -55,7 +54,6 @@ private:
 
   std::unique_ptr<IPDBEnumSymbols> Enumerator;
 };
-}
 }
 
 #endif

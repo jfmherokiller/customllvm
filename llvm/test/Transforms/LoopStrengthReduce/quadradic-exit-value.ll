@@ -1,5 +1,4 @@
 ; RUN: opt < %s -analyze -iv-users | FileCheck %s
-; RUN: opt -passes='function(require<scalar-evolution>),print<ivusers>' -S < %s 2>&1| FileCheck %s
 
 ; Provide legal integer types.
 target datalayout = "n8:16:32:64"
@@ -29,7 +28,7 @@ exit:
 ; sure they aren't marked as post-inc users.
 ;
 ; CHECK-LABEL: IV Users for loop %test2.loop
-; CHECK: %sext.us = {0,+,(16777216 + (-16777216 * %sub.us))<nuw><nsw>,+,33554432}<%test2.loop> in %f = ashr i32 %sext.us, 24
+; CHECK: %sext.us = {0,+,(16777216 + (-16777216 * %sub.us)),+,33554432}<%test2.loop> in %f = ashr i32 %sext.us, 24
 define i32 @test2() {
 entry:
   br label %test2.loop

@@ -161,7 +161,9 @@ define double @f8(double %dummy, double %val) {
 ; CHECK-LABEL: f8:
 ; CHECK: sqdbr %f0, %f2
 ; CHECK: cdbr %f0, %f0
-; CHECK: bnor %r14
+; CHECK: jo [[LABEL:\.L.*]]
+; CHECK: br %r14
+; CHECK: [[LABEL]]:
 ; CHECK: ldr %f0, %f2
 ; CHECK: jg sqrt@PLT
   %res = tail call double @sqrt(double %val)

@@ -45,8 +45,14 @@ static void completeEphemeralValues(SmallVector<const Value *, 16> &WorkSet,
       continue;
 
     // If all uses of this value are ephemeral, then so is this value.
-    if (!std::all_of(V->user_begin(), V->user_end(),
-                     [&](const User *U) { return EphValues.count(U); }))
+    bool FoundNEUse = false;
+    for (const User *I : V->users())
+      if (!EphValues.count(I)) {
+        FoundNEUse = true;
+        break;
+      }
+
+    if (FoundNEUse)
       continue;
 
     EphValues.insert(V);
@@ -100,21 +106,22 @@ void CodeMetrics::collectEphemeralValues(
   completeEphemeralValues(WorkSet, EphValues);
 }
 
-/// Fill in the current structure with information gleaned from the specified
-/// block.
+/// analyzeBasicBlock - Fill in the current structure with information gleaned
+/// from the specified block.
 void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
                                     const TargetTransformInfo &TTI,
                                     SmallPtrSetImpl<const Value*> &EphValues) {
   ++NumBlocks;
   unsigned NumInstsBeforeThisBB = NumInsts;
-  for (const Instruction &I : *BB) {
+  for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
+       II != E; ++II) {
     // Skip ephemeral values.
-    if (EphValues.count(&I))
+    if (EphValues.count(II))
       continue;
 
     // Special handling for calls.
-    if (isa<CallInst>(I) || isa<InvokeInst>(I)) {
-      ImmutableCallSite CS(&I);
+    if (isa<CallInst>(II) || isa<InvokeInst>(II)) {
+      ImmutableCallSite CS(cast<Instruction>(II));
 
       if (const Function *F = CS.getCalledFunction()) {
         // If a function is both internal and has a single use, then it is
@@ -140,29 +147,23 @@ void CodeMetrics::analyzeBasicBlock(const BasicBlock *BB,
       }
     }
 
-    if (const AllocaInst *AI = dyn_cast<AllocaInst>(&I)) {
+    if (const AllocaInst *AI = dyn_cast<AllocaInst>(II)) {
       if (!AI->isStaticAlloca())
         this->usesDynamicAlloca = true;
     }
 
-    if (isa<ExtractElementInst>(I) || I.getType()->isVectorTy())
+    if (isa<ExtractElementInst>(II) || II->getType()->isVectorTy())
       ++NumVectorInsts;
 
-    if (I.getType()->isTokenTy() && I.isUsedOutsideOfBlock(BB))
-      notDuplicatable = true;
-
-    if (const CallInst *CI = dyn_cast<CallInst>(&I)) {
+    if (const CallInst *CI = dyn_cast<CallInst>(II))
       if (CI->cannotDuplicate())
         notDuplicatable = true;
-      if (CI->isConvergent())
-        convergent = true;
-    }
 
-    if (const InvokeInst *InvI = dyn_cast<InvokeInst>(&I))
+    if (const InvokeInst *InvI = dyn_cast<InvokeInst>(II))
       if (InvI->cannotDuplicate())
         notDuplicatable = true;
 
-    NumInsts += TTI.getUserCost(&I);
+    NumInsts += TTI.getUserCost(&*II);
   }
 
   if (isa<ReturnInst>(BB->getTerminator()))

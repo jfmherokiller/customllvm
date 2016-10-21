@@ -1,4 +1,4 @@
-//===- MCJITTest.cpp - Unit tests for the MCJIT -----------------*- C++ -*-===//
+//===- MCJITTest.cpp - Unit tests for the MCJIT ---------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -89,7 +89,7 @@ TEST_F(MCJITTest, run_main) {
   EXPECT_TRUE(0 != ptr)
     << "Unable to get pointer to main() from JIT";
 
-  int (*FuncPtr)() = (int(*)())ptr;
+  int (*FuncPtr)(void) = (int(*)(void))ptr;
   int returnCode = FuncPtr();
   EXPECT_EQ(returnCode, rc);
 }
@@ -109,7 +109,7 @@ TEST_F(MCJITTest, return_global) {
   uint64_t rgvPtr = TheJIT->getFunctionAddress(ReturnGlobal->getName().str());
   EXPECT_TRUE(0 != rgvPtr);
 
-  int32_t(*FuncPtr)() = (int32_t(*)())rgvPtr;
+  int32_t(*FuncPtr)(void) = (int32_t(*)(void))rgvPtr;
   EXPECT_EQ(initialNum, FuncPtr())
     << "Invalid value for global returned from JITted function";
 }
@@ -181,7 +181,7 @@ TEST_F(MCJITTest, multiple_functions) {
   EXPECT_TRUE(0 != ptr)
     << "Unable to get pointer to outer function from JIT";
 
-  int32_t(*FuncPtr)() = (int32_t(*)())ptr;
+  int32_t(*FuncPtr)(void) = (int32_t(*)(void))ptr;
   EXPECT_EQ(innerRetVal, FuncPtr())
     << "Incorrect result returned from function";
 }
@@ -196,7 +196,7 @@ TEST_F(MCJITTest, multiple_decl_lookups) {
   void *A = TheJIT->getPointerToFunction(Foo);
   void *B = TheJIT->getPointerToFunction(Foo);
 
-  EXPECT_TRUE(A != nullptr) << "Failed lookup - test not correctly configured.";
+  EXPECT_TRUE(A != 0) << "Failed lookup - test not correctly configured.";
   EXPECT_EQ(A, B) << "Repeat calls to getPointerToFunction fail.";
 }
 
@@ -281,4 +281,4 @@ TEST_F(MCJITTest, lazy_function_creator_lambda) {
   EXPECT_FALSE(std::find(I, E, "Foo2") == E);
 }
 
-} // end anonymous namespace
+}

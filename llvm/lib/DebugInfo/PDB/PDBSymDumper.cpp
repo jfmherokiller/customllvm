@@ -11,7 +11,6 @@
 #include "llvm/Support/ErrorHandling.h"
 
 using namespace llvm;
-using namespace llvm::pdb;
 
 #define PDB_SYMDUMP_UNREACHABLE(Type)                                          \
   if (RequireImpl)                                                             \

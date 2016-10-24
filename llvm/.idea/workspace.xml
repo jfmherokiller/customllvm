@@ -540,81 +540,9 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="55031344-aad0-4a24-9319-d74738696dd3" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/include/llvm/Support/ELFRelocs/ZCPU.def" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUABIInfo.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUABIInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUAsmBackend.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUAsmBackend.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUBaseInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUELFObjectWriter.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUFixupKinds.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCAsmInfo.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCAsmInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCCodeEmitter.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCCodeEmitter.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCExpr.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCExpr.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUTargetStreamer.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAnalyzeImmediate.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAnalyzeImmediate.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAsmPrinter.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAsmPrinter.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUConfig.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUDelUselessJMP.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUDelaySlotFiller.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUEmitGPRestore.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUFrameLowering.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUISelDAGToDAG.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUISelDAGToDAG.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUISelLowering.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUISelLowering.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUInstrInfo.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUInstrInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPULongBranch.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUMCInstLower.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUMCInstLower.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUMachineFunction.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUMachineFunction.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPURegisterInfo.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPURegisterInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEFrameLowering.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEFrameLowering.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEISelDAGToDAG.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEISelDAGToDAG.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEISelLowering.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEISelLowering.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEInstrInfo.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSEInstrInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSERegisterInfo.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSERegisterInfo.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSetChapter.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSubtarget.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUSubtarget.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetObjectFile.cpp" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetObjectFile.h" afterPath="" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetStreamer.h" afterPath="" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/llvm.iml" afterPath="$PROJECT_DIR$/.idea/llvm.iml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/include/llvm/ADT/Triple.h" afterPath="$PROJECT_DIR$/include/llvm/ADT/Triple.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/include/llvm/MC/MCExpr.h" afterPath="$PROJECT_DIR$/include/llvm/MC/MCExpr.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/include/llvm/Object/ELFObjectFile.h" afterPath="$PROJECT_DIR$/include/llvm/Object/ELFObjectFile.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/include/llvm/Support/ELF.h" afterPath="$PROJECT_DIR$/include/llvm/Support/ELF.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/MC/MCDwarf.cpp" afterPath="$PROJECT_DIR$/lib/MC/MCDwarf.cpp" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/MC/MCELFStreamer.cpp" afterPath="$PROJECT_DIR$/lib/MC/MCELFStreamer.cpp" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/MC/MCExpr.cpp" afterPath="$PROJECT_DIR$/lib/MC/MCExpr.cpp" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Object/ELF.cpp" afterPath="$PROJECT_DIR$/lib/Object/ELF.cpp" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Support/Triple.cpp" afterPath="$PROJECT_DIR$/lib/Support/Triple.cpp" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/LLVMBuild.txt" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/LLVMBuild.txt" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/CMakeLists.txt" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/CMakeLists.txt" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/LLVMBuild.txt" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/LLVMBuild.txt" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.cpp" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.cpp" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.h" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.h" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.td" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.td" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUFrameLowering.h" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUFrameLowering.h" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.h" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.h" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUOther.td" afterPath="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUOther.td" />
     </list>
     <ignored path="llvm.iws" />
     <ignored path=".idea/workspace.xml" />
@@ -638,21 +566,41 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="ZCPU.td" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.td">
+      <file leaf-file-name="CMakeLists.txt" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="373">
-              <caret line="120" column="7" selection-start-line="120" selection-start-column="7" selection-end-line="120" selection-end-column="7" />
+            <state relative-caret-position="120">
+              <caret line="8" column="0" selection-start-line="8" selection-start-column="0" selection-end-line="8" selection-end-column="0" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="ZCPUTargetMachine.cpp" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp">
+      <file leaf-file-name="ZCPUOther.td" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUOther.td">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="210">
-              <caret line="14" column="17" selection-start-line="14" selection-start-column="17" selection-end-line="14" selection-end-column="17" />
+            <state relative-caret-position="265">
+              <caret line="21" column="29" selection-start-line="21" selection-start-column="29" selection-end-line="21" selection-end-column="29" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="ZCPURegisterInfo.td" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPURegisterInfo.td">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="-20">
+              <caret line="66" column="13" selection-start-line="66" selection-start-column="13" selection-end-line="66" selection-end-column="13" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="IntrinsicsAArch64.td" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/include/llvm/IR/IntrinsicsAArch64.td">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="0">
+              <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -675,7 +623,6 @@
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.h" />
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.h" />
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUFrameLowering.h" />
-        <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h" />
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.cpp" />
         <option value="$PROJECT_DIR$/include/llvm/ADT/Triple.h" />
         <option value="$PROJECT_DIR$/include/llvm/Object/ELFObjectFile.h" />
@@ -683,6 +630,8 @@
         <option value="$PROJECT_DIR$/include/llvm/MC/MCExpr.h" />
         <option value="$PROJECT_DIR$/lib/Support/Triple.cpp" />
         <option value="$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.td" />
+        <option value="$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h" />
+        <option value="$PROJECT_DIR$/lib/Target/ZCPU/ZCPUOther.td" />
       </list>
     </option>
   </component>
@@ -695,7 +644,7 @@
   <component name="ProjectFrameBounds">
     <option name="y" value="23" />
     <option name="width" value="1280" />
-    <option name="height" value="733" />
+    <option name="height" value="731" />
   </component>
   <component name="ProjectLevelVcsManager" settingsEditedManually="true">
     <OptionsSetting value="true" id="Add" />
@@ -812,7 +761,69 @@
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
             <PATH_ELEMENT>
-              <option name="myItemId" value="X86" />
+              <option name="myItemId" value="ZCPU" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="TargetInfo" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
+              <option name="myItemType" value="com.jetbrains.cidr.projectView.CidrFilesViewHelper$MyProjectTreeStructure$1" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="lib" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="Target" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="ZCPU" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="MCTargetDesc" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
+              <option name="myItemType" value="com.jetbrains.cidr.projectView.CidrFilesViewHelper$MyProjectTreeStructure$1" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="include" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+          </PATH>
+          <PATH>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
+              <option name="myItemType" value="com.jetbrains.cidr.projectView.CidrFilesViewHelper$MyProjectTreeStructure$1" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="include" />
+              <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
+            </PATH_ELEMENT>
+            <PATH_ELEMENT>
+              <option name="myItemId" value="llvm" />
               <option name="myItemType" value="com.intellij.ide.projectView.impl.nodes.PsiDirectoryNode" />
             </PATH_ELEMENT>
           </PATH>
@@ -3636,20 +3647,20 @@
       <option name="presentableId" value="Default" />
       <updated>1477322915668</updated>
       <workItem from="1477322919864" duration="1196000" />
-      <workItem from="1477332424321" duration="5171000" />
+      <workItem from="1477332424321" duration="6513000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="6367000" />
+    <option name="totallyTimeSpent" value="7709000" />
   </component>
   <component name="ToolWindowManager">
-    <frame x="0" y="23" width="1280" height="733" extended-state="6" />
+    <frame x="0" y="23" width="1280" height="731" extended-state="6" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2494043" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
-      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32917318" sideWeight="0.5" order="-1" side_tool="false" content_ui="tabs" />
+      <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.33020344" sideWeight="0.5" order="-1" side_tool="false" content_ui="tabs" />
       <window_info id="CMake" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32917318" sideWeight="0.4940429" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32917318" sideWeight="0.5059571" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32917318" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
@@ -3705,56 +3716,6 @@
     <watches-manager />
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/include/llvm/Support/DataTypes.h.cmake">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-1639">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86RegisterInfo.cpp">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-2355">
-          <caret line="81" column="19" selection-start-line="81" selection-start-column="19" selection-end-line="81" selection-end-column="19" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86RegisterInfo.td">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-3855">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/X86/X86InstrInfo.td">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-1890">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/include/llvm/Target/TargetInstrInfo.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-885">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/include/llvm/ADT/APInt.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="300">
-          <caret line="20" column="25" selection-start-line="20" selection-start-column="25" selection-end-line="20" selection-end-column="25" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/include/llvm/TableGen/TableGenBackend.h">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
@@ -3827,14 +3788,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAsm.td">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAsmPrinter.cpp">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-435">
@@ -3859,14 +3812,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPURegisterInfo.td">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="1245">
-          <caret line="83" column="8" selection-start-line="83" selection-start-column="8" selection-end-line="83" selection-end-column="8" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUCallingConv.td">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="210">
@@ -3879,14 +3824,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="255">
           <caret line="17" column="0" selection-start-line="17" selection-start-column="0" selection-end-line="50" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUOther.td">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="192">
-          <caret line="15" column="10" selection-start-line="15" selection-start-column="10" selection-end-line="15" selection-end-column="10" />
           <folding />
         </state>
       </provider>
@@ -3968,24 +3905,6 @@
         <state relative-caret-position="-123">
           <caret line="20" column="16" selection-start-line="20" selection-start-column="16" selection-end-line="20" selection-end-column="16" />
           <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="120">
-          <caret line="8" column="0" selection-start-line="8" selection-start-column="0" selection-end-line="8" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.cpp">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="630">
-          <caret line="43" column="0" selection-start-line="43" selection-start-column="0" selection-end-line="43" selection-end-column="0" />
-          <folding>
-            <marker date="1477336014000" expanded="true" signature="1228:1235" ph="{...}" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -4073,26 +3992,10 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="270">
-          <caret line="20" column="0" selection-start-line="20" selection-start-column="0" selection-end-line="20" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.h">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="240">
           <caret line="16" column="0" selection-start-line="16" selection-start-column="0" selection-end-line="16" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="210">
-          <caret line="14" column="17" selection-start-line="14" selection-start-column="17" selection-end-line="14" selection-end-column="17" />
           <folding />
         </state>
       </provider>
@@ -4105,10 +4008,122 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.cpp">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="190">
+          <caret line="43" column="0" selection-start-line="43" selection-start-column="0" selection-end-line="43" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUTargetMachine.cpp">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="210">
+          <caret line="14" column="17" selection-start-line="14" selection-start-column="17" selection-end-line="14" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUAsm.td">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPU.td">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="373">
-          <caret line="120" column="7" selection-start-line="120" selection-start-column="7" selection-end-line="120" selection-end-column="7" />
+        <state relative-caret-position="600">
+          <caret line="49" column="20" selection-start-line="49" selection-start-column="20" selection-end-line="49" selection-end-column="20" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/CMakeLists.txt">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="8" column="0" selection-start-line="8" selection-start-column="0" selection-end-line="8" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPUOther.td">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="265">
+          <caret line="21" column="29" selection-start-line="21" selection-start-column="29" selection-end-line="21" selection-end-column="29" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/CallingConv.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1100">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/ZCPURegisterInfo.td">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-20">
+          <caret line="66" column="13" selection-start-line="66" selection-start-column="13" selection-end-line="66" selection-end-column="13" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/IntrinsicsX86.td">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="370">
+          <caret line="130" column="0" selection-start-line="130" selection-start-column="0" selection-end-line="130" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/Type.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-4430">
+          <caret line="172" column="56" selection-start-line="172" selection-start-column="56" selection-end-line="172" selection-end-column="56" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/Intrinsics.td">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1520">
+          <caret line="137" column="39" selection-start-line="137" selection-start-column="39" selection-end-line="137" selection-end-column="39" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/Value.def">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1040">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/Value.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-10235">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/lib/Target/ZCPU/MCTargetDesc/ZCPUMCTargetDesc.h">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="15">
+          <caret line="16" column="0" selection-start-line="16" selection-start-column="0" selection-end-line="16" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/include/llvm/IR/IntrinsicsAArch64.td">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
           <folding />
         </state>
       </provider>

@@ -20,6 +20,5 @@ include "llvm/Target/Target.td"
 //===----------------------------------------------------------------------===//
 
 include "ZCPURegisterInfo.td"
-include "ZCPURegisterInfoGPROutForOther.td" // except AsmParser
 include "ZCPU.td"
 

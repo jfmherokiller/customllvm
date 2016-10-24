@@ -14,7 +14,7 @@
 #ifndef LLVM_LIB_TARGET_ZCPU_MCTARGETDESC_ZCPUMCTARGETDESC_H
 #define LLVM_LIB_TARGET_ZCPU_MCTARGETDESC_ZCPUMCTARGETDESC_H
 
-#include "ZCPUConfig.h"
+
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {

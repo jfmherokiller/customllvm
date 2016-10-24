@@ -19,33 +19,22 @@
 
 [common]
 subdirectories =
-  MCTargetDesc TargetInfo AsmParser
+  MCTargetDesc TargetInfo InstPrinter
 
 [component_0]
 type = TargetGroup
 name = ZCPU
 parent = Target
-has_asmparser = 0
 has_asmprinter = 1
-has_disassembler = 0
-has_jit = 0
+
 
 [component_1]
-# component_1 is a Library type and name is ZCPUCodeGen. After build it will 
-#  in lib/libLLVMZCPUCodeGen.a of your build command directory.
+
 type = Library
 name = ZCPUCodeGen
-# ZCPUCodeGen component(Library) is located in directory ZCPU/
 parent = ZCPU
+required_libraries = Analysis AsmPrinter CodeGen Core MC Scalar SelectionDAG Support Target ZCPUDesc ZCPUInfo
 
-required_libraries =
-
-                     ZCPUDesc 
-                     ZCPUInfo 
-                     SelectionDAG 
-                     Support 
-                     Target
-# end of required_libraries
 
 
 add_to_library_groups = ZCPU

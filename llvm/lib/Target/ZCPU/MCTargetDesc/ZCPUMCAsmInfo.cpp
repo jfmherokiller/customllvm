@@ -21,7 +21,7 @@ using namespace llvm;
 void ZCPUMCAsmInfo::anchor() { }
 
 ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &TheTriple) {
-  if ((TheTriple.getArch() == Triple::cpu0))
+  if ((TheTriple.getArch() == Triple::zcpu))
     IsLittleEndian = false; // the default of IsLittleEndian is true
 
   AlignmentIsInBytes          = false;

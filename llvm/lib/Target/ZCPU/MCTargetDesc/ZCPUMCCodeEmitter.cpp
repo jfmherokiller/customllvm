@@ -36,13 +36,13 @@
 #undef GET_INSTRMAP_INFO
 
 namespace llvm {
-MCCodeEmitter *llvm::createZCPUMCCodeEmitterEB(const MCInstrInfo &MCII,
+MCCodeEmitter * createZCPUMCCodeEmitterEB(const MCInstrInfo &MCII,
                                                const MCRegisterInfo &MRI,
                                                MCContext &Ctx) {
   return new ZCPUMCCodeEmitter(MCII, Ctx, false);
 }
 
-MCCodeEmitter *llvm::createZCPUMCCodeEmitterEL(const MCInstrInfo &MCII,
+MCCodeEmitter * createZCPUMCCodeEmitterEL(const MCInstrInfo &MCII,
                                                const MCRegisterInfo &MRI,
                                                MCContext &Ctx) {
   return new ZCPUMCCodeEmitter(MCII, Ctx, true);

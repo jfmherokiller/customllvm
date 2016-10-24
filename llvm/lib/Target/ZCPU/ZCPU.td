@@ -40,10 +40,7 @@ def ZCPUAsmParserVariant : AsmParserVariant {
   int Variant = 0;
 }
 
-// Will generate ZCPUGenAsmWrite.inc included by ZCPUInstPrinter.cpp, contents 
-//  as follows,
-// void ZCPUInstPrinter::printInstruction(const MCInst *MI, raw_ostream &O) {...}
-// const char *ZCPUInstPrinter::getRegisterName(unsigned RegNo) {...}
+
 def ZCPU : Target {
 // def ZCPUInstrInfo : InstrInfo as before.
   let InstructionSet = ZCPUInstrInfo;

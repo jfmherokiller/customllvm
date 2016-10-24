@@ -35,14 +35,13 @@ def SP32 : WebAssemblyReg<"%SP32">;
 //           away with it? Try deleting once the backend works.
 // WebAssembly uses virtual registers, but the backend defines a few physical
 // registers here to keep SDAG and the MachineInstr layers happy.
-foreach i = 0-3 in {
-  def I#i : WebAssemblyReg<"%i."#i>; // i48
-  def D#i : WebAssemblyReg<"%d."#i>; // f64
+foreach i = 0-31 in {
+  def R#i : WebAssemblyReg<"R"#i>; // i48
 }
 
 //===----------------------------------------------------------------------===//
 //  Register classes
 //===----------------------------------------------------------------------===//
 
-def Int48 : WebAssemblyRegClass<[i48], 32, (add (sequence "I%u", 0, 4), SP32)>;
-def Float64 : WebAssemblyRegClass<[f64], 64, (add (sequence "D%u", 0, 4))>;
+def Int48 : WebAssemblyRegClass<[i48], 48, (add (sequence "R%u", 0, 31))>;
+def Float64 : WebAssemblyRegClass<[f64], 64, (add (sequence "R%u", 0, 31))>;

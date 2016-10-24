@@ -40,7 +40,7 @@ public:
   bool hasReservedCallFrame(const MachineFunction &MF) const override;
 
   void processFunctionBeforeCalleeSavedScan(MachineFunction &MF,
-                                            RegScavenger *RS) const override;
+                                            RegScavenger *RS) const;
 };
 
 } // end namespace llvm

@@ -45,7 +45,7 @@ WebAssemblyRegisterInfo::getCalleeSavedRegs(const MachineFunction *) const {
 BitVector
 WebAssemblyRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
-  for (auto Reg : {WebAssembly::SP32, WebAssembly::SP64, WebAssembly::FP32,
+  for (auto Reg : {WebAssembly::SP32,
                    WebAssembly::FP64})
     Reserved.set(Reg);
   return Reserved;
@@ -61,8 +61,8 @@ unsigned
 WebAssemblyRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
   static const unsigned Regs[2][2] = {
       /*            !isArch64Bit       isArch64Bit      */
-      /* !hasFP */ {WebAssembly::SP32, WebAssembly::SP64},
-      /*  hasFP */ {WebAssembly::FP32, WebAssembly::FP64}};
+      /* !hasFP */ {WebAssembly::SP32},
+      /*  hasFP */ {WebAssembly::FP64}};
   const WebAssemblyFrameLowering *TFI = getFrameLowering(MF);
   return Regs[TFI->hasFP(MF)][TT.isArch64Bit()];
 }

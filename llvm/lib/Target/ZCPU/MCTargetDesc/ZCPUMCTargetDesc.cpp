@@ -50,13 +50,13 @@ using namespace llvm;
 static StringRef selectZCPUArchFeature(const Triple &TT, StringRef CPU) {
   std::string ZCPUArchFeature;
   if (CPU.empty() || CPU == "generic") {
-    if (TT.getArch() == Triple::cpu0 || TT.getArch() == Triple::cpu0el) {
-      if (CPU.empty() || CPU == "cpu032II") {
-        ZCPUArchFeature = "+cpu032II";
+    if (TT.getArch() == Triple::zcpu || TT.getArch() == Triple::zcpuel) {
+      if (CPU.empty() || CPU == "zcpu32II") {
+        ZCPUArchFeature = "+zcpu32II";
       }
       else {
-        if (CPU == "cpu032I") {
-          ZCPUArchFeature = "+cpu032I";
+        if (CPU == "zcpu32I") {
+          ZCPUArchFeature = "+zcpu32I";
         }
       }
     }

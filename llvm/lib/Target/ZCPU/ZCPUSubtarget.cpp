@@ -27,7 +27,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "cpu0-subtarget"
+#define DEBUG_TYPE "zcpu-subtarget"
 
 #define GET_SUBTARGETINFO_TARGET_DESC
 #define GET_SUBTARGETINFO_CTOR
@@ -35,7 +35,7 @@ using namespace llvm;
 
 #if CH >= CH4_1 //1
 static cl::opt<bool> EnableOverflowOpt
-                ("cpu0-enable-overflow", cl::Hidden, cl::init(false),
+                ("zcpu-enable-overflow", cl::Hidden, cl::init(false),
                  cl::desc("Use trigger overflow instructions add and sub \
                  instead of non-overflow instructions addu and subu"));
 #endif
@@ -64,8 +64,8 @@ extern bool FixGlobalBaseReg;
 /// FIXME: Merge with the copy in ZCPUMCTargetDesc.cpp
 static StringRef selectZCPUCPU(Triple TT, StringRef CPU) {
   if (CPU.empty() || CPU == "generic") {
-    if (TT.getArch() == Triple::cpu0 || TT.getArch() == Triple::cpu0el)
-      CPU = "cpu032II";
+    if (TT.getArch() == Triple::zcpu || TT.getArch() == Triple::zcpuel)
+      CPU = "zcpu32II";
   }
   return CPU;
 }
@@ -108,11 +108,11 @@ ZCPUSubtarget::initializeSubtargetDependencies(StringRef CPU, StringRef FS,
   std::string CPUName = selectZCPUCPU(TargetTriple, CPU);
 
   if (CPUName == "help")
-    CPUName = "cpu032II";
+    CPUName = "zcpu32II";
   
-  if (CPUName == "cpu032I")
+  if (CPUName == "zcpu32I")
     ZCPUArchVersion = ZCPU32I;
-  else if (CPUName == "cpu032II")
+  else if (CPUName == "zcpu32II")
     ZCPUArchVersion = ZCPU32II;
 
   if (isZCPU32I()) {

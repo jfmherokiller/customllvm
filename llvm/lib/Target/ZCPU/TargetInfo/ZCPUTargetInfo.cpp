@@ -17,7 +17,4 @@ Target llvm::TheZCPUTarget, llvm::TheZCPUelTarget;
 extern "C" void LLVMInitializeZCPUTargetInfo() {
   RegisterTarget<Triple::zcpu,
         /*HasJIT=*/true> X(TheZCPUTarget, "zcpu", "ZCPU");
-
-  RegisterTarget<Triple::zcpuel,
-        /*HasJIT=*/true> Y(TheZCPUelTarget, "zcpuel", "ZCPUel");
 }

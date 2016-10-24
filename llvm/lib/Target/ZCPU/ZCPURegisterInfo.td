@@ -24,16 +24,21 @@ class ZCPUReg< string n> : ZCPURegBase< n>;
 //===----------------------------------------------------------------------===//
 //@Registers
 //===----------------------------------------------------------------------===//
-// The register string, such as "9" or "gp" will show on "llvm-objdump -d"
 //@ All registers definition
 let Namespace = "ZCPU" in {
-  //@ General Purpose Registers
 
   def IP   : ZCPUReg<"IP">;
+  def EAX  : ZCPUReg<"EAX">;
+  def EBX  : ZCPUReg<"EBX">;
+  def EDX  : ZCPUReg<"EDX">;
+  def ECX  : ZCPUReg<"ECX">;
+
 }
 
 //===----------------------------------------------------------------------===//
 //@Register Classes
 //===----------------------------------------------------------------------===//
 
-def Regs : RegisterClass<"ZCPU", [i48] , 48 , (add IP)>;
+def ProtectRegs : RegisterClass<"ZCPU", [i48] , 48 , (add IP)>;
+def Int48: RegisterClass<"ZCPU", [i48] , 48 , (add EAX,EBX)>;
+def Float64: RegisterClass<"ZCPU", [f64] , 64 , (add EAX,EBX)>;

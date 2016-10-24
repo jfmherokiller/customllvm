@@ -946,6 +946,12 @@ def atomic_cmp_swap_32 :
           (atomic_cmp_swap node:$ptr, node:$cmp, node:$swap), [{
   return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i32;
 }]>;
+def atomic_cmp_swap_48 :
+  PatFrag<(ops node:$ptr, node:$cmp, node:$swap),
+          (atomic_cmp_swap node:$ptr, node:$cmp, node:$swap), [{
+  return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i48;
+}]>;
+
 def atomic_cmp_swap_64 :
   PatFrag<(ops node:$ptr, node:$cmp, node:$swap),
           (atomic_cmp_swap node:$ptr, node:$cmp, node:$swap), [{
@@ -965,6 +971,10 @@ multiclass binary_atomic_op<SDNode atomic_op> {
                    (atomic_op node:$ptr, node:$val), [{
     return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i32;
   }]>;
+    def _48 : PatFrag<(ops node:$ptr, node:$val),
+                     (atomic_op node:$ptr, node:$val), [{
+      return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i48;
+    }]>;
   def _64 : PatFrag<(ops node:$ptr, node:$val),
                    (atomic_op node:$ptr, node:$val), [{
     return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i64;
@@ -998,6 +1008,11 @@ def atomic_load_32 :
   PatFrag<(ops node:$ptr),
           (atomic_load node:$ptr), [{
   return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i32;
+}]>;
+def atomic_load_48 :
+  PatFrag<(ops node:$ptr),
+          (atomic_load node:$ptr), [{
+  return cast<AtomicSDNode>(N)->getMemoryVT() == MVT::i48;
 }]>;
 def atomic_load_64 :
   PatFrag<(ops node:$ptr),

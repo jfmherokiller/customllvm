@@ -19,20 +19,16 @@
 
 [common]
 subdirectories =
-  MCTargetDesc TargetInfo
+  MCTargetDesc TargetInfo AsmParser
 
 [component_0]
-# TargetGroup components are an extension of LibraryGroups, specifically for 
-#  defining LLVM targets (which are handled specially in a few places).
 type = TargetGroup
-# The name of the component should always be the name of the target. (should 
-#  match "def ZCPU : Target" in ZCPU.td)
 name = ZCPU
-# ZCPU component is located in directory Target/
 parent = Target
-# Whether this target defines an assembly parser, assembly printer, disassembler
-#  , and supports JIT compilation. They are optional.
-
+has_asmparser = 0
+has_asmprinter = 1
+has_disassembler = 0
+has_jit = 0
 
 [component_1]
 # component_1 is a Library type and name is ZCPUCodeGen. After build it will 
@@ -41,12 +37,9 @@ type = Library
 name = ZCPUCodeGen
 # ZCPUCodeGen component(Library) is located in directory ZCPU/
 parent = ZCPU
-# If given, a list of the names of Library or LibraryGroup components which 
-#  must also be linked in whenever this library is used. That is, the link time 
-#  dependencies for this component. When tools are built, the build system will 
-#  include the transitive closure of all required_libraries for the components 
-#  the tool needs.
+
 required_libraries =
+
                      ZCPUDesc 
                      ZCPUInfo 
                      SelectionDAG 
@@ -54,7 +47,6 @@ required_libraries =
                      Target
 # end of required_libraries
 
-# All LLVMBuild.txt in Target/ZCPU and subdirectory use 'add_to_library_groups 
-#  = ZCPU'
+
 add_to_library_groups = ZCPU
 

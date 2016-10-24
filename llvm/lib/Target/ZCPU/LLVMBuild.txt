@@ -18,16 +18,7 @@
 # Following comments extracted from http://llvm.org/docs/LLVMBuild.html
 
 [common]
-subdirectories = 
-#if CH >= CH11_1 1
-  AsmParser 
-#endif
-#if CH >= CH10_1 1
-  Disassembler 
-#endif
-#if CH >= CH3_2 1
-  InstPrinter 
-#endif
+subdirectories =
   MCTargetDesc TargetInfo
 
 [component_0]
@@ -41,15 +32,7 @@ name = ZCPU
 parent = Target
 # Whether this target defines an assembly parser, assembly printer, disassembler
 #  , and supports JIT compilation. They are optional.
-#if CH >= CH11_1 2
-has_asmparser = 1
-#endif
-#if CH >= CH3_2 2
-has_asmprinter = 1
-#endif
-#if CH >= CH10_1 2
-has_disassembler = 1
-#endif
+
 
 [component_1]
 # component_1 is a Library type and name is ZCPUCodeGen. After build it will 
@@ -64,13 +47,6 @@ parent = ZCPU
 #  include the transitive closure of all required_libraries for the components 
 #  the tool needs.
 required_libraries =
-#if CH >= CH3_2 3
-                     AsmPrinter 
-#endif
-                     CodeGen Core MC 
-#if CH >= CH3_2 4
-                     ZCPUAsmPrinter 
-#endif
                      ZCPUDesc 
                      ZCPUInfo 
                      SelectionDAG 

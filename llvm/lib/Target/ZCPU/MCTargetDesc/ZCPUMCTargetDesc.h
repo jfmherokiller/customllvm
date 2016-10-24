@@ -18,45 +18,13 @@
 #include "llvm/Support/DataTypes.h"
 
 namespace llvm {
-#if CH >= CH3_2
-class MCAsmBackend;
-class MCCodeEmitter;
-class MCContext;
-class MCInstrInfo;
-class MCObjectWriter;
-class MCRegisterInfo;
-class MCSubtargetInfo;
-class StringRef;
-#endif
+
 class Target;
 class Triple;
-#if CH >= CH3_2
-class raw_ostream;
-class raw_pwrite_stream;
-#endif
 
 extern Target TheZCPUTarget;
 extern Target TheZCPUelTarget;
 
-#if CH >= CH5_1
-MCCodeEmitter *createZCPUMCCodeEmitterEB(const MCInstrInfo &MCII,
-                                         const MCRegisterInfo &MRI,
-                                         MCContext &Ctx);
-MCCodeEmitter *createZCPUMCCodeEmitterEL(const MCInstrInfo &MCII,
-                                         const MCRegisterInfo &MRI,
-                                         MCContext &Ctx);
-
-MCAsmBackend *createZCPUAsmBackendEB32(const Target &T,
-                                       const MCRegisterInfo &MRI,
-                                       const Triple &TT, StringRef CPU);
-MCAsmBackend *createZCPUAsmBackendEL32(const Target &T,
-                                       const MCRegisterInfo &MRI,
-                                       const Triple &TT, StringRef CPU);
-
-MCObjectWriter *createZCPUELFObjectWriter(raw_pwrite_stream &OS,
-                                          uint8_t OSABI,
-                                          bool IsLittleEndian);
-#endif
 } // End llvm namespace
 
 // Defines symbolic names for ZCPU registers.  This defines a mapping from

@@ -19,10 +19,7 @@
 type = Library
 name = ZCPUDesc
 parent = ZCPU
-required_libraries = MC 
-#if CH >= CH3_2
-                     ZCPUAsmPrinter 
-#endif
+required_libraries = MC
                      ZCPUInfo 
                      Support
 add_to_library_groups = ZCPU

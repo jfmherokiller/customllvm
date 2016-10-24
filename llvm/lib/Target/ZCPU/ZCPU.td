@@ -13,9 +13,9 @@
 
 include "ZCPUSchedule.td"
 include "ZCPUInstrInfo.td"
-//#if CH >= CH3_1 1
-include "ZCPUCallingConv.td"
-//#endif
+
+//include "ZCPUCallingConv.td"
+
 
 def ZCPUInstrInfo : InstrInfo;
 
@@ -100,13 +100,7 @@ class Proc<string Name, list<SubtargetFeature> Features>
 
 def : Proc<"cpu032I",  [FeatureZCPU32I]>;
 def : Proc<"cpu032II", [FeatureZCPU32II]>;
-// Above make ZCPUGenSubtargetInfo.inc set feature bit as the following order
-// enum {
-//   FeatureCmp =  1ULL << 0,
-//   FeatureZCPU32I =  1ULL << 1,
-//   FeatureZCPU32II =  1ULL << 2,
-//   FeatureSlt =  1ULL << 3
-// };
+
 //#endif
 
 //#if CH >= CH11_1 1

@@ -310,7 +310,6 @@ enum {
   EM_NORC          = 218, // Nanoradio Optimized RISC
   EM_CSR_KALIMBA   = 219, // CSR Kalimba architecture family
   EM_AMDGPU        = 224, // AMD GPU architecture
-  EM_ZCPU          = 999  // Document LLVM Backend Tutorial ZCPU
 };
 
 // Object file classes.
@@ -521,19 +520,6 @@ enum {
   ODK_GP_GROUP   = 9,   // GP group to use for text/data sections
   ODK_IDENT      = 10,  // ID information
   ODK_PAGESIZE   = 11   // Page size information
-};
-
-// ZCPU Specific e_flags
-enum {
-  EF_ZCPU_NOREORDER = 0x00000001, // Don't reorder instructions
-  EF_ZCPU_PIC       = 0x00000002, // Position independent code
-  EF_ZCPU_ARCH_32   = 0x50000000, // ZCPU32 instruction set per linux not elf.h
-  EF_ZCPU_ARCH      = 0xf0000000  // Mask for applying EF_ZCPU_ARCH_ variant
-};
-
-// ELF Relocation types for Mips
-enum {
-#include "ELFRelocs/ZCPU.def"
 };
 
 // Hexagon Specific e_flags

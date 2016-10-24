@@ -815,8 +815,6 @@ StringRef ELFObjectFile<ELFT>::getFileFormatName() const {
       return "ELF32-hexagon";
     case ELF::EM_MIPS:
       return "ELF32-mips";
-    case ELF::EM_ZCPU:	// llvm-objdump -t -r
-      return "ELF32-zcpu";
     case ELF::EM_PPC:
       return "ELF32-ppc";
     case ELF::EM_SPARC:
@@ -870,13 +868,6 @@ unsigned ELFObjectFile<ELFT>::getArch() const {
       return IsLittleEndian ? Triple::mipsel : Triple::mips;
     case ELF::ELFCLASS64:
       return IsLittleEndian ? Triple::mips64el : Triple::mips64;
-    default:
-      report_fatal_error("Invalid ELFCLASS!");
-    }
-  case ELF::EM_ZCPU:	// llvm-objdump -t -r
-    switch (EF.getHeader()->e_ident[ELF::EI_CLASS]) {
-    case ELF::ELFCLASS32:
-      return IsLittleEndian ? Triple::zcpuel : Triple::zcpu;
     default:
       report_fatal_error("Invalid ELFCLASS!");
     }

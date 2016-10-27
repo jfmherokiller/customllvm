@@ -22,6 +22,6 @@ using namespace llvm;
 Target llvm::TheZCPUTarget32;
 
 extern "C" void LLVMInitializeZCPUTargetInfo() {
-  RegisterTarget<Triple::wasm32> X(TheZCPUTarget32, "zcpu",
-                                   "ZCPU 32-bit");
+  RegisterTarget<Triple::zcpu> X(TheZCPUTarget32, "zcpu",
+                                   "ZCPU");
 }

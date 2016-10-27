@@ -43,19 +43,11 @@ unsigned ZCPUELFObjectWriter::getRelocType(MCContext &Ctx,
   // pointer to a function, we must use a special relocation type.
   if (const MCSymbolRefExpr *SyExp =
           dyn_cast<MCSymbolRefExpr>(Fixup.getValue()))
-    if (SyExp->getKind() == MCSymbolRefExpr::VK_ZCPU_FUNCTION)
-      return ELF::R_ZCPU_FUNCTION;
-
   switch (Fixup.getKind()) {
-  case FK_Data_4:
-    assert(!is64Bit() && "4-byte relocations only supported on wasm32");
-    return ELF::R_ZCPU_DATA;
-  case FK_Data_8:
-    assert(is64Bit() && "8-byte relocations only supported on wasm64");
-    return ELF::R_ZCPU_DATA;
   default:
     llvm_unreachable("unimplemented fixup kind");
   }
+  return 0;
 }
 
 MCObjectWriter *llvm::createZCPUELFObjectWriter(raw_pwrite_stream &OS,

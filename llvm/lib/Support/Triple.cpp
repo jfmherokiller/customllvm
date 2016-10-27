@@ -1423,6 +1423,7 @@ bool Triple::isLittleEndian() const {
   case Triple::x86:
   case Triple::x86_64:
   case Triple::xcore:
+  case Triple::zcpu:
   case Triple::renderscript32:
   case Triple::renderscript64:
     return true;

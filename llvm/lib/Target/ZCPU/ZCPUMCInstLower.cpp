@@ -39,9 +39,7 @@ MCSymbol *ZCPUMCInstLower::GetExternalSymbolSymbol(
 MCOperand ZCPUMCInstLower::LowerSymbolOperand(MCSymbol *Sym,
                                                      int64_t Offset,
                                                      bool IsFunc) const {
-  MCSymbolRefExpr::VariantKind VK =
-      IsFunc ? MCSymbolRefExpr::VK_ZCPU_FUNCTION
-             : MCSymbolRefExpr::VK_None;
+  MCSymbolRefExpr::VariantKind VK = MCSymbolRefExpr::VK_None;
   const MCExpr *Expr = MCSymbolRefExpr::create(Sym, VK, Ctx);
 
   if (Offset != 0) {

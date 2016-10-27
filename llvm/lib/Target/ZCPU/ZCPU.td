@@ -41,7 +41,7 @@ include "ZCPURegisterInfo.td"
 //===----------------------------------------------------------------------===//
 
 include "ZCPUInstrInfo.td"
-
+include "ZCPUCallingConv.td"
 def ZCPUInstrInfo : InstrInfo;
 
 //===----------------------------------------------------------------------===//
@@ -50,12 +50,6 @@ def ZCPUInstrInfo : InstrInfo;
 
 // Minimal Viable Product.
 def : ProcessorModel<"mvp", NoSchedModel, []>;
-
-// Generic processor: latest stable version.
-def : ProcessorModel<"generic", NoSchedModel, []>;
-
-// Latest and greatest experimental version of ZCPU. Bugs included!
-def : ProcessorModel<"bleeding-edge", NoSchedModel, [FeatureSIMD128]>;
 
 //===----------------------------------------------------------------------===//
 // Target Declaration

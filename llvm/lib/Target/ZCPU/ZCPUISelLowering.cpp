@@ -32,12 +32,12 @@
 #include "llvm/Target/TargetOptions.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-lower"
+#define DEBUG_TYPE "zcpu-lower"
 
 ZCPUTargetLowering::ZCPUTargetLowering(
     const TargetMachine &TM, const ZCPUSubtarget &STI)
     : TargetLowering(TM), Subtarget(&STI) {
-  auto MVTPtr = Subtarget->hasAddr64() ? MVT::i64 : MVT::i32;
+  auto MVTPtr = MVT::i32;
 
   // Booleans always contain 0 or 1.
   setBooleanContents(ZeroOrOneBooleanContent);
@@ -47,15 +47,15 @@ ZCPUTargetLowering::ZCPUTargetLowering(
   // We don't know the microarchitecture here, so just reduce register pressure.
   setSchedulingPreference(Sched::RegPressure);
   // Tell ISel that we have a stack pointer.
-  setStackPointerRegisterToSaveRestore(
-      Subtarget->hasAddr64() ? ZCPU::SP64 : ZCPU::SP32);
+  //setStackPointerRegisterToSaveRestore(
+      //Subtarget->hasAddr64() ? ZCPU::SP64 : ZCPU::SP32);
   // Set up the register classes.
-  addRegisterClass(MVT::i32, &ZCPU::I32RegClass);
-  addRegisterClass(MVT::i64, &ZCPU::I64RegClass);
-  addRegisterClass(MVT::f32, &ZCPU::F32RegClass);
-  addRegisterClass(MVT::f64, &ZCPU::F64RegClass);
+  //addRegisterClass(MVT::i32, &ZCPU::I32RegClass);
+  //addRegisterClass(MVT::i64, &ZCPU::I64RegClass);
+  //addRegisterClass(MVT::f32, &ZCPU::F32RegClass);
+  //addRegisterClass(MVT::f64, &ZCPU::F64RegClass);
   // Compute derived properties from the register classes.
-  computeRegisterProperties(Subtarget->getRegisterInfo());
+  //computeRegisterProperties(Subtarget->getRegisterInfo());
 
   setOperationAction(ISD::GlobalAddress, MVTPtr, Custom);
   setOperationAction(ISD::ExternalSymbol, MVTPtr, Custom);
@@ -169,15 +169,6 @@ MVT ZCPUTargetLowering::getScalarShiftAmountTy(const DataLayout & /*DL*/,
 
 const char *ZCPUTargetLowering::getTargetNodeName(
     unsigned Opcode) const {
-  switch (static_cast<ZCPUISD::NodeType>(Opcode)) {
-    case ZCPUISD::FIRST_NUMBER:
-      break;
-#define HANDLE_NODETYPE(NODE) \
-  case ZCPUISD::NODE:  \
-    return "ZCPUISD::" #NODE;
-#include "ZCPUISD.def"
-#undef HANDLE_NODETYPE
-  }
   return nullptr;
 }
 
@@ -188,15 +179,6 @@ ZCPUTargetLowering::getRegForInlineAsmConstraint(
   // ZCPU register class.
   if (Constraint.size() == 1) {
     switch (Constraint[0]) {
-      case 'r':
-        assert(VT != MVT::iPTR && "Pointer MVT not expected here");
-        if (VT.isInteger() && !VT.isVector()) {
-          if (VT.getSizeInBits() <= 32)
-            return std::make_pair(0U, &ZCPU::I32RegClass);
-          if (VT.getSizeInBits() <= 64)
-            return std::make_pair(0U, &ZCPU::I64RegClass);
-        }
-        break;
       default:
         break;
     }
@@ -418,7 +400,7 @@ SDValue ZCPUTargetLowering::LowerCall(
   InTys.push_back(MVT::Other);
   SDVTList InTyList = DAG.getVTList(InTys);
   SDValue Res =
-      DAG.getNode(Ins.empty() ? ZCPUISD::CALL0 : ZCPUISD::CALL1,
+      DAG.getNode(Ins.empty(),
                   DL, InTyList, Ops);
   if (Ins.empty()) {
     Chain = Res;
@@ -530,161 +512,7 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
     default:
       llvm_unreachable("unimplemented operation lowering");
       return SDValue();
-    case ISD::FrameIndex:
-      return LowerFrameIndex(Op, DAG);
-    case ISD::GlobalAddress:
-      return LowerGlobalAddress(Op, DAG);
-    case ISD::ExternalSymbol:
-      return LowerExternalSymbol(Op, DAG);
-    case ISD::JumpTable:
-      return LowerJumpTable(Op, DAG);
-    case ISD::BR_JT:
-      return LowerBR_JT(Op, DAG);
-    case ISD::VASTART:
-      return LowerVASTART(Op, DAG);
-    case ISD::BlockAddress:
-    case ISD::BRIND:
-      fail(DL, DAG, "ZCPU hasn't implemented computed gotos");
-      return SDValue();
-    case ISD::RETURNADDR: // Probably nothing meaningful can be returned here.
-      fail(DL, DAG, "ZCPU hasn't implemented __builtin_return_address");
-      return SDValue();
-    case ISD::FRAMEADDR:
-      return LowerFRAMEADDR(Op, DAG);
-    case ISD::CopyToReg:
-      return LowerCopyToReg(Op, DAG);
-  }
 }
-
-SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op,
-                                                  SelectionDAG &DAG) const {
-  SDValue Src = Op.getOperand(2);
-  if (isa<FrameIndexSDNode>(Src.getNode())) {
-    // CopyToReg nodes don't support FrameIndex operands. Other targets select
-    // the FI to some LEA-like instruction, but since we don't have that, we
-    // need to insert some kind of instruction that can take an FI operand and
-    // produces a value usable by CopyToReg (i.e. in a vreg). So insert a dummy
-    // copy_local between Op and its FI operand.
-    SDValue Chain = Op.getOperand(0);
-    SDLoc DL(Op);
-    unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
-    EVT VT = Src.getValueType();
-    SDValue Copy(
-        DAG.getMachineNode(VT == MVT::i32 ? ZCPU::COPY_LOCAL_I32
-                                          : ZCPU::COPY_LOCAL_I64,
-                           DL, VT, Src),
-        0);
-    return Op.getNode()->getNumValues() == 1
-               ? DAG.getCopyToReg(Chain, DL, Reg, Copy)
-               : DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getNumOperands() == 4
-                                                            ? Op.getOperand(3)
-                                                            : SDValue());
-  }
-  return SDValue();
-}
-
-SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
-                                                   SelectionDAG &DAG) const {
-  int FI = cast<FrameIndexSDNode>(Op)->getIndex();
-  return DAG.getTargetFrameIndex(FI, Op.getValueType());
-}
-
-SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
-                                                  SelectionDAG &DAG) const {
-  // Non-zero depths are not supported by ZCPU currently. Use the
-  // legalizer's default expansion, which is to return 0 (what this function is
-  // documented to do).
-  if (Op.getConstantOperandVal(0) > 0)
-    return SDValue();
-
-  DAG.getMachineFunction().getFrameInfo()->setFrameAddressIsTaken(true);
-  EVT VT = Op.getValueType();
-  unsigned FP =
-      Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
-  return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
-}
-
-SDValue ZCPUTargetLowering::LowerGlobalAddress(SDValue Op,
-                                                      SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  const auto *GA = cast<GlobalAddressSDNode>(Op);
-  EVT VT = Op.getValueType();
-  assert(GA->getTargetFlags() == 0 &&
-         "Unexpected target flags on generic GlobalAddressSDNode");
-  if (GA->getAddressSpace() != 0)
-    fail(DL, DAG, "ZCPU only expects the 0 address space");
-  return DAG.getNode(
-      ZCPUISD::Wrapper, DL, VT,
-      DAG.getTargetGlobalAddress(GA->getGlobal(), DL, VT, GA->getOffset()));
-}
-
-SDValue ZCPUTargetLowering::LowerExternalSymbol(
-    SDValue Op, SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  const auto *ES = cast<ExternalSymbolSDNode>(Op);
-  EVT VT = Op.getValueType();
-  assert(ES->getTargetFlags() == 0 &&
-         "Unexpected target flags on generic ExternalSymbolSDNode");
-  // Set the TargetFlags to 0x1 which indicates that this is a "function"
-  // symbol rather than a data symbol. We do this unconditionally even though
-  // we don't know anything about the symbol other than its name, because all
-  // external symbols used in target-independent SelectionDAG code are for
-  // functions.
-  return DAG.getNode(ZCPUISD::Wrapper, DL, VT,
-                     DAG.getTargetExternalSymbol(ES->getSymbol(), VT,
-                                                 /*TargetFlags=*/0x1));
-}
-
-SDValue ZCPUTargetLowering::LowerJumpTable(SDValue Op,
-                                                  SelectionDAG &DAG) const {
-  // There's no need for a Wrapper node because we always incorporate a jump
-  // table operand into a BR_TABLE instruction, rather than ever
-  // materializing it in a register.
-  const JumpTableSDNode *JT = cast<JumpTableSDNode>(Op);
-  return DAG.getTargetJumpTable(JT->getIndex(), Op.getValueType(),
-                                JT->getTargetFlags());
-}
-
-SDValue ZCPUTargetLowering::LowerBR_JT(SDValue Op,
-                                              SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  SDValue Chain = Op.getOperand(0);
-  const auto *JT = cast<JumpTableSDNode>(Op.getOperand(1));
-  SDValue Index = Op.getOperand(2);
-  assert(JT->getTargetFlags() == 0 && "ZCPU doesn't set target flags");
-
-  SmallVector<SDValue, 8> Ops;
-  Ops.push_back(Chain);
-  Ops.push_back(Index);
-
-  MachineJumpTableInfo *MJTI = DAG.getMachineFunction().getJumpTableInfo();
-  const auto &MBBs = MJTI->getJumpTables()[JT->getIndex()].MBBs;
-
-  // Add an operand for each case.
-  for (auto MBB : MBBs) Ops.push_back(DAG.getBasicBlock(MBB));
-
-  // TODO: For now, we just pick something arbitrary for a default case for now.
-  // We really want to sniff out the guard and put in the real default case (and
-  // delete the guard).
-  Ops.push_back(DAG.getBasicBlock(MBBs[0]));
-
-  return DAG.getNode(ZCPUISD::BR_TABLE, DL, MVT::Other, Ops);
-}
-
-SDValue ZCPUTargetLowering::LowerVASTART(SDValue Op,
-                                                SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  EVT PtrVT = getPointerTy(DAG.getMachineFunction().getDataLayout());
-
-  auto *MFI = DAG.getMachineFunction().getInfo<ZCPUFunctionInfo>();
-  const Value *SV = cast<SrcValueSDNode>(Op.getOperand(2))->getValue();
-
-  SDValue ArgN = DAG.getCopyFromReg(DAG.getEntryNode(), DL,
-                                    MFI->getVarargBufferVreg(), PtrVT);
-  return DAG.getStore(Op.getOperand(0), DL, ArgN, Op.getOperand(1),
-                      MachinePointerInfo(SV), 0);
-}
-
 //===----------------------------------------------------------------------===//
 //                          ZCPU Optimization Hooks
 //===----------------------------------------------------------------------===//

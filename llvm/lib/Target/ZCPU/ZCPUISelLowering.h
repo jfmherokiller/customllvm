@@ -20,17 +20,6 @@
 
 namespace llvm {
 
-namespace ZCPUISD {
-
-enum NodeType : unsigned {
-  FIRST_NUMBER = ISD::BUILTIN_OP_END,
-#define HANDLE_NODETYPE(NODE) NODE,
-#include "ZCPUISD.def"
-#undef HANDLE_NODETYPE
-};
-
-}  // end namespace ZCPUISD
-
 class ZCPUSubtarget;
 class ZCPUTargetMachine;
 

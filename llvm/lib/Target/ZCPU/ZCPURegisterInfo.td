@@ -28,6 +28,8 @@ class ZCPURegClass<list<ValueType> regTypes, int alignment, dag regList>
 //
 // ZCPU may someday supports mixed 32-bit and 64-bit heaps in the same
 // application, which requires separate width FP and SP.
+def ESP  : ZCPUReg<"ESP">;
+def EAX  : ZCPUReg<"EAX">;
 def FP32 : ZCPUReg<"%FP32">;
 def FP64 : ZCPUReg<"%FP64">;
 def SP32 : ZCPUReg<"%SP32">;
@@ -52,7 +54,7 @@ def ARGUMENTS : ZCPUReg<"ARGUMENTS">;
 //  Register classes
 //===----------------------------------------------------------------------===//
 
-def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32)>;
+def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32,ESP,EAX)>;
 def I64 : ZCPURegClass<[i64], 64, (add FP64, SP64)>;
 def F32 : ZCPURegClass<[f32], 32, (add F32_0)>;
 def F64 : ZCPURegClass<[f64], 64, (add F64_0)>;

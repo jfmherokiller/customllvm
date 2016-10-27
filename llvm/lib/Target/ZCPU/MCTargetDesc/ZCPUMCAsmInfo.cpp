@@ -17,12 +17,12 @@
 #include "llvm/ADT/Triple.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-mc-asm-info"
+#define DEBUG_TYPE "zcpu-mc-asm-info"
 
 ZCPUMCAsmInfo::~ZCPUMCAsmInfo() {}
 
 ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
-  PointerSize = CalleeSaveStackSlotSize = T.isArch64Bit() ? 8 : 4;
+  PointerSize = CalleeSaveStackSlotSize = 48;
 
   // TODO: What should MaxInstLength be?
 

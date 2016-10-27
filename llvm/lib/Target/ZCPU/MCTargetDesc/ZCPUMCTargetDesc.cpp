@@ -100,7 +100,7 @@ static MCTargetStreamer *createAsmTargetStreamer(MCStreamer &S,
 
 // Force static initialization.
 extern "C" void LLVMInitializeZCPUTargetMC() {
-  for (Target *T : {&TheZCPUTarget32, &TheZCPUTarget64}) {
+  for (Target *T : {&TheZCPUTarget32}) {
     // Register the MC asm info.
     RegisterMCAsmInfoFn X(*T, createMCAsmInfo);
 

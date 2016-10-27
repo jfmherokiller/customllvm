@@ -425,27 +425,6 @@ SDValue ZCPUTargetLowering::LowerReturn(
     const SmallVectorImpl<ISD::OutputArg> &Outs,
     const SmallVectorImpl<SDValue> &OutVals, const SDLoc &DL,
     SelectionDAG &DAG) const {
-  assert(Outs.size() <= 1 && "ZCPU can only return up to one value");
-  if (!CallingConvSupported(CallConv))
-    fail(DL, DAG, "ZCPU doesn't support non-C calling conventions");
-
-  SmallVector<SDValue, 4> RetOps(1, Chain);
-  RetOps.append(OutVals.begin(), OutVals.end());
-  Chain = DAG.getNode(ZCPUISD::RETURN, DL, MVT::Other, RetOps);
-
-  // Record the number and types of the return values.
-  for (const ISD::OutputArg &Out : Outs) {
-    assert(!Out.Flags.isByVal() && "byval is not valid for return values");
-    assert(!Out.Flags.isNest() && "nest is not valid for return values");
-    assert(Out.IsFixed && "non-fixed return value is not valid");
-    if (Out.Flags.isInAlloca())
-      fail(DL, DAG, "ZCPU hasn't implemented inalloca results");
-    if (Out.Flags.isInConsecutiveRegs())
-      fail(DL, DAG, "ZCPU hasn't implemented cons regs results");
-    if (Out.Flags.isInConsecutiveRegsLast())
-      fail(DL, DAG, "ZCPU hasn't implemented cons regs last results");
-  }
-
   return Chain;
 }
 
@@ -461,7 +440,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
 
   // Set up the incoming ARGUMENTS value, which serves to represent the liveness
   // of the incoming values before they're represented by virtual registers.
-  MF.getRegInfo().addLiveIn(ZCPU::ARGUMENTS);
+  //MF.getRegInfo().addLiveIn(ZCPU::ARGUMENTS);
 
   for (const ISD::InputArg &In : Ins) {
     if (In.Flags.isInAlloca())
@@ -474,11 +453,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
       fail(DL, DAG, "ZCPU hasn't implemented cons regs last arguments");
     // Ignore In.getOrigAlign() because all our arguments are passed in
     // registers.
-    InVals.push_back(
-        In.Used
-            ? DAG.getNode(ZCPUISD::ARGUMENT, DL, In.VT,
-                          DAG.getTargetConstant(InVals.size(), DL, MVT::i32))
-            : DAG.getUNDEF(In.VT));
+    InVals.push_back(DAG.getUNDEF(In.VT));
 
     // Record the number and types of arguments.
     MFI->addParam(In.VT);
@@ -493,7 +468,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
     MFI->setVarargBufferVreg(VarargVreg);
     Chain = DAG.getCopyToReg(
         Chain, DL, VarargVreg,
-        DAG.getNode(ZCPUISD::ARGUMENT, DL, PtrVT,
+        DAG.getNode(0, DL, PtrVT,
                     DAG.getTargetConstant(Ins.size(), DL, MVT::i32)));
     MFI->addParam(PtrVT);
   }
@@ -507,11 +482,12 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
 
 SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
                                                   SelectionDAG &DAG) const {
-  SDLoc DL(Op);
-  switch (Op.getOpcode()) {
-    default:
-      llvm_unreachable("unimplemented operation lowering");
-      return SDValue();
+    SDLoc DL(Op);
+    switch (Op.getOpcode()) {
+        default:
+            llvm_unreachable("unimplemented operation lowering");
+            return SDValue();
+    }
 }
 //===----------------------------------------------------------------------===//
 //                          ZCPU Optimization Hooks

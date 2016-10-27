@@ -19,7 +19,16 @@
 //===----------------------------------------------------------------------===//
 // ZCPU-specific DAG Node Types.
 //===----------------------------------------------------------------------===//
+def SDT_WebAssemblyCallSeqStart : SDCallSeqStart<[SDTCisVT<0, iPTR>]>;
+def SDT_WebAssemblyCallSeqEnd :
+    SDCallSeqEnd<[SDTCisVT<0, iPTR>, SDTCisVT<1, iPTR>]>;
 
+def ZCPUcallseq_start :
+    SDNode<"ISD::CALLSEQ_START", SDT_WebAssemblyCallSeqStart,
+           [SDNPHasChain, SDNPOutGlue]>;
+def ZCPUcallseq_end :
+    SDNode<"ISD::CALLSEQ_END", SDT_WebAssemblyCallSeqEnd,
+           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
 //===----------------------------------------------------------------------===//
 // ZCPU-specific DAG Nodes.

@@ -32,7 +32,6 @@ using namespace llvm;
 extern "C" void LLVMInitializeZCPUTarget() {
   // Register the target.
   RegisterTargetMachine<ZCPUTargetMachine> X(TheZCPUTarget32);
-  RegisterTargetMachine<ZCPUTargetMachine> Y(TheZCPUTarget64);
 }
 
 //===----------------------------------------------------------------------===//
@@ -145,10 +144,6 @@ void ZCPUPassConfig::addIRPasses() {
     // control specifically what gets lowered.
     addPass(createAtomicExpandPass(TM));
 
-  // Optimize "returned" function attributes.
-  if (getOptLevel() != CodeGenOpt::None)
-    addPass(createZCPUOptimizeReturned());
-
   TargetPassConfig::addIRPasses();
 }
 
@@ -156,14 +151,6 @@ bool ZCPUPassConfig::addInstSelector() {
   (void)TargetPassConfig::addInstSelector();
   addPass(
       createZCPUISelDag(getZCPUTargetMachine(), getOptLevel()));
-  // Run the argument-move pass immediately after the ScheduleDAG scheduler
-  // so that we can fix up the ARGUMENT instructions before anything else
-  // sees them in the wrong place.
-  addPass(createZCPUArgumentMove());
-  // Set the p2align operands. This information is present during ISel, however
-  // it's inconvenient to collect. Collect it now, and update the immediate
-  // operands.
-  addPass(createZCPUSetP2AlignOperands());
   return false;
 }
 
@@ -189,46 +176,4 @@ void ZCPUPassConfig::addPostRegAlloc() {
 void ZCPUPassConfig::addPreEmitPass() {
   TargetPassConfig::addPreEmitPass();
 
-  // Now that we have a prologue and epilogue and all frame indices are
-  // rewritten, eliminate SP and FP. This allows them to be stackified,
-  // colored, and numbered with the rest of the registers.
-  addPass(createZCPUReplacePhysRegs());
-
-  if (getOptLevel() != CodeGenOpt::None) {
-    // LiveIntervals isn't commonly run this late. Re-establish preconditions.
-    addPass(createZCPUPrepareForLiveIntervals());
-
-    // Depend on LiveIntervals and perform some optimizations on it.
-    addPass(createZCPUOptimizeLiveIntervals());
-
-    // Prepare store instructions for register stackifying.
-    addPass(createZCPUStoreResults());
-
-    // Mark registers as representing wasm's expression stack. This is a key
-    // code-compression technique in ZCPU. We run this pass (and
-    // StoreResults above) very late, so that it sees as much code as possible,
-    // including code emitted by PEI and expanded by late tail duplication.
-    addPass(createZCPURegStackify());
-
-    // Run the register coloring pass to reduce the total number of registers.
-    // This runs after stackification so that it doesn't consider registers
-    // that become stackified.
-    addPass(createZCPURegColoring());
-  }
-
-  // Eliminate multiple-entry loops.
-  addPass(createZCPUFixIrreducibleControlFlow());
-
-  // Put the CFG in structured form; insert BLOCK and LOOP markers.
-  addPass(createZCPUCFGStackify());
-
-  // Lower br_unless into br_if.
-  addPass(createZCPULowerBrUnless());
-
-  // Perform the very last peephole optimizations on the code.
-  if (getOptLevel() != CodeGenOpt::None)
-    addPass(createZCPUPeephole());
-
-  // Create a mapping from LLVM CodeGen virtual registers to wasm registers.
-  addPass(createZCPURegNumbering());
 }

@@ -1,9 +1,11 @@
-; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-a8 -regalloc=fast -optimize-regalloc=0 | FileCheck %s -check-prefix=A8 -check-prefix=CHECK
-; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-m3 -regalloc=fast -optimize-regalloc=0 | FileCheck %s -check-prefix=M3 -check-prefix=CHECK
+; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-a8 -regalloc=fast -optimize-regalloc=0 -verify-machineinstrs | FileCheck %s -check-prefix=A8 -check-prefix=CHECK -check-prefix=NORMAL
+; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-m3 -regalloc=fast -optimize-regalloc=0 | FileCheck %s -check-prefix=M3 -check-prefix=CHECK -check-prefix=NORMAL
 ; rdar://6949835
-; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-a8 -regalloc=basic | FileCheck %s -check-prefix=BASIC -check-prefix=CHECK
-; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-a8 -regalloc=greedy | FileCheck %s -check-prefix=GREEDY -check-prefix=CHECK
-; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=swift | FileCheck %s -check-prefix=SWIFT -check-prefix=CHECK
+; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-a8 -regalloc=basic | FileCheck %s -check-prefix=BASIC -check-prefix=CHECK -check-prefix=NORMAL
+; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=cortex-a8 -regalloc=greedy | FileCheck %s -check-prefix=GREEDY -check-prefix=CHECK -check-prefix=NORMAL
+; RUN: llc < %s -mtriple=thumbv7-apple-ios -mcpu=swift | FileCheck %s -check-prefix=SWIFT -check-prefix=CHECK -check-prefix=NORMAL
+
+; RUN: llc < %s -mtriple=thumbv7-apple-ios -arm-assume-misaligned-load-store | FileCheck %s -check-prefix=CHECK -check-prefix=CONSERVATIVE
 
 ; Magic ARM pair hints works best with linearscan / fast.
 
@@ -15,12 +17,13 @@ declare void @use_i64(i64 %v)
 
 define void @test_ldrd(i64 %a) nounwind readonly {
 ; CHECK-LABEL: test_ldrd:
-; CHECK: bl{{x?}} _get_ptr
+; NORMAL: bl{{x?}} _get_ptr
 ; A8: ldrd r0, r1, [r0]
 ; Cortex-M3 errata 602117: LDRD with base in list may result in incorrect base
 ; register when interrupted or faulted.
 ; M3-NOT: ldrd r[[REGNUM:[0-9]+]], {{r[0-9]+}}, [r[[REGNUM]]]
-; CHECK: bl{{x?}} _use_i64
+; CONSERVATIVE-NOT: ldrd
+; NORMAL: bl{{x?}} _use_i64
   %ptr = call i64* @get_ptr()
   %v = load i64, i64* %ptr, align 8
   call void @use_i64(i64 %v)
@@ -39,11 +42,10 @@ define void @test_ldrd(i64 %a) nounwind readonly {
 ; evict another live range or use callee saved regs. Sorry if the test
 ; is sensitive to Regalloc changes, but it is an interesting case.
 ;
-; BASIC: @f
+; CHECK-LABEL: f:
 ; BASIC: %bb
 ; BASIC: ldrd
 ; BASIC: str
-; GREEDY: @f
 ; GREEDY: %bb
 ; GREEDY: ldrd
 ; GREEDY: str
@@ -76,14 +78,15 @@ return:                                           ; preds = %bb, %entry
 
 @TestVar = external global %struct.Test
 
+; CHECK-LABEL: Func1:
 define void @Func1() nounwind ssp {
-; CHECK: @Func1
 entry: 
 ; A8: movw [[BASE:r[0-9]+]], :lower16:{{.*}}TestVar{{.*}}
 ; A8: movt [[BASE]], :upper16:{{.*}}TestVar{{.*}}
 ; A8: ldrd [[FIELD1:r[0-9]+]], [[FIELD2:r[0-9]+]], {{\[}}[[BASE]], #4]
 ; A8-NEXT: add [[FIELD1]], [[FIELD2]]
 ; A8-NEXT: str [[FIELD1]], {{\[}}[[BASE]]{{\]}}
+; CONSERVATIVE-NOT: ldrd
   %orig_blocks = alloca [256 x i16], align 2
   %0 = bitcast [256 x i16]* %orig_blocks to i8*call void @llvm.lifetime.start(i64 512, i8* %0) nounwind
   %tmp1 = load i32, i32* getelementptr inbounds (%struct.Test, %struct.Test* @TestVar, i32 0, i32 1), align 4
@@ -97,8 +100,9 @@ entry:
 declare void @extfunc(i32, i32, i32, i32)
 
 ; CHECK-LABEL: Func2:
+; CONSERVATIVE-NOT: ldrd
 ; A8: ldrd
-; A8: blx
+; CHECK: bl{{x?}} _extfunc
 ; A8: pop
 define void @Func2(i32* %p) {
 entry:
@@ -112,16 +116,18 @@ entry:
 }
 
 ; CHECK-LABEL: strd_spill_ldrd_reload:
-; A8: strd r1, r0, [sp]
-; M3: strd r1, r0, [sp]
-; BASIC: strd r1, r0, [sp]
-; GREEDY: strd r0, r1, [sp]
-; CHECK: @ InlineAsm Start
-; CHECK: @ InlineAsm End
+; A8: strd r1, r0, [sp, #-8]!
+; M3: strd r1, r0, [sp, #-8]!
+; BASIC: strd r1, r0, [sp, #-8]!
+; GREEDY: strd r0, r1, [sp, #-8]!
+; CONSERVATIVE: strd r0, r1, [sp, #-8]!
+; NORMAL: @ InlineAsm Start
+; NORMAL: @ InlineAsm End
 ; A8: ldrd r2, r1, [sp]
 ; M3: ldrd r2, r1, [sp]
 ; BASIC: ldrd r2, r1, [sp]
 ; GREEDY: ldrd r1, r2, [sp]
+; CONSERVATIVE: ldrd r1, r2, [sp]
 ; CHECK: bl{{x?}} _extfunc
 define void @strd_spill_ldrd_reload(i32 %v0, i32 %v1) {
   ; force %v0 and %v1 to be spilled
@@ -129,6 +135,58 @@ define void @strd_spill_ldrd_reload(i32 %v0, i32 %v1) {
   ; force the reloaded %v0, %v1 into different registers
   call void @extfunc(i32 0, i32 %v0, i32 %v1, i32 7)
   ret void
+}
+
+declare void @extfunc2(i32*, i32, i32)
+
+; CHECK-LABEL: ldrd_postupdate_dec:
+; NORMAL: ldrd r1, r2, [r0], #-8
+; CONSERVATIVE-NOT: ldrd
+; CHECK: bl{{x?}} _extfunc
+define void @ldrd_postupdate_dec(i32* %p0) {
+  %p0.1 = getelementptr i32, i32* %p0, i32 1
+  %v0 = load i32, i32* %p0
+  %v1 = load i32, i32* %p0.1
+  %p1 = getelementptr i32, i32* %p0, i32 -2
+  call void @extfunc2(i32* %p1, i32 %v0, i32 %v1)
+  ret void
+}
+
+; CHECK-LABEL: ldrd_postupdate_inc:
+; NORMAL: ldrd r1, r2, [r0], #8
+; CONSERVATIVE-NOT: ldrd
+; CHECK: bl{{x?}} _extfunc
+define void @ldrd_postupdate_inc(i32* %p0) {
+  %p0.1 = getelementptr i32, i32* %p0, i32 1
+  %v0 = load i32, i32* %p0
+  %v1 = load i32, i32* %p0.1
+  %p1 = getelementptr i32, i32* %p0, i32 2
+  call void @extfunc2(i32* %p1, i32 %v0, i32 %v1)
+  ret void
+}
+
+; CHECK-LABEL: strd_postupdate_dec:
+; NORMAL: strd r1, r2, [r0], #-8
+; CONSERVATIVE-NOT: strd
+; CHECK: bx lr
+define i32* @strd_postupdate_dec(i32* %p0, i32 %v0, i32 %v1) {
+  %p0.1 = getelementptr i32, i32* %p0, i32 1
+  store i32 %v0, i32* %p0
+  store i32 %v1, i32* %p0.1
+  %p1 = getelementptr i32, i32* %p0, i32 -2
+  ret i32* %p1
+}
+
+; CHECK-LABEL: strd_postupdate_inc:
+; NORMAL: strd r1, r2, [r0], #8
+; CONSERVATIVE-NOT: strd
+; CHECK: bx lr
+define i32* @strd_postupdate_inc(i32* %p0, i32 %v0, i32 %v1) {
+  %p0.1 = getelementptr i32, i32* %p0, i32 1
+  store i32 %v0, i32* %p0
+  store i32 %v1, i32* %p0.1
+  %p1 = getelementptr i32, i32* %p0, i32 2
+  ret i32* %p1
 }
 
 declare void @llvm.lifetime.start(i64, i8* nocapture) nounwind

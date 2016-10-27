@@ -1,6 +1,6 @@
 (* RUN: cp %s %T/target.ml
- * RUN: %ocamlc -g -warn-error A -package llvm.target -package llvm.all_backends -linkpkg %T/target.ml -o %t
- * RUN: %ocamlopt -g -warn-error A -package llvm.target -package llvm.all_backends -linkpkg %T/target.ml -o %t
+ * RUN: %ocamlc -g -w +A -package llvm.target -package llvm.all_backends -linkpkg %T/target.ml -o %t
+ * RUN: %ocamlopt -g -w +A -package llvm.target -package llvm.all_backends -linkpkg %T/target.ml -o %t
  * RUN: %t %t.bc
  * XFAIL: vg_leak
  *)
@@ -58,10 +58,7 @@ let test_target_data () =
   assert_equal (DL.preferred_align sty dl) 8;
   assert_equal (DL.preferred_align_of_global (declare_global sty "g" m) dl) 8;
   assert_equal (DL.element_at_offset sty (Int64.of_int 1) dl) 0;
-  assert_equal (DL.offset_of_element sty 1 dl) (Int64.of_int 4);
-
-  let pm = PassManager.create () in
-  ignore (DL.add_to_pass_manager pm dl)
+  assert_equal (DL.offset_of_element sty 1 dl) (Int64.of_int 4)
 
 
 (*===-- Target ------------------------------------------------------------===*)

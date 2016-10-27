@@ -235,12 +235,12 @@ TYPED_TEST(BitVectorTest, PortableBitMask) {
   const uint32_t Mask1[] = { 0x80000000, 6, 5 };
 
   A.resize(10);
-  A.setBitsInMask(Mask1, 3);
+  A.setBitsInMask(Mask1, 1);
   EXPECT_EQ(10u, A.size());
   EXPECT_FALSE(A.test(0));
 
   A.resize(32);
-  A.setBitsInMask(Mask1, 3);
+  A.setBitsInMask(Mask1, 1);
   EXPECT_FALSE(A.test(0));
   EXPECT_TRUE(A.test(31));
   EXPECT_EQ(1u, A.count());
@@ -399,5 +399,31 @@ TYPED_TEST(BitVectorTest, CompoundTestReset) {
   C.reset(C);
   EXPECT_TRUE(C.none());
 }
+
+TYPED_TEST(BitVectorTest, MoveConstructor) {
+  TypeParam A(10, true);
+  TypeParam B(std::move(A));
+  // Check that the move ctor leaves the moved-from object in a valid state.
+  // The following line used to crash.
+  A = B;
+
+  TypeParam C(10, true);
+  EXPECT_EQ(C, A);
+  EXPECT_EQ(C, B);
+}
+
+TYPED_TEST(BitVectorTest, MoveAssignment) {
+  TypeParam A(10, true);
+  TypeParam B;
+  B = std::move(A);
+  // Check that move assignment leaves the moved-from object in a valid state.
+  // The following line used to crash.
+  A = B;
+
+  TypeParam C(10, true);
+  EXPECT_EQ(C, A);
+  EXPECT_EQ(C, B);
+}
+
 }
 #endif

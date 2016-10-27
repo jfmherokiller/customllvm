@@ -28,20 +28,31 @@ class WebAssemblyRegClass<list<ValueType> regTypes, int alignment, dag regList>
 //
 // WebAssembly may someday supports mixed 32-bit and 64-bit heaps in the same
 // application, which requires separate width FP and SP.
+def FP32 : WebAssemblyReg<"%FP32">;
 def FP64 : WebAssemblyReg<"%FP64">;
 def SP32 : WebAssemblyReg<"%SP32">;
+def SP64 : WebAssemblyReg<"%SP64">;
 
-// TODO(jfb) The following comes from NVPTX. Is it really needed, or can we do
-//           away with it? Try deleting once the backend works.
-// WebAssembly uses virtual registers, but the backend defines a few physical
-// registers here to keep SDAG and the MachineInstr layers happy.
-foreach i = 0-31 in {
-  def R#i : WebAssemblyReg<"R"#i>; // i48
-}
+// The register allocation framework requires register classes have at least
+// one register, so we define a few for the floating point register classes
+// since we otherwise don't need a physical register in those classes.
+def F32_0 : WebAssemblyReg<"%f32.0">;
+def F64_0 : WebAssemblyReg<"%f64.0">;
+
+// The expression stack "register". This is an opaque entity which serves to
+// order uses and defs that must remain in LIFO order.
+def EXPR_STACK : WebAssemblyReg<"STACK">;
+
+// The incoming arguments "register". This is an opaque entity which serves to
+// order the ARGUMENT instructions that are emulating live-in registers and
+// must not be scheduled below other instructions.
+def ARGUMENTS : WebAssemblyReg<"ARGUMENTS">;
 
 //===----------------------------------------------------------------------===//
 //  Register classes
 //===----------------------------------------------------------------------===//
 
-def Int48 : WebAssemblyRegClass<[i48], 48, (add (sequence "R%u", 0, 31))>;
-def Float64 : WebAssemblyRegClass<[f64], 64, (add (sequence "R%u", 0, 31))>;
+def I32 : WebAssemblyRegClass<[i32], 32, (add FP32, SP32)>;
+def I64 : WebAssemblyRegClass<[i64], 64, (add FP64, SP64)>;
+def F32 : WebAssemblyRegClass<[f32], 32, (add F32_0)>;
+def F64 : WebAssemblyRegClass<[f64], 64, (add F64_0)>;

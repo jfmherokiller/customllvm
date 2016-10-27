@@ -9,7 +9,7 @@ Makefile
 cmake_install.cmake
 install_manifest.txt
 CTestTestfile.cmake
-
+llvm-build/*
 
 ### Autotools ###
 # http://www.gnu.org/software/automake

@@ -1,4 +1,4 @@
-;===- ./lib/Target/ZCPU/LLVMBuild.txt -------------------*- Conf -*--===;
+;===-- ./lib/Target/ZCPU/Disassembler/LLVMBuild.txt -----*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -15,19 +15,9 @@
 ;
 ;===------------------------------------------------------------------------===;
 
-[common]
-subdirectories = Disassembler InstPrinter MCTargetDesc TargetInfo
-
 [component_0]
-type = TargetGroup
-name = ZCPU
-parent = Target
-has_asmprinter = 1
-has_disassembler = 1
-
-[component_1]
 type = Library
-name = ZCPUCodeGen
+name = ZCPUDisassembler
 parent = ZCPU
-required_libraries = Analysis AsmPrinter CodeGen Core MC Scalar SelectionDAG Support Target ZCPUAsmPrinter ZCPUDesc ZCPUInfo
+required_libraries = MCDisassembler ZCPUInfo Support
 add_to_library_groups = ZCPU

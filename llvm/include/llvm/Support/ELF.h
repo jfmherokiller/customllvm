@@ -317,6 +317,7 @@ enum {
   // such numbers for an official value for WebAssembly. As soon as one is
   // allocated, this enum will be updated to use it.
   EM_WEBASSEMBLY   = 0x4157, // WebAssembly architecture
+    EM_ZCPU = 0x6969 // ZCPU arch
 };
 
 // Object file classes.

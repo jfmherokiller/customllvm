@@ -64,6 +64,7 @@ const char *Triple::getArchTypeName(ArchType Kind) {
   case shave:          return "shave";
   case wasm32:         return "wasm32";
   case wasm64:         return "wasm64";
+    case zcpu:         return "zcpu";
   case renderscript32: return "renderscript32";
   case renderscript64: return "renderscript64";
   }
@@ -617,6 +618,7 @@ static Triple::ObjectFormatType getDefaultFormat(const Triple &T) {
   case Triple::wasm32:
   case Triple::wasm64:
   case Triple::xcore:
+  case Triple::zcpu:
     return Triple::ELF;
 
   case Triple::ppc:
@@ -1118,7 +1120,8 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   switch (Arch) {
   case llvm::Triple::UnknownArch:
     return 0;
-
+  case llvm::Triple::zcpu:
+    return 48;
   case llvm::Triple::avr:
   case llvm::Triple::msp430:
     return 16;
@@ -1196,6 +1199,7 @@ Triple Triple::get32BitArchVariant() const {
   case Triple::msp430:
   case Triple::systemz:
   case Triple::ppc64le:
+  case Triple::zcpu:
     T.setArch(UnknownArch);
     break;
 
@@ -1258,6 +1262,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::xcore:
   case Triple::sparcel:
   case Triple::shave:
+  case Triple::zcpu:
     T.setArch(UnknownArch);
     break;
 

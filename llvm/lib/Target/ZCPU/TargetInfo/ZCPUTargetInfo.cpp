@@ -17,14 +17,11 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-target-info"
+#define DEBUG_TYPE "zcpu-target-info"
 
 Target llvm::TheZCPUTarget32;
-Target llvm::TheZCPUTarget64;
 
 extern "C" void LLVMInitializeZCPUTargetInfo() {
-  RegisterTarget<Triple::wasm32> X(TheZCPUTarget32, "wasm32",
+  RegisterTarget<Triple::wasm32> X(TheZCPUTarget32, "zcpu",
                                    "ZCPU 32-bit");
-  RegisterTarget<Triple::wasm64> Y(TheZCPUTarget64, "wasm64",
-                                   "ZCPU 64-bit");
 }

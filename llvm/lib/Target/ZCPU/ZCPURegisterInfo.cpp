@@ -28,7 +28,7 @@
 #include "llvm/Target/TargetOptions.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-reg-info"
+#define DEBUG_TYPE "zcpu-reg-info"
 
 #define GET_REGINFO_TARGET_DESC
 #include "ZCPUGenRegisterInfo.inc"

@@ -50,12 +50,12 @@ ZCPUTargetLowering::ZCPUTargetLowering(
   //setStackPointerRegisterToSaveRestore(
       //Subtarget->hasAddr64() ? ZCPU::SP64 : ZCPU::SP32);
   // Set up the register classes.
-  //addRegisterClass(MVT::i32, &ZCPU::I32RegClass);
-  //addRegisterClass(MVT::i64, &ZCPU::I64RegClass);
-  //addRegisterClass(MVT::f32, &ZCPU::F32RegClass);
-  //addRegisterClass(MVT::f64, &ZCPU::F64RegClass);
+  addRegisterClass(MVT::i32, &ZCPU::I32RegClass);
+  addRegisterClass(MVT::i64, &ZCPU::I64RegClass);
+  addRegisterClass(MVT::f32, &ZCPU::F32RegClass);
+  addRegisterClass(MVT::f64, &ZCPU::F64RegClass);
   // Compute derived properties from the register classes.
-  //computeRegisterProperties(Subtarget->getRegisterInfo());
+  computeRegisterProperties(Subtarget->getRegisterInfo());
 
   setOperationAction(ISD::GlobalAddress, MVTPtr, Custom);
   setOperationAction(ISD::ExternalSymbol, MVTPtr, Custom);
@@ -201,14 +201,6 @@ bool ZCPUTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                                       const AddrMode &AM,
                                                       Type *Ty,
                                                       unsigned AS) const {
-  // ZCPU offsets are added as unsigned without wrapping. The
-  // isLegalAddressingMode gives us no way to determine if wrapping could be
-  // happening, so we approximate this by accepting only non-negative offsets.
-  if (AM.BaseOffs < 0) return false;
-
-  // ZCPU has no scale register operands.
-  if (AM.Scale != 0) return false;
-
   // Everything else is legal.
   return true;
 }

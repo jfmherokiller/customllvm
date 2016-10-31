@@ -135,6 +135,7 @@ const char *Triple::getArchTypePrefix(ArchType Kind) {
   case shave:       return "shave";
   case wasm32:
   case wasm64:      return "wasm";
+    case zcpu:      return "zcpu";
   }
 }
 
@@ -287,6 +288,7 @@ Triple::ArchType Triple::getArchTypeForLLVMName(StringRef Name) {
     .Case("wasm64", wasm64)
     .Case("renderscript32", renderscript32)
     .Case("renderscript64", renderscript64)
+    .Case("zcpu",zcpu)
     .Default(UnknownArch);
 }
 
@@ -398,6 +400,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
     .Case("wasm64", Triple::wasm64)
     .Case("renderscript32", Triple::renderscript32)
     .Case("renderscript64", Triple::renderscript64)
+    .Case("zcpu",Triple::zcpu)
     .Default(Triple::UnknownArch);
 
   // Some architectures require special parsing logic just to compute the

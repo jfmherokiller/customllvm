@@ -72,7 +72,6 @@ public:
   bool useAA() const override;
 
   // Predicates used by ZCPUInstrInfo.td.
-  bool hasAddr64() const { return TargetTriple.isArch64Bit(); }
   bool hasSIMD128() const { return HasSIMD128; }
 
   /// Parses features string setting specified subtarget options. Definition of

@@ -18,7 +18,7 @@
 #include "llvm/Target/CostTable.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasmtti"
+#define DEBUG_TYPE "zcputti"
 
 TargetTransformInfo::PopcntSupportKind
 ZCPUTTIImpl::getPopcntSupport(unsigned TyWidth) const {

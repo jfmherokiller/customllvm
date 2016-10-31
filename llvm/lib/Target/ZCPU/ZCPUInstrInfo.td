@@ -52,4 +52,11 @@ include "ZCPUInstrFormats.td"
 // Additional sets of instructions.
 //===----------------------------------------------------------------------===//
 
-def NOP : I<(outs), (ins), "NOP", []>;
+def NOP : I<(outs), (ins),[] ,"NOP">;
+
+def LEA : I<(outs), (ins), [],"LEA">;
+def STEF: I<(outs), (ins), [],"STEF">;
+def CLEF: I<(outs), (ins),[] ,"CLEF">;
+def TIMER: I<(outs), (ins),[], "TIMER">;
+def MOV: I<(outs), (ins),[], "MOV">;
+def RET: I<(outs), (ins),[], "RET">;

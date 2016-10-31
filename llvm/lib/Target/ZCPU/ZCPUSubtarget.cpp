@@ -19,7 +19,7 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-subtarget"
+#define DEBUG_TYPE "zcpu-subtarget"
 
 #define GET_SUBTARGETINFO_CTOR
 #define GET_SUBTARGETINFO_TARGET_DESC

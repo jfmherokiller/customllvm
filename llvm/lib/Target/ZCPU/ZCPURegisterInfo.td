@@ -28,6 +28,29 @@ class ZCPURegClass<list<ValueType> regTypes, int alignment, dag regList>
 //
 // ZCPU may someday supports mixed 32-bit and 64-bit heaps in the same
 // application, which requires separate width FP and SP.
+foreach i = 0-31 in {
+  def R#i  : ZCPUReg<"%r"#i>;  // 32-bit
+}
+
+//segment regs
+def CS: ZCPUReg<"CS">;  //16 Code segment
+def SS: ZCPUReg<"SS">;  //17 Stack segment
+def DS: ZCPUReg<"DS">;  //18 Data segment
+def ES: ZCPUReg<"ES">;  //19 Extra segment
+def GS: ZCPUReg<"GS">;  //20 User segment
+def FS: ZCPUReg<"FS">;  //21 User segment
+def KS: ZCPUReg<"KS">;  //22 Key segment
+def LS: ZCPUReg<"LS">;  //23 Library segment
+//segment regs
+//readonlyregs
+def XEIP: ZCPUReg<"XEIP">;
+def CPAGE: ZCPUReg<"CPAGE">; //31 Current page number
+def PPAGE: ZCPUReg<"PPAGE">; //41 Previous page ID
+def SerialNo: ZCPUReg<"SerialNo">; //48 Processor serial number
+def CODEBYTES: ZCPUReg<"CODEBYTES">;
+def TimerDT: ZCPUReg<"TimerDT">; //62 Current timer discrete step
+def RAMSize: ZCPUReg<"RAMSize">; //43 Amount of internal memory
+//readonlyregs
 def ESP  : ZCPUReg<"ESP">;
 def EAX  : ZCPUReg<"EAX">;
 def FP32 : ZCPUReg<"%FP32">;
@@ -54,7 +77,7 @@ def ARGUMENTS : ZCPUReg<"ARGUMENTS">;
 //  Register classes
 //===----------------------------------------------------------------------===//
 
-def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32,ESP,EAX)>;
+def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32,ESP,EAX, (sequence "R%u", 0, 31))>;
 def I64 : ZCPURegClass<[i64], 64, (add FP64, SP64)>;
 def F32 : ZCPURegClass<[f32], 32, (add F32_0)>;
 def F64 : ZCPURegClass<[f64], 64, (add F64_0)>;

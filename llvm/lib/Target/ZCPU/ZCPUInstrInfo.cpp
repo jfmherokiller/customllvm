@@ -74,8 +74,7 @@ ZCPUInstrInfo::commuteInstructionImpl(MachineInstr &MI, bool NewMI,
     return nullptr;
 
   // Otherwise use the default implementation.
-  //return TargetInstrInfo::commuteInstructionImpl(MI, NewMI, OpIdx1, OpIdx2);
-    return nullptr;
+  return TargetInstrInfo::commuteInstructionImpl(MI, NewMI, OpIdx1, OpIdx2);
 }
 
 // Branch analysis.

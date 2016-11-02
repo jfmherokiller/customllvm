@@ -37,10 +37,7 @@ unsigned ZCPUTTIImpl::getNumberOfRegisters(bool Vector) {
 }
 
 unsigned ZCPUTTIImpl::getRegisterBitWidth(bool Vector) {
-  if (Vector && getST()->hasSIMD128())
-    return 128;
-
-  return 64;
+  return 48;
 }
 
 unsigned ZCPUTTIImpl::getArithmeticInstrCost(

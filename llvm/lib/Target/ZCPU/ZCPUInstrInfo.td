@@ -19,15 +19,14 @@
 //===----------------------------------------------------------------------===//
 // ZCPU-specific DAG Node Types.
 //===----------------------------------------------------------------------===//
-def SDT_WebAssemblyCallSeqStart : SDCallSeqStart<[SDTCisVT<0, iPTR>]>;
-def SDT_WebAssemblyCallSeqEnd :
-    SDCallSeqEnd<[SDTCisVT<0, iPTR>, SDTCisVT<1, iPTR>]>;
+def SDT_ZCPUCallSeqStart : SDCallSeqStart<[SDTCisVT<0, iPTR>]>;
+def SDT_ZCPUCallSeqEnd :   SDCallSeqEnd<[SDTCisVT<0, iPTR>, SDTCisVT<1, iPTR>]>;
 
 def ZCPUcallseq_start :
-    SDNode<"ISD::CALLSEQ_START", SDT_WebAssemblyCallSeqStart,
+    SDNode<"ISD::CALLSEQ_START", SDT_ZCPUCallSeqStart,
            [SDNPHasChain, SDNPOutGlue]>;
 def ZCPUcallseq_end :
-    SDNode<"ISD::CALLSEQ_END", SDT_WebAssemblyCallSeqEnd,
+    SDNode<"ISD::CALLSEQ_END", SDT_ZCPUCallSeqEnd,
            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
 //===----------------------------------------------------------------------===//
@@ -57,6 +56,6 @@ def NOP : I<(outs), (ins),[] ,"NOP">;
 def LEA : I<(outs), (ins), [],"LEA">;
 def STEF: I<(outs), (ins), [],"STEF">;
 def CLEF: I<(outs), (ins),[] ,"CLEF">;
-def TIMER: I<(outs), (ins),[], "TIMER">;
+//def TIMER: I<(outs), (ins),[], "TIMER">;
 def MOV: I<(outs), (ins),[], "MOV">;
 def RET: I<(outs), (ins),[], "RET">;

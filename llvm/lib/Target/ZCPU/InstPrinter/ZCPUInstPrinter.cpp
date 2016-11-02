@@ -29,7 +29,7 @@
 using namespace llvm;
 
 #define DEBUG_TYPE "asm-printer"
-
+#define GET_INSTRUCTION_NAME
 #include "ZCPUGenAsmWriter.inc"
 
 ZCPUInstPrinter::ZCPUInstPrinter(const MCAsmInfo &MAI,
@@ -39,6 +39,7 @@ ZCPUInstPrinter::ZCPUInstPrinter(const MCAsmInfo &MAI,
 
 void ZCPUInstPrinter::printRegName(raw_ostream &OS,
                                           unsigned RegNo) const {
+  OS << StringRef(getRegisterName(RegNo)).upper();
 
 }
 
@@ -70,39 +71,35 @@ void ZCPUInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
   }
 }
 
-static std::string toString(const APFloat &FP) {
-  // Print NaNs with custom payloads specially.
-  if (FP.isNaN() &&
-      !FP.bitwiseIsEqual(APFloat::getQNaN(FP.getSemantics())) &&
-      !FP.bitwiseIsEqual(APFloat::getQNaN(FP.getSemantics(), /*Negative=*/true))) {
-    APInt AI = FP.bitcastToAPInt();
-    return
-        std::string(AI.isNegative() ? "-" : "") + "nan:0x" +
-        utohexstr(AI.getZExtValue() &
-                  (AI.getBitWidth() == 32 ? INT64_C(0x007fffff) :
-                                            INT64_C(0x000fffffffffffff)),
-                  /*LowerCase=*/true);
+void ZCPUInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
+                                   raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand (OpNo);
+
+  if (MO.isReg()) {
+    printRegName(O, MO.getReg());
+    return ;
   }
 
-  // Use C99's hexadecimal floating-point representation.
-  static const size_t BufBytes = 128;
-  char buf[BufBytes];
-  auto Written = FP.convertToHexString(
-      buf, /*hexDigits=*/0, /*upperCase=*/false, APFloat::rmNearestTiesToEven);
-  (void)Written;
-  assert(Written != 0);
-  assert(Written < BufBytes);
-  return buf;
-}
-
-void ZCPUInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
-                                          raw_ostream &O) {
+  if (MO.isImm()) {
+    O << (int)MO.getImm();
+    return;
+  }
+  assert(MO.isExpr() && "Unknown operand kind in printOperand");
+  MO.getExpr()->print(O, &MAI);
 }
 
 
 const char *llvm::ZCPU::TypeToString(MVT Ty) {
   switch (Ty.SimpleTy) {
-  default:
-    llvm_unreachable("unsupported type");
+    case MVT::i32:
+      return "i32";
+    case MVT::i64:
+      return "i64";
+    case MVT::f32:
+      return "f32";
+    case MVT::f64:
+      return "f64";
+    default:
+      llvm_unreachable("unsupported type");
   }
 }

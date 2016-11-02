@@ -32,11 +32,12 @@ public:
                          const MCRegisterInfo &MRI);
 
   void printRegName(raw_ostream &OS, unsigned RegNo) const override;
-  void printInst(const MCInst *MI, raw_ostream &OS, StringRef Annot,
-                 const MCSubtargetInfo &STI) override;
+    void printInst(const MCInst *MI, raw_ostream &O, StringRef Annot,
+                   const MCSubtargetInfo &STI) override;
 
   // Used by tblegen code.
-  void printOperand(const MCInst *MI, unsigned OpNo, raw_ostream &O);
+  void printOperand(const MCInst *MI, unsigned OpNo,
+                    raw_ostream &O);
   void printZCPUP2AlignOperand(const MCInst *MI, unsigned OpNo,
                                       raw_ostream &O);
 

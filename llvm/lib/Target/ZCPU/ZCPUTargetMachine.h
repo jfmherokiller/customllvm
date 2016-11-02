@@ -21,8 +21,7 @@
 
 namespace llvm {
 
-class ZCPUTargetMachine final : public LLVMTargetMachine {
-  std::unique_ptr<TargetLoweringObjectFile> TLOF;
+class ZCPUTargetMachine : public LLVMTargetMachine {
   mutable StringMap<std::unique_ptr<ZCPUSubtarget>> SubtargetMap;
 
 public:
@@ -37,10 +36,6 @@ public:
 
   // Pass Pipeline Configuration
   TargetPassConfig *createPassConfig(PassManagerBase &PM) override;
-
-  TargetLoweringObjectFile *getObjFileLowering() const override {
-    return TLOF.get();
-  }
 
   /// \brief Get the TargetIRAnalysis for this target.
   TargetIRAnalysis getTargetIRAnalysis() override;

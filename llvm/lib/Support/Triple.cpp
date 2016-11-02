@@ -1123,8 +1123,6 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   switch (Arch) {
   case llvm::Triple::UnknownArch:
     return 0;
-  case llvm::Triple::zcpu:
-    return 48;
   case llvm::Triple::avr:
   case llvm::Triple::msp430:
     return 16;
@@ -1153,6 +1151,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::shave:
   case llvm::Triple::wasm32:
   case llvm::Triple::renderscript32:
+  case llvm::Triple::zcpu:
     return 32;
 
   case llvm::Triple::aarch64:

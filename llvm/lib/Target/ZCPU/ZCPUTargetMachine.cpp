@@ -27,7 +27,7 @@
 #include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm"
+#define DEBUG_TYPE "zcpu"
 
 extern "C" void LLVMInitializeZCPUTarget() {
   // Register the target.
@@ -39,9 +39,7 @@ extern "C" void LLVMInitializeZCPUTarget() {
 //===----------------------------------------------------------------------===//
 
 static Reloc::Model getEffectiveRelocModel(Optional<Reloc::Model> RM) {
-  if (!RM.hasValue())
-    return Reloc::PIC_;
-  return *RM;
+    return Reloc::Static;
 }
 
 /// Create an ZCPU architecture model.
@@ -51,11 +49,9 @@ ZCPUTargetMachine::ZCPUTargetMachine(
     const TargetOptions &Options, Optional<Reloc::Model> RM,
     CodeModel::Model CM, CodeGenOpt::Level OL)
     : LLVMTargetMachine(T,
-                        TT.isArch64Bit() ? "e-m:e-p:64:64-i64:64-n32:64-S128"
-                                         : "e-m:e-p:32:32-i64:64-n32:64-S128",
+                        "e-p:32:32-f64:64:64",
                         TT, CPU, FS, Options, getEffectiveRelocModel(RM),
-                        CM, OL),
-      TLOF(make_unique<ZCPUTargetObjectFile>()) {
+                        CM, OL) {
   // ZCPU type-checks expressions, but a noreturn function with a return
   // type that doesn't match the context will cause a check failure. So we lower
   // LLVM 'unreachable' to ISD::TRAP and then lower that to ZCPU's
@@ -98,8 +94,7 @@ namespace {
 /// ZCPU Code Generator Pass Configuration Options.
 class ZCPUPassConfig final : public TargetPassConfig {
 public:
-  ZCPUPassConfig(ZCPUTargetMachine *TM, PassManagerBase &PM)
-      : TargetPassConfig(TM, PM) {}
+  ZCPUPassConfig(ZCPUTargetMachine *TM, PassManagerBase &PM) : TargetPassConfig(TM, PM) {}
 
   ZCPUTargetMachine &getZCPUTargetMachine() const {
     return getTM<ZCPUTargetMachine>();
@@ -121,12 +116,11 @@ TargetIRAnalysis ZCPUTargetMachine::getTargetIRAnalysis() {
   });
 }
 
-TargetPassConfig *
-ZCPUTargetMachine::createPassConfig(PassManagerBase &PM) {
+TargetPassConfig * ZCPUTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new ZCPUPassConfig(this, PM);
 }
 
-FunctionPass *ZCPUPassConfig::createTargetRegisterAllocator(bool) {
+FunctionPass * ZCPUPassConfig::createTargetRegisterAllocator(bool) {
   return nullptr; // No reg alloc
 }
 
@@ -136,13 +130,7 @@ FunctionPass *ZCPUPassConfig::createTargetRegisterAllocator(bool) {
 //===----------------------------------------------------------------------===//
 
 void ZCPUPassConfig::addIRPasses() {
-  if (TM->Options.ThreadModel == ThreadModel::Single)
-    // In "single" mode, atomics get lowered to non-atomics.
     addPass(createLowerAtomicPass());
-  else
-    // Expand some atomic operations. ZCPUTargetLowering has hooks which
-    // control specifically what gets lowered.
-    addPass(createAtomicExpandPass(TM));
 
   TargetPassConfig::addIRPasses();
 }
@@ -155,12 +143,6 @@ bool ZCPUPassConfig::addInstSelector() {
 }
 
 void ZCPUPassConfig::addPostRegAlloc() {
-  // TODO: The following CodeGen passes don't currently support code containing
-  // virtual registers. Consider removing their restrictions and re-enabling
-  // them.
-
-  // Has no asserts of its own, but was not written to handle virtual regs.
-  disablePass(&ShrinkWrapID);
 
   // These functions all require the AllVRegsAllocated property.
   disablePass(&MachineCopyPropagationID);

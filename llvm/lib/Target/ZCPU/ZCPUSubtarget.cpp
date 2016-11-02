@@ -40,7 +40,7 @@ ZCPUSubtarget::ZCPUSubtarget(const Triple &TT,
                                            const std::string &CPU,
                                            const std::string &FS,
                                            const TargetMachine &TM)
-    : ZCPUGenSubtargetInfo(TT, CPU, FS), HasSIMD128(false),
+    : ZCPUGenSubtargetInfo(TT, CPU, FS),
       CPUString(CPU), TargetTriple(TT), FrameLowering(),
       InstrInfo(initializeSubtargetDependencies(FS)), TSInfo(),
       TLInfo(TM, *this) {}

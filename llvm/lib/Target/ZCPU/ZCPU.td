@@ -23,8 +23,7 @@ include "llvm/Target/Target.td"
 // ZCPU Subtarget features.
 //===----------------------------------------------------------------------===//
 
-def FeatureSIMD128 : SubtargetFeature<"simd128", "HasSIMD128", "false",
-                                      "Enable 128-bit SIMD">;
+
 
 //===----------------------------------------------------------------------===//
 // Architectures.

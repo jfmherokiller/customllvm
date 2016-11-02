@@ -78,7 +78,7 @@ MCDisassembler::DecodeStatus ZCPUDisassembler::getInstruction(
   unsigned NumFixedOperands = Desc.NumOperands;
 
   // If it's variadic, read the number of extra operands.
-  unsigned NumExtraOperands = 0;
+  uint64_t NumExtraOperands = 0;
   if (Desc.isVariadic()) {
     if (Pos + sizeof(uint64_t) > Bytes.size())
       return MCDisassembler::Fail;

@@ -43,11 +43,11 @@ def KS: ZCPUReg<"KS">;  //22 Key segment
 def LS: ZCPUReg<"LS">;  //23 Library segment
 //segment regs
 //readonlyregs
-def XEIP: ZCPUReg<"XEIP">;
+def XEIP: ZCPUReg<"XEIP">; //26 Pointer to start of currently executed instruction
 def CPAGE: ZCPUReg<"CPAGE">; //31 Current page number
 def PPAGE: ZCPUReg<"PPAGE">; //41 Previous page ID
 def SerialNo: ZCPUReg<"SerialNo">; //48 Processor serial number
-def CODEBYTES: ZCPUReg<"CODEBYTES">;
+def CODEBYTES: ZCPUReg<"CODEBYTES">; //49 Amount of bytes executed so far
 def TimerDT: ZCPUReg<"TimerDT">; //62 Current timer discrete step
 def RAMSize: ZCPUReg<"RAMSize">; //43 Amount of internal memory
 //readonlyregs
@@ -81,3 +81,4 @@ def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32,ESP,EAX, (sequence "R%u", 0, 3
 def I64 : ZCPURegClass<[i64], 64, (add FP64, SP64)>;
 def F32 : ZCPURegClass<[f32], 32, (add F32_0)>;
 def F64 : ZCPURegClass<[f64], 64, (add F64_0)>;
+def SegmentRegs : ZCPURegClass<[i32],32, (add CS,SS,DS,ES,GS,FS,KS,LS)>;

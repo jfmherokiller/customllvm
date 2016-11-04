@@ -30,7 +30,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "asm-printer"
 #define GET_INSTRUCTION_NAME
-#include "ZCPUGenAsmWriter.inc"
+#include "ZCPUGenAsmWriterinc.h"
 
 ZCPUInstPrinter::ZCPUInstPrinter(const MCAsmInfo &MAI,
                                                const MCInstrInfo &MII,
@@ -60,15 +60,6 @@ void ZCPUInstPrinter::printInst(const MCInst *MI, raw_ostream &OS,
 
   // Print any added annotation.
   printAnnotation(OS, Annot);
-
-  if (CommentStream) {
-    // Observe any effects on the control flow stack, for use in annotating
-    // control flow label references.
-    switch (MI->getOpcode()) {
-      default:
-        break;
-    }
-  }
 }
 
 void ZCPUInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,

@@ -1,6 +1,6 @@
 set(LLVM_TARGET_DEFINITIONS ZCPU.td)
 
-tablegen(LLVM ZCPUGenAsmWriter.inc -gen-asm-writer)
+tablegen(LLVM ZCPUGenAsmWriterinc.h -gen-asm-writer)
 tablegen(LLVM ZCPUGenDAGISel.inc -gen-dag-isel)
 tablegen(LLVM ZCPUGenFastISel.inc -gen-fast-isel)
 tablegen(LLVM ZCPUGenInstrInfo.inc -gen-instr-info)

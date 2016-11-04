@@ -63,6 +63,7 @@ namespace llvm {
   const fltSemantics APFloat::IEEEdouble = { 1023, -1022, 53, 64 };
   const fltSemantics APFloat::IEEEquad = { 16383, -16382, 113, 128 };
   const fltSemantics APFloat::x87DoubleExtended = { 16383, -16382, 64, 80 };
+  const fltSemantics APFloat::ZCPUFloat = { 3000, -3000, 48, 64 };
   const fltSemantics APFloat::Bogus = { 0, 0, 0, 0 };
 
   /* The PowerPC format consists of two doubles.  It does not map cleanly

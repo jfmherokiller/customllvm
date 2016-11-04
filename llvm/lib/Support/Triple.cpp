@@ -1151,7 +1151,6 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::shave:
   case llvm::Triple::wasm32:
   case llvm::Triple::renderscript32:
-  case llvm::Triple::zcpu:
     return 32;
 
   case llvm::Triple::aarch64:
@@ -1173,6 +1172,7 @@ static unsigned getArchPointerBitWidth(llvm::Triple::ArchType Arch) {
   case llvm::Triple::spir64:
   case llvm::Triple::wasm64:
   case llvm::Triple::renderscript64:
+  case llvm::Triple::zcpu:
     return 64;
   }
   llvm_unreachable("Invalid architecture value");
@@ -1264,7 +1264,6 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::xcore:
   case Triple::sparcel:
   case Triple::shave:
-  case Triple::zcpu:
     T.setArch(UnknownArch);
     break;
 
@@ -1287,6 +1286,7 @@ Triple Triple::get64BitArchVariant() const {
   case Triple::x86_64:
   case Triple::wasm64:
   case Triple::renderscript64:
+  case Triple::zcpu:
     // Already 64-bit.
     break;
 

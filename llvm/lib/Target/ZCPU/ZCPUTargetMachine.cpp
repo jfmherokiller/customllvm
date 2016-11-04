@@ -49,9 +49,9 @@ ZCPUTargetMachine::ZCPUTargetMachine(
     const TargetOptions &Options, Optional<Reloc::Model> RM,
     CodeModel::Model CM, CodeGenOpt::Level OL)
     : LLVMTargetMachine(T,
-                        "e-p:32:32-f64:64:64",
+                        "e-p:64:64-f64:64",
                         TT, CPU, FS, Options, getEffectiveRelocModel(RM),
-                        CM, OL) {
+                        CM, OL),TLOF(make_unique<ZCPUTargetObjectFile>()) {
   // ZCPU type-checks expressions, but a noreturn function with a return
   // type that doesn't match the context will cause a check failure. So we lower
   // LLVM 'unreachable' to ISD::TRAP and then lower that to ZCPU's
@@ -143,8 +143,7 @@ bool ZCPUPassConfig::addInstSelector() {
 }
 
 void ZCPUPassConfig::addPostRegAlloc() {
-
-  // These functions all require the AllVRegsAllocated property.
+   disablePass(&ShrinkWrapID);
   disablePass(&MachineCopyPropagationID);
   disablePass(&PostRASchedulerID);
   disablePass(&FuncletLayoutID);

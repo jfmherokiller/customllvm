@@ -96,6 +96,8 @@ def TimerRate: ZCPUReg<"TimerRate">; //65 Timer rate
 def TimerPrevTime: ZCPUReg<"TimerPrevTime">; //66 Previous timer fire time
 def TimerAddress: ZCPUReg<"TimerAddress">; //67 Number of external interrupt to call when timer fires
 
+def RM: ZCPUReg<"RM">;
+
 def FP32 : ZCPUReg<"%FP32">;
 def FP64 : ZCPUReg<"%FP64">;
 def SP32 : ZCPUReg<"%SP32">;
@@ -107,14 +109,6 @@ def SP64 : ZCPUReg<"%SP64">;
 def F32_0 : ZCPUReg<"%f32.0">;
 def F64_0 : ZCPUReg<"%f64.0">;
 
-// The expression stack "register". This is an opaque entity which serves to
-// order uses and defs that must remain in LIFO order.
-def EXPR_STACK : ZCPUReg<"STACK">;
-
-// The incoming arguments "register". This is an opaque entity which serves to
-// order the ARGUMENT instructions that are emulating live-in registers and
-// must not be scheduled below other instructions.
-def ARGUMENTS : ZCPUReg<"ARGUMENTS">;
 
 //===----------------------------------------------------------------------===//
 //  Register classes
@@ -124,5 +118,10 @@ def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32,ESP,EAX, (sequence "R%u", 0, 3
 def I64 : ZCPURegClass<[i64], 64, (add FP64, SP64)>;
 def F32 : ZCPURegClass<[f32], 32, (add F32_0)>;
 def F64 : ZCPURegClass<[f64], 64, (add F64_0)>;
+def GPRInt : ZCPURegClass<[i64], 64, (add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
+def GPRFloat : ZCPURegClass<[f64], 64, (add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
 
-def SegmentRegs : ZCPURegClass<[i32],32, (add CS,SS,DS,ES,GS,FS,KS,LS)>;
+def ExtendedGPRFloat:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
+def ExtendedGPRInt:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
+
+def SegmentRegs : ZCPURegClass<[i64],32, (add CS,SS,DS,ES,GS,FS,KS,LS)>;

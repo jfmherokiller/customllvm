@@ -20,10 +20,10 @@
 
 namespace llvm {
 
-class ZCPUSelectionDAGInfo final : public SelectionDAGTargetInfo {
-public:
-  ~ZCPUSelectionDAGInfo() override;
-};
+    class ZCPUSelectionDAGInfo final : public SelectionDAGTargetInfo {
+    public:
+        ~ZCPUSelectionDAGInfo() override;
+    };
 
 } // end namespace llvm
 

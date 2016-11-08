@@ -15,6 +15,7 @@
 #include "MCTargetDesc/ZCPUMCTargetDesc.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/TargetRegistry.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "zcpu-target-info"
@@ -22,6 +23,6 @@ using namespace llvm;
 Target llvm::TheZCPUTarget32;
 
 extern "C" void LLVMInitializeZCPUTargetInfo() {
-  RegisterTarget<Triple::zcpu> X(TheZCPUTarget32, "zcpu",
+    RegisterTarget<Triple::zcpu> X(TheZCPUTarget32, "zcpu",
                                    "ZCPU");
 }

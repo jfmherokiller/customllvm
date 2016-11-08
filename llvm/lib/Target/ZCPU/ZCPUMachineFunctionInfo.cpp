@@ -14,12 +14,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "ZCPUMachineFunctionInfo.h"
+
 using namespace llvm;
 
 ZCPUFunctionInfo::~ZCPUFunctionInfo() {}
 
 void ZCPUFunctionInfo::initWARegs() {
-  assert(WARegs.empty());
-  unsigned Reg = UnusedReg;
-  WARegs.resize(MF.getRegInfo().getNumVirtRegs(), Reg);
+    assert(WARegs.empty());
+    unsigned Reg = UnusedReg;
+    WARegs.resize(MF.getRegInfo().getNumVirtRegs(), Reg);
 }

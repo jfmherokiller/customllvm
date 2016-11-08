@@ -24,80 +24,82 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 
 namespace {
-class ZCPUAsmBackend final : public MCAsmBackend {
-  bool Is64Bit;
+    class ZCPUAsmBackend final : public MCAsmBackend {
+        bool Is64Bit;
 
-public:
-  explicit ZCPUAsmBackend(bool Is64Bit)
-      : MCAsmBackend(), Is64Bit(Is64Bit) {}
-  ~ZCPUAsmBackend() override {}
+    public:
+        explicit ZCPUAsmBackend(bool Is64Bit)
+                : MCAsmBackend(), Is64Bit(Is64Bit) {}
 
-  void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                  uint64_t Value, bool IsPCRel) const override;
+        ~ZCPUAsmBackend() override {}
 
-  MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override;
+        void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
+                        uint64_t Value, bool IsPCRel) const override;
 
-  // No instruction requires relaxation
-  bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
-                            const MCRelaxableFragment *DF,
-                            const MCAsmLayout &Layout) const override {
-    return false;
-  }
+        MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override;
 
-  unsigned getNumFixupKinds() const override {
-    // We currently just use the generic fixups in MCFixup.h and don't have any
-    // target-specific fixups.
-    return 0;
-  }
+        // No instruction requires relaxation
+        bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
+                                  const MCRelaxableFragment *DF,
+                                  const MCAsmLayout &Layout) const override {
+            return false;
+        }
 
-  bool mayNeedRelaxation(const MCInst &Inst) const override { return false; }
+        unsigned getNumFixupKinds() const override {
+            // We currently just use the generic fixups in MCFixup.h and don't have any
+            // target-specific fixups.
+            return 0;
+        }
 
-  void relaxInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
-                        MCInst &Res) const override {}
+        bool mayNeedRelaxation(const MCInst &Inst) const override { return false; }
 
-  bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override;
-};
+        void relaxInstruction(const MCInst &Inst, const MCSubtargetInfo &STI,
+                              MCInst &Res) const override {}
 
-bool ZCPUAsmBackend::writeNopData(uint64_t Count,
-                                         MCObjectWriter *OW) const {
-  if (Count == 0)
-    return true;
+        bool writeNopData(uint64_t Count, MCObjectWriter *OW) const override;
+    };
 
-  // FIXME: Do something.
-  return false;
-}
+    bool ZCPUAsmBackend::writeNopData(uint64_t Count,
+                                      MCObjectWriter *OW) const {
+        if (Count == 0)
+            return true;
 
-void ZCPUAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
-                                       unsigned DataSize, uint64_t Value,
-                                       bool IsPCRel) const {
-  const MCFixupKindInfo &Info = getFixupKindInfo(Fixup.getKind());
-  assert(Info.Flags == 0 && "ZCPU does not use MCFixupKindInfo flags");
+        // FIXME: Do something.
+        return false;
+    }
 
-  unsigned NumBytes = (Info.TargetSize + 7) / 8;
-  if (Value == 0)
-    return; // Doesn't change encoding.
+    void ZCPUAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
+                                    unsigned DataSize, uint64_t Value,
+                                    bool IsPCRel) const {
+        const MCFixupKindInfo &Info = getFixupKindInfo(Fixup.getKind());
+        assert(Info.Flags == 0 && "ZCPU does not use MCFixupKindInfo flags");
 
-  // Shift the value into position.
-  Value <<= Info.TargetOffset;
+        unsigned NumBytes = (Info.TargetSize + 7) / 8;
+        if (Value == 0)
+            return; // Doesn't change encoding.
 
-  unsigned Offset = Fixup.getOffset();
-  assert(Offset + NumBytes <= DataSize && "Invalid fixup offset!");
+        // Shift the value into position.
+        Value <<= Info.TargetOffset;
 
-  // For each byte of the fragment that the fixup touches, mask in the
-  // bits from the fixup value.
-  for (unsigned i = 0; i != NumBytes; ++i)
-    Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
-}
+        unsigned Offset = Fixup.getOffset();
+        assert(Offset + NumBytes <= DataSize && "Invalid fixup offset!");
 
-MCObjectWriter *
-ZCPUAsmBackend::createObjectWriter(raw_pwrite_stream &OS) const {
-  return createZCPUELFObjectWriter(OS, Is64Bit, 0);
-}
+        // For each byte of the fragment that the fixup touches, mask in the
+        // bits from the fixup value.
+        for (unsigned i = 0; i != NumBytes; ++i)
+            Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
+    }
+
+    MCObjectWriter *
+    ZCPUAsmBackend::createObjectWriter(raw_pwrite_stream &OS) const {
+        return createZCPUELFObjectWriter(OS, Is64Bit, 0);
+    }
 } // end anonymous namespace
 
 MCAsmBackend *llvm::createZCPUAsmBackend(const Triple &TT) {
-  return new ZCPUAsmBackend(TT.isArch64Bit());
+    return new ZCPUAsmBackend(TT.isArch64Bit());
 }

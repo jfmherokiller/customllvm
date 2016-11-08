@@ -17,39 +17,41 @@
 #include "MCTargetDesc/ZCPUMCTargetDesc.h"
 #include "ZCPUInstrInfo.h"
 #include "llvm/Support/TargetRegistry.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "zcpu-subtarget"
 
 #define GET_SUBTARGETINFO_CTOR
 #define GET_SUBTARGETINFO_TARGET_DESC
+
 #include "ZCPUGenSubtargetInfo.inc"
 
 ZCPUSubtarget &
 ZCPUSubtarget::initializeSubtargetDependencies(StringRef FS) {
-  // Determine default and user-specified characteristics
+    // Determine default and user-specified characteristics
 
-  if (CPUString.empty())
-    CPUString = "generic";
+    if (CPUString.empty())
+        CPUString = "generic";
 
-  ParseSubtargetFeatures(CPUString, FS);
-  return *this;
+    ParseSubtargetFeatures(CPUString, FS);
+    return *this;
 }
 
 ZCPUSubtarget::ZCPUSubtarget(const Triple &TT,
-                                           const std::string &CPU,
-                                           const std::string &FS,
-                                           const TargetMachine &TM)
-    : ZCPUGenSubtargetInfo(TT, CPU, FS),
-      CPUString(CPU), TargetTriple(TT), FrameLowering(),
-      InstrInfo(initializeSubtargetDependencies(FS)), TSInfo(),
-      TLInfo(TM, *this) {}
+                             const std::string &CPU,
+                             const std::string &FS,
+                             const TargetMachine &TM)
+        : ZCPUGenSubtargetInfo(TT, CPU, FS),
+          CPUString(CPU), TargetTriple(TT), FrameLowering(),
+          InstrInfo(initializeSubtargetDependencies(FS)), TSInfo(),
+          TLInfo(TM, *this) {}
 
 bool ZCPUSubtarget::enableMachineScheduler() const {
-  // Disable the MachineScheduler for now. Even with ShouldTrackPressure set and
-  // enableMachineSchedDefaultSched overridden, it appears to have an overall
-  // negative effect for the kinds of register optimizations we're doing.
-  return false;
+    // Disable the MachineScheduler for now. Even with ShouldTrackPressure set and
+    // enableMachineSchedDefaultSched overridden, it appears to have an overall
+    // negative effect for the kinds of register optimizations we're doing.
+    return false;
 }
 
 bool ZCPUSubtarget::useAA() const { return true; }

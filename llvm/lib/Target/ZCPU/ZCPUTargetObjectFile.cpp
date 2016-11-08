@@ -15,10 +15,11 @@
 
 #include "ZCPUTargetObjectFile.h"
 #include "ZCPUTargetMachine.h"
+
 using namespace llvm;
 
 void ZCPUTargetObjectFile::Initialize(MCContext &Ctx,
-                                             const TargetMachine &TM) {
-  TargetLoweringObjectFileELF::Initialize(Ctx, TM);
-  InitializeELF(TM.Options.UseInitArray);
+                                      const TargetMachine &TM) {
+    TargetLoweringObjectFileELF::Initialize(Ctx, TM);
+    InitializeELF(TM.Options.UseInitArray);
 }

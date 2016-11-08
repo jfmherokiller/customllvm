@@ -30,6 +30,7 @@
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/Support/Debug.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "wasm-frame-info"
@@ -40,12 +41,12 @@ using namespace llvm;
 /// Return true if the specified function should have a dedicated frame pointer
 /// register.
 bool ZCPUFrameLowering::hasFP(const MachineFunction &MF) const {
-  const MachineFrameInfo *MFI = MF.getFrameInfo();
-  const auto *RegInfo =
-      MF.getSubtarget<ZCPUSubtarget>().getRegisterInfo();
-  return MFI->isFrameAddressTaken() || MFI->hasVarSizedObjects() ||
-         MFI->hasStackMap() || MFI->hasPatchPoint() ||
-         RegInfo->needsStackRealignment(MF);
+    const MachineFrameInfo *MFI = MF.getFrameInfo();
+    const auto *RegInfo =
+            MF.getSubtarget<ZCPUSubtarget>().getRegisterInfo();
+    return MFI->isFrameAddressTaken() || MFI->hasVarSizedObjects() ||
+           MFI->hasStackMap() || MFI->hasPatchPoint() ||
+           RegInfo->needsStackRealignment(MF);
 }
 
 /// Under normal circumstances, when a frame pointer is not required, we reserve
@@ -54,8 +55,8 @@ bool ZCPUFrameLowering::hasFP(const MachineFunction &MF) const {
 /// call sites. Returns true if the call frame is included as part of the stack
 /// frame.
 bool ZCPUFrameLowering::hasReservedCallFrame(
-    const MachineFunction &MF) const {
-  return !MF.getFrameInfo()->hasVarSizedObjects();
+        const MachineFunction &MF) const {
+    return !MF.getFrameInfo()->hasVarSizedObjects();
 }
 
 
@@ -63,32 +64,32 @@ bool ZCPUFrameLowering::hasReservedCallFrame(
 /// Unlike a machine stack pointer, the wasm user stack pointer is a global
 /// variable, so it is loaded into a register in the prolog.
 bool ZCPUFrameLowering::needsSP(const MachineFunction &MF,
-                                       const MachineFrameInfo &MFI) const {
-  return MFI.getStackSize() || MFI.adjustsStack() || hasFP(MF);
+                                const MachineFrameInfo &MFI) const {
+    return MFI.getStackSize() || MFI.adjustsStack() || hasFP(MF);
 }
 
 /// Returns true if the local user-space stack pointer needs to be written back
 /// to memory by this function (this is not meaningful if needsSP is false). If
 /// false, the stack red zone can be used and only a local SP is needed.
 bool ZCPUFrameLowering::needsSPWriteback(
-    const MachineFunction &MF, const MachineFrameInfo &MFI) const {
-  assert(needsSP(MF, MFI));
-  return MFI.getStackSize() > RedZoneSize || MFI.hasCalls() ||
-         MF.getFunction()->hasFnAttribute(Attribute::NoRedZone);
+        const MachineFunction &MF, const MachineFrameInfo &MFI) const {
+    assert(needsSP(MF, MFI));
+    return MFI.getStackSize() > RedZoneSize || MFI.hasCalls() ||
+           MF.getFunction()->hasFnAttribute(Attribute::NoRedZone);
 }
 
 MachineBasicBlock::iterator
 ZCPUFrameLowering::eliminateCallFramePseudoInstr(
-    MachineFunction &MF, MachineBasicBlock &MBB,
-    MachineBasicBlock::iterator I) const {
-  return MBB.erase(I);
+        MachineFunction &MF, MachineBasicBlock &MBB,
+        MachineBasicBlock::iterator I) const {
+    return MBB.erase(I);
 }
 
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
-                                            MachineBasicBlock &MBB) const {
+                                     MachineBasicBlock &MBB) const {
 }
 
 void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
-                                            MachineBasicBlock &MBB) const {
+                                     MachineBasicBlock &MBB) const {
 
 }

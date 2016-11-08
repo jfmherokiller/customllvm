@@ -17,42 +17,48 @@
 #define LLVM_LIB_TARGET_ZCPU_ZCPUREGISTERINFO_H
 
 #define GET_REGINFO_HEADER
+
 #include "ZCPUGenRegisterInfo.inc"
 
 namespace llvm {
 
-class MachineFunction;
-class RegScavenger;
-class TargetRegisterClass;
-class Triple;
+    class MachineFunction;
 
-class ZCPURegisterInfo final : public ZCPUGenRegisterInfo {
-  const Triple &TT;
+    class RegScavenger;
 
-public:
-  explicit ZCPURegisterInfo(const Triple &TT);
+    class TargetRegisterClass;
 
-  // Code Generation virtual methods.
-  const MCPhysReg *getCalleeSavedRegs(const MachineFunction *MF) const override;
-  BitVector getReservedRegs(const MachineFunction &MF) const override;
-  void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
-                           unsigned FIOperandNum,
-                           RegScavenger *RS = nullptr) const override;
+    class Triple;
 
-  // Debug information queries.
-  unsigned getFrameRegister(const MachineFunction &MF) const override;
+    class ZCPURegisterInfo final : public ZCPUGenRegisterInfo {
+        const Triple &TT;
 
-  const TargetRegisterClass *
-  getPointerRegClass(const MachineFunction &MF,
-                     unsigned Kind = 0) const override;
+    public:
+        explicit ZCPURegisterInfo(const Triple &TT);
 
-private:
-    unsigned StackPtr;
+        // Code Generation virtual methods.
+        const MCPhysReg *getCalleeSavedRegs(const MachineFunction *MF) const override;
 
-    /// FramePtr - X86 physical register used as frame ptr.
-    ///
-    unsigned FramePtr;
-};
+        BitVector getReservedRegs(const MachineFunction &MF) const override;
+
+        void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
+                                 unsigned FIOperandNum,
+                                 RegScavenger *RS = nullptr) const override;
+
+        // Debug information queries.
+        unsigned getFrameRegister(const MachineFunction &MF) const override;
+
+        const TargetRegisterClass *
+        getPointerRegClass(const MachineFunction &MF,
+                           unsigned Kind = 0) const override;
+
+    private:
+        unsigned StackPtr;
+
+        /// FramePtr - X86 physical register used as frame ptr.
+        ///
+        unsigned FramePtr;
+    };
 
 } // end namespace llvm
 

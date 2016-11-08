@@ -20,10 +20,10 @@
 
 namespace llvm {
 
-class ZCPUTargetObjectFile final : public TargetLoweringObjectFileELF {
-public:
-  void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
-};
+    class ZCPUTargetObjectFile final : public TargetLoweringObjectFileELF {
+    public:
+        void Initialize(MCContext &Ctx, const TargetMachine &TM) override;
+    };
 
 } // end namespace llvm
 

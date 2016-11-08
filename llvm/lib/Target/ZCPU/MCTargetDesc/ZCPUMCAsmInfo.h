@@ -19,13 +19,14 @@
 
 namespace llvm {
 
-class Triple;
+    class Triple;
 
-class ZCPUMCAsmInfo final : public MCAsmInfoELF {
-public:
-  explicit ZCPUMCAsmInfo(const Triple &T);
-  ~ZCPUMCAsmInfo() override;
-};
+    class ZCPUMCAsmInfo final : public MCAsmInfoELF {
+    public:
+        explicit ZCPUMCAsmInfo(const Triple &T);
+
+        ~ZCPUMCAsmInfo() override;
+    };
 
 } // end namespace llvm
 

@@ -37,279 +37,298 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Operator.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "zcpu-fastisel"
 
 namespace {
 
-class ZCPUFastISel final : public FastISel {
-  // All possible address modes.
-  class Address {
-  public:
-    typedef enum { RegBase, FrameIndexBase } BaseKind;
+    class ZCPUFastISel final : public FastISel {
+        // All possible address modes.
+        class Address {
+        public:
+            typedef enum {
+                RegBase, FrameIndexBase
+            } BaseKind;
 
-  private:
-    BaseKind Kind;
-    union {
-      unsigned Reg;
-      int FI;
-    } Base;
+        private:
+            BaseKind Kind;
+            union {
+                unsigned Reg;
+                int FI;
+            } Base;
 
-    int64_t Offset;
+            int64_t Offset;
 
-    const GlobalValue *GV;
+            const GlobalValue *GV;
 
-  public:
-    // Innocuous defaults for our address.
-    Address() : Kind(RegBase), Offset(0), GV(0) { Base.Reg = 0; }
-    void setKind(BaseKind K) { Kind = K; }
-    BaseKind getKind() const { return Kind; }
-    bool isRegBase() const { return Kind == RegBase; }
-    bool isFIBase() const { return Kind == FrameIndexBase; }
-    void setReg(unsigned Reg) {
-      assert(isRegBase() && "Invalid base register access!");
-      Base.Reg = Reg;
-    }
-    unsigned getReg() const {
-      assert(isRegBase() && "Invalid base register access!");
-      return Base.Reg;
-    }
-    void setFI(unsigned FI) {
-      assert(isFIBase() && "Invalid base frame index access!");
-      Base.FI = FI;
-    }
-    unsigned getFI() const {
-      assert(isFIBase() && "Invalid base frame index access!");
-      return Base.FI;
-    }
+        public:
+            // Innocuous defaults for our address.
+            Address() : Kind(RegBase), Offset(0), GV(0) { Base.Reg = 0; }
 
-    void setOffset(int64_t Offset_) { Offset = Offset_; }
-    int64_t getOffset() const { return Offset; }
-    void setGlobalValue(const GlobalValue *G) { GV = G; }
-    const GlobalValue *getGlobalValue() const { return GV; }
-  };
+            void setKind(BaseKind K) { Kind = K; }
 
-  /// Keep a pointer to the ZCPUSubtarget around so that we can make the
-  /// right decision when generating code for different targets.
-  const ZCPUSubtarget *Subtarget;
-  LLVMContext *Context;
+            BaseKind getKind() const { return Kind; }
 
-private:
-  // Utility helper routines
-  MVT::SimpleValueType getSimpleType(Type *Ty) {
-    EVT VT = TLI.getValueType(DL, Ty, /*HandleUnknown=*/true);
-    return VT.isSimple() ? VT.getSimpleVT().SimpleTy :
-                           MVT::INVALID_SIMPLE_VALUE_TYPE;
-  }
-  MVT::SimpleValueType getLegalType(MVT::SimpleValueType VT) {
-    switch (VT) {
-    case MVT::i1:
-    case MVT::i8:
-    case MVT::i16:
-      return MVT::i32;
-    case MVT::i32:
-    case MVT::i64:
-    case MVT::f32:
-    case MVT::f64:
-      return VT;
-    default:
-      break;
-    }
-    return MVT::INVALID_SIMPLE_VALUE_TYPE;
-  }
-  bool computeAddress(const Value *Obj, Address &Addr);
+            bool isRegBase() const { return Kind == RegBase; }
 
-  // Backend specific FastISel code.
-  unsigned fastMaterializeAlloca(const AllocaInst *AI) override;
-  unsigned fastMaterializeConstant(const Constant *C) override;
-  bool fastLowerArguments() override;
+            bool isFIBase() const { return Kind == FrameIndexBase; }
 
-public:
-  // Backend specific FastISel code.
-  ZCPUFastISel(FunctionLoweringInfo &FuncInfo,
-                      const TargetLibraryInfo *LibInfo)
-      : FastISel(FuncInfo, LibInfo, /*SkipTargetIndependentISel=*/true) {
-    Subtarget = &FuncInfo.MF->getSubtarget<ZCPUSubtarget>();
-    Context = &FuncInfo.Fn->getContext();
-  }
+            void setReg(unsigned Reg) {
+                assert(isRegBase() && "Invalid base register access!");
+                Base.Reg = Reg;
+            }
 
-  bool fastSelectInstruction(const Instruction *I) override;
+            unsigned getReg() const {
+                assert(isRegBase() && "Invalid base register access!");
+                return Base.Reg;
+            }
+
+            void setFI(unsigned FI) {
+                assert(isFIBase() && "Invalid base frame index access!");
+                Base.FI = FI;
+            }
+
+            unsigned getFI() const {
+                assert(isFIBase() && "Invalid base frame index access!");
+                return Base.FI;
+            }
+
+            void setOffset(int64_t Offset_) { Offset = Offset_; }
+
+            int64_t getOffset() const { return Offset; }
+
+            void setGlobalValue(const GlobalValue *G) { GV = G; }
+
+            const GlobalValue *getGlobalValue() const { return GV; }
+        };
+
+        /// Keep a pointer to the ZCPUSubtarget around so that we can make the
+        /// right decision when generating code for different targets.
+        const ZCPUSubtarget *Subtarget;
+        LLVMContext *Context;
+
+    private:
+        // Utility helper routines
+        MVT::SimpleValueType getSimpleType(Type *Ty) {
+            EVT VT = TLI.getValueType(DL, Ty, /*HandleUnknown=*/true);
+            return VT.isSimple() ? VT.getSimpleVT().SimpleTy :
+                   MVT::INVALID_SIMPLE_VALUE_TYPE;
+        }
+
+        MVT::SimpleValueType getLegalType(MVT::SimpleValueType VT) {
+            switch (VT) {
+                case MVT::i1:
+                case MVT::i8:
+                case MVT::i16:
+                    return MVT::i32;
+                case MVT::i32:
+                case MVT::i64:
+                case MVT::f32:
+                case MVT::f64:
+                    return VT;
+                default:
+                    break;
+            }
+            return MVT::INVALID_SIMPLE_VALUE_TYPE;
+        }
+
+        bool computeAddress(const Value *Obj, Address &Addr);
+
+        // Backend specific FastISel code.
+        unsigned fastMaterializeAlloca(const AllocaInst *AI) override;
+
+        unsigned fastMaterializeConstant(const Constant *C) override;
+
+        bool fastLowerArguments() override;
+
+    public:
+        // Backend specific FastISel code.
+        ZCPUFastISel(FunctionLoweringInfo &FuncInfo,
+                     const TargetLibraryInfo *LibInfo)
+                : FastISel(FuncInfo, LibInfo, /*SkipTargetIndependentISel=*/true) {
+            Subtarget = &FuncInfo.MF->getSubtarget<ZCPUSubtarget>();
+            Context = &FuncInfo.Fn->getContext();
+        }
+
+        bool fastSelectInstruction(const Instruction *I) override;
 
 #include "ZCPUGenFastISel.inc"
-};
+    };
 
 } // end anonymous namespace
 
 bool ZCPUFastISel::computeAddress(const Value *Obj, Address &Addr) {
 
-  const User *U = nullptr;
-  unsigned Opcode = Instruction::UserOp1;
-  if (const Instruction *I = dyn_cast<Instruction>(Obj)) {
-    // Don't walk into other basic blocks unless the object is an alloca from
-    // another block, otherwise it may not have a virtual register assigned.
-    if (FuncInfo.StaticAllocaMap.count(static_cast<const AllocaInst *>(Obj)) ||
-        FuncInfo.MBBMap[I->getParent()] == FuncInfo.MBB) {
-      Opcode = I->getOpcode();
-      U = I;
-    }
-  } else if (const ConstantExpr *C = dyn_cast<ConstantExpr>(Obj)) {
-    Opcode = C->getOpcode();
-    U = C;
-  }
-
-  if (auto *Ty = dyn_cast<PointerType>(Obj->getType()))
-    if (Ty->getAddressSpace() > 255)
-      // Fast instruction selection doesn't support the special
-      // address spaces.
-      return false;
-
-  if (const GlobalValue *GV = dyn_cast<GlobalValue>(Obj)) {
-    if (Addr.getGlobalValue())
-      return false;
-    Addr.setGlobalValue(GV);
-    return true;
-  }
-
-  switch (Opcode) {
-  default:
-    break;
-  case Instruction::BitCast: {
-    // Look through bitcasts.
-    return computeAddress(U->getOperand(0), Addr);
-  }
-  case Instruction::IntToPtr: {
-    // Look past no-op inttoptrs.
-    if (TLI.getValueType(DL, U->getOperand(0)->getType()) ==
-        TLI.getPointerTy(DL))
-      return computeAddress(U->getOperand(0), Addr);
-    break;
-  }
-  case Instruction::PtrToInt: {
-    // Look past no-op ptrtoints.
-    if (TLI.getValueType(DL, U->getType()) == TLI.getPointerTy(DL))
-      return computeAddress(U->getOperand(0), Addr);
-    break;
-  }
-  case Instruction::GetElementPtr: {
-    Address SavedAddr = Addr;
-    uint64_t TmpOffset = Addr.getOffset();
-    // Iterate through the GEP folding the constants into offsets where
-    // we can.
-    for (gep_type_iterator GTI = gep_type_begin(U), E = gep_type_end(U);
-         GTI != E; ++GTI) {
-      const Value *Op = GTI.getOperand();
-      if (StructType *STy = dyn_cast<StructType>(*GTI)) {
-        const StructLayout *SL = DL.getStructLayout(STy);
-        unsigned Idx = cast<ConstantInt>(Op)->getZExtValue();
-        TmpOffset += SL->getElementOffset(Idx);
-      } else {
-        uint64_t S = DL.getTypeAllocSize(GTI.getIndexedType());
-        for (;;) {
-          if (const ConstantInt *CI = dyn_cast<ConstantInt>(Op)) {
-            // Constant-offset addressing.
-            TmpOffset += CI->getSExtValue() * S;
-            break;
-          }
-          if (S == 1 && Addr.isRegBase() && Addr.getReg() == 0) {
-            // An unscaled add of a register. Set it as the new base.
-            Addr.setReg(getRegForValue(Op));
-            break;
-          }
-          if (canFoldAddIntoGEP(U, Op)) {
-            // A compatible add with a constant operand. Fold the constant.
-            ConstantInt *CI =
-                cast<ConstantInt>(cast<AddOperator>(Op)->getOperand(1));
-            TmpOffset += CI->getSExtValue() * S;
-            // Iterate on the other operand.
-            Op = cast<AddOperator>(Op)->getOperand(0);
-            continue;
-          }
-          // Unsupported
-          goto unsupported_gep;
+    const User *U = nullptr;
+    unsigned Opcode = Instruction::UserOp1;
+    if (const Instruction *I = dyn_cast<Instruction>(Obj)) {
+        // Don't walk into other basic blocks unless the object is an alloca from
+        // another block, otherwise it may not have a virtual register assigned.
+        if (FuncInfo.StaticAllocaMap.count(static_cast<const AllocaInst *>(Obj)) ||
+            FuncInfo.MBBMap[I->getParent()] == FuncInfo.MBB) {
+            Opcode = I->getOpcode();
+            U = I;
         }
-      }
-    }
-    // Try to grab the base operand now.
-    Addr.setOffset(TmpOffset);
-    if (computeAddress(U->getOperand(0), Addr))
-      return true;
-    // We failed, restore everything and try the other options.
-    Addr = SavedAddr;
-  unsupported_gep:
-    break;
-  }
-  case Instruction::Alloca: {
-    const AllocaInst *AI = cast<AllocaInst>(Obj);
-    DenseMap<const AllocaInst *, int>::iterator SI =
-        FuncInfo.StaticAllocaMap.find(AI);
-    if (SI != FuncInfo.StaticAllocaMap.end()) {
-      Addr.setKind(Address::FrameIndexBase);
-      Addr.setFI(SI->second);
-      return true;
-    }
-    break;
-  }
-  case Instruction::Add: {
-    // Adds of constants are common and easy enough.
-    const Value *LHS = U->getOperand(0);
-    const Value *RHS = U->getOperand(1);
-
-    if (isa<ConstantInt>(LHS))
-      std::swap(LHS, RHS);
-
-    if (const ConstantInt *CI = dyn_cast<ConstantInt>(RHS)) {
-      Addr.setOffset(Addr.getOffset() + CI->getSExtValue());
-      return computeAddress(LHS, Addr);
+    } else if (const ConstantExpr *C = dyn_cast<ConstantExpr>(Obj)) {
+        Opcode = C->getOpcode();
+        U = C;
     }
 
-    Address Backup = Addr;
-    if (computeAddress(LHS, Addr) && computeAddress(RHS, Addr))
-      return true;
-    Addr = Backup;
+    if (auto *Ty = dyn_cast<PointerType>(Obj->getType()))
+        if (Ty->getAddressSpace() > 255)
+            // Fast instruction selection doesn't support the special
+            // address spaces.
+            return false;
 
-    break;
-  }
-  case Instruction::Sub: {
-    // Subs of constants are common and easy enough.
-    const Value *LHS = U->getOperand(0);
-    const Value *RHS = U->getOperand(1);
-
-    if (const ConstantInt *CI = dyn_cast<ConstantInt>(RHS)) {
-      Addr.setOffset(Addr.getOffset() - CI->getSExtValue());
-      return computeAddress(LHS, Addr);
+    if (const GlobalValue *GV = dyn_cast<GlobalValue>(Obj)) {
+        if (Addr.getGlobalValue())
+            return false;
+        Addr.setGlobalValue(GV);
+        return true;
     }
-    break;
-  }
-  }
-  Addr.setReg(getRegForValue(Obj));
-  return Addr.getReg() != 0;
+
+    switch (Opcode) {
+        default:
+            break;
+        case Instruction::BitCast: {
+            // Look through bitcasts.
+            return computeAddress(U->getOperand(0), Addr);
+        }
+        case Instruction::IntToPtr: {
+            // Look past no-op inttoptrs.
+            if (TLI.getValueType(DL, U->getOperand(0)->getType()) ==
+                TLI.getPointerTy(DL))
+                return computeAddress(U->getOperand(0), Addr);
+            break;
+        }
+        case Instruction::PtrToInt: {
+            // Look past no-op ptrtoints.
+            if (TLI.getValueType(DL, U->getType()) == TLI.getPointerTy(DL))
+                return computeAddress(U->getOperand(0), Addr);
+            break;
+        }
+        case Instruction::GetElementPtr: {
+            Address SavedAddr = Addr;
+            uint64_t TmpOffset = Addr.getOffset();
+            // Iterate through the GEP folding the constants into offsets where
+            // we can.
+            for (gep_type_iterator GTI = gep_type_begin(U), E = gep_type_end(U);
+                 GTI != E; ++GTI) {
+                const Value *Op = GTI.getOperand();
+                if (StructType *STy = dyn_cast<StructType>(*GTI)) {
+                    const StructLayout *SL = DL.getStructLayout(STy);
+                    unsigned Idx = cast<ConstantInt>(Op)->getZExtValue();
+                    TmpOffset += SL->getElementOffset(Idx);
+                } else {
+                    uint64_t S = DL.getTypeAllocSize(GTI.getIndexedType());
+                    for (;;) {
+                        if (const ConstantInt *CI = dyn_cast<ConstantInt>(Op)) {
+                            // Constant-offset addressing.
+                            TmpOffset += CI->getSExtValue() * S;
+                            break;
+                        }
+                        if (S == 1 && Addr.isRegBase() && Addr.getReg() == 0) {
+                            // An unscaled add of a register. Set it as the new base.
+                            Addr.setReg(getRegForValue(Op));
+                            break;
+                        }
+                        if (canFoldAddIntoGEP(U, Op)) {
+                            // A compatible add with a constant operand. Fold the constant.
+                            ConstantInt *CI =
+                                    cast<ConstantInt>(cast<AddOperator>(Op)->getOperand(1));
+                            TmpOffset += CI->getSExtValue() * S;
+                            // Iterate on the other operand.
+                            Op = cast<AddOperator>(Op)->getOperand(0);
+                            continue;
+                        }
+                        // Unsupported
+                        goto unsupported_gep;
+                    }
+                }
+            }
+            // Try to grab the base operand now.
+            Addr.setOffset(TmpOffset);
+            if (computeAddress(U->getOperand(0), Addr))
+                return true;
+            // We failed, restore everything and try the other options.
+            Addr = SavedAddr;
+            unsupported_gep:
+            break;
+        }
+        case Instruction::Alloca: {
+            const AllocaInst *AI = cast<AllocaInst>(Obj);
+            DenseMap<const AllocaInst *, int>::iterator SI =
+                    FuncInfo.StaticAllocaMap.find(AI);
+            if (SI != FuncInfo.StaticAllocaMap.end()) {
+                Addr.setKind(Address::FrameIndexBase);
+                Addr.setFI(SI->second);
+                return true;
+            }
+            break;
+        }
+        case Instruction::Add: {
+            // Adds of constants are common and easy enough.
+            const Value *LHS = U->getOperand(0);
+            const Value *RHS = U->getOperand(1);
+
+            if (isa<ConstantInt>(LHS))
+                std::swap(LHS, RHS);
+
+            if (const ConstantInt *CI = dyn_cast<ConstantInt>(RHS)) {
+                Addr.setOffset(Addr.getOffset() + CI->getSExtValue());
+                return computeAddress(LHS, Addr);
+            }
+
+            Address Backup = Addr;
+            if (computeAddress(LHS, Addr) && computeAddress(RHS, Addr))
+                return true;
+            Addr = Backup;
+
+            break;
+        }
+        case Instruction::Sub: {
+            // Subs of constants are common and easy enough.
+            const Value *LHS = U->getOperand(0);
+            const Value *RHS = U->getOperand(1);
+
+            if (const ConstantInt *CI = dyn_cast<ConstantInt>(RHS)) {
+                Addr.setOffset(Addr.getOffset() - CI->getSExtValue());
+                return computeAddress(LHS, Addr);
+            }
+            break;
+        }
+    }
+    Addr.setReg(getRegForValue(Obj));
+    return Addr.getReg() != 0;
 }
 
 unsigned ZCPUFastISel::fastMaterializeAlloca(const AllocaInst *AI) {
-  return 0;
+    return 0;
 }
 
 unsigned ZCPUFastISel::fastMaterializeConstant(const Constant *C) {
-  return 0;
+    return 0;
 }
 
 bool ZCPUFastISel::fastLowerArguments() {
-  if (!FuncInfo.CanLowerReturn)
-    return false;
-  return true;
+    if (!FuncInfo.CanLowerReturn)
+        return false;
+    return true;
 }
 
 bool ZCPUFastISel::fastSelectInstruction(const Instruction *I) {
-  switch (I->getOpcode()) {
-  default: break;
-  }
+    switch (I->getOpcode()) {
+        default:
+            break;
+    }
 
-  // Fall back to target-independent instruction selection.
-  return selectOperator(I, I->getOpcode());
+    // Fall back to target-independent instruction selection.
+    return selectOperator(I, I->getOpcode());
 }
 
 FastISel *ZCPU::createFastISel(FunctionLoweringInfo &FuncInfo,
-                                      const TargetLibraryInfo *LibInfo) {
-  return new ZCPUFastISel(FuncInfo, LibInfo);
+                               const TargetLibraryInfo *LibInfo) {
+    return new ZCPUFastISel(FuncInfo, LibInfo);
 }

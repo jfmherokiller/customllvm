@@ -26,53 +26,58 @@
 
 namespace llvm {
 
-class ZCPUTTIImpl final : public BasicTTIImplBase<ZCPUTTIImpl> {
-  typedef BasicTTIImplBase<ZCPUTTIImpl> BaseT;
-  typedef TargetTransformInfo TTI;
-  friend BaseT;
+    class ZCPUTTIImpl final : public BasicTTIImplBase<ZCPUTTIImpl> {
+        typedef BasicTTIImplBase<ZCPUTTIImpl> BaseT;
+        typedef TargetTransformInfo TTI;
+        friend BaseT;
 
-  const ZCPUSubtarget *ST;
-  const ZCPUTargetLowering *TLI;
+        const ZCPUSubtarget *ST;
+        const ZCPUTargetLowering *TLI;
 
-  const ZCPUSubtarget *getST() const { return ST; }
-  const ZCPUTargetLowering *getTLI() const { return TLI; }
+        const ZCPUSubtarget *getST() const { return ST; }
 
-public:
-  ZCPUTTIImpl(const ZCPUTargetMachine *TM, const Function &F)
-      : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
-        TLI(ST->getTargetLowering()) {}
+        const ZCPUTargetLowering *getTLI() const { return TLI; }
 
-  // Provide value semantics. MSVC requires that we spell all of these out.
-  ZCPUTTIImpl(const ZCPUTTIImpl &Arg)
-      : BaseT(static_cast<const BaseT &>(Arg)), ST(Arg.ST), TLI(Arg.TLI) {}
-  ZCPUTTIImpl(ZCPUTTIImpl &&Arg)
-      : BaseT(std::move(static_cast<BaseT &>(Arg))), ST(std::move(Arg.ST)),
-        TLI(std::move(Arg.TLI)) {}
+    public:
+        ZCPUTTIImpl(const ZCPUTargetMachine *TM, const Function &F)
+                : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
+                  TLI(ST->getTargetLowering()) {}
 
-  /// \name Scalar TTI Implementations
-  /// @{
+        // Provide value semantics. MSVC requires that we spell all of these out.
+        ZCPUTTIImpl(const ZCPUTTIImpl &Arg)
+                : BaseT(static_cast<const BaseT &>(Arg)), ST(Arg.ST), TLI(Arg.TLI) {}
 
-  // TODO: Implement more Scalar TTI for ZCPU
+        ZCPUTTIImpl(ZCPUTTIImpl &&Arg)
+                : BaseT(std::move(static_cast<BaseT &>(Arg))), ST(std::move(Arg.ST)),
+                  TLI(std::move(Arg.TLI)) {}
 
-  TTI::PopcntSupportKind getPopcntSupport(unsigned TyWidth) const;
+        /// \name Scalar TTI Implementations
+        /// @{
 
-  /// @}
+        // TODO: Implement more Scalar TTI for ZCPU
 
-  /// \name Vector TTI Implementations
-  /// @{
+        TTI::PopcntSupportKind getPopcntSupport(unsigned TyWidth) const;
 
-  unsigned getNumberOfRegisters(bool Vector);
-  unsigned getRegisterBitWidth(bool Vector);
-  unsigned getArithmeticInstrCost(
-      unsigned Opcode, Type *Ty,
-      TTI::OperandValueKind Opd1Info = TTI::OK_AnyValue,
-      TTI::OperandValueKind Opd2Info = TTI::OK_AnyValue,
-      TTI::OperandValueProperties Opd1PropInfo = TTI::OP_None,
-      TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None);
-  unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
+        /// @}
 
-  /// @}
-};
+        /// \name Vector TTI Implementations
+        /// @{
+
+        unsigned getNumberOfRegisters(bool Vector);
+
+        unsigned getRegisterBitWidth(bool Vector);
+
+        unsigned getArithmeticInstrCost(
+                unsigned Opcode, Type *Ty,
+                TTI::OperandValueKind Opd1Info = TTI::OK_AnyValue,
+                TTI::OperandValueKind Opd2Info = TTI::OK_AnyValue,
+                TTI::OperandValueProperties Opd1PropInfo = TTI::OP_None,
+                TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None);
+
+        unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
+
+        /// @}
+    };
 
 } // end namespace llvm
 

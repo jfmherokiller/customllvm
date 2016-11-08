@@ -20,15 +20,16 @@
 
 namespace llvm {
 
-class ZCPUTargetMachine;
-class FunctionPass;
+    class ZCPUTargetMachine;
+
+    class FunctionPass;
 
 // LLVM IR passes.
-FunctionPass *createZCPUOptimizeReturned();
+    FunctionPass *createZCPUOptimizeReturned();
 
 // ISel and immediate followup passes.
-FunctionPass *createZCPUISelDag(ZCPUTargetMachine &TM,
-                                       CodeGenOpt::Level OptLevel);
+    FunctionPass *createZCPUISelDag(ZCPUTargetMachine &TM,
+                                    CodeGenOpt::Level OptLevel);
 } // end namespace llvm
 
 #endif

@@ -10,21 +10,21 @@ tablegen(LLVM ZCPUGenSubtargetInfo.inc -gen-subtarget)
 add_public_tablegen_target(ZCPUCommonTableGen)
 
 add_llvm_target(ZCPUCodeGen
-  ZCPUAsmPrinter.cpp
-  ZCPUFastISel.cpp
-  ZCPUFrameLowering.cpp
-  ZCPUISelDAGToDAG.cpp
-  ZCPUISelLowering.cpp
-  ZCPUInstrInfo.cpp
-  ZCPUMachineFunctionInfo.cpp
-  ZCPUMCInstLower.cpp
-  ZCPURegisterInfo.cpp
-  ZCPUSelectionDAGInfo.cpp
-  ZCPUSubtarget.cpp
-  ZCPUTargetMachine.cpp
-  ZCPUTargetObjectFile.cpp
-  ZCPUTargetTransformInfo.cpp
-)
+        ZCPUAsmPrinter.cpp
+        ZCPUFastISel.cpp
+        ZCPUFrameLowering.cpp
+        ZCPUISelDAGToDAG.cpp
+        ZCPUISelLowering.cpp
+        ZCPUInstrInfo.cpp
+        ZCPUMachineFunctionInfo.cpp
+        ZCPUMCInstLower.cpp
+        ZCPURegisterInfo.cpp
+        ZCPUSelectionDAGInfo.cpp
+        ZCPUSubtarget.cpp
+        ZCPUTargetMachine.cpp
+        ZCPUTargetObjectFile.cpp
+        ZCPUTargetTransformInfo.cpp
+        )
 
 add_dependencies(LLVMZCPUCodeGen intrinsics_gen)
 

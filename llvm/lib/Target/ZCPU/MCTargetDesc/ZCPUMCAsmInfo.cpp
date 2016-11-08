@@ -15,6 +15,7 @@
 
 #include "ZCPUMCAsmInfo.h"
 #include "llvm/ADT/Triple.h"
+
 using namespace llvm;
 
 #define DEBUG_TYPE "zcpu-mc-asm-info"
@@ -22,32 +23,32 @@ using namespace llvm;
 ZCPUMCAsmInfo::~ZCPUMCAsmInfo() {}
 
 ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
-  PointerSize = CalleeSaveStackSlotSize = 48;
+    HasSingleParameterDotFile = false;
+    PointerSize = 64;
+    CalleeSaveStackSlotSize = 64;
+    GlobalDirective = "//.globl";
+    UseDataRegionDirectives = false;
 
-  // TODO: What should MaxInstLength be?
 
-  UseDataRegionDirectives = true;
+    // Use .skip instead of .zero because .zero is confusing when used with two
+    // arguments (it doesn't actually zero things out).
+    ZeroDirective = "\tZAP\t";
 
-  // Use .skip instead of .zero because .zero is confusing when used with two
-  // arguments (it doesn't actually zero things out).
-  ZeroDirective = "\t.skip\t";
+    Data8bitsDirective = "\tINT48\t";
+    Data16bitsDirective = "\tINT48\t";
+    Data32bitsDirective = "\tINT48\t";
+    Data64bitsDirective = "\tINT48\t";
+    CommentString = "//";
+    AlignmentIsInBytes = false;
+    HasDotTypeDotSizeDirective = false;
+    AsciiDirective = "DB";
+    AscizDirective = "DB";
+    SupportsDebugInformation = false;
 
-  Data8bitsDirective = "\t.int8\t";
-  Data16bitsDirective = "\t.int16\t";
-  Data32bitsDirective = "\t.int32\t";
-  Data64bitsDirective = "\t.int64\t";
+    // For now, ZCPU does not support exceptions.
+    ExceptionsType = ExceptionHandling::None;
 
-  AlignmentIsInBytes = false;
-  COMMDirectiveAlignmentIsInBytes = false;
-  LCOMMDirectiveAlignmentType = LCOMM::Log2Alignment;
-
-  SupportsDebugInformation = true;
-
-  // For now, ZCPU does not support exceptions.
-  ExceptionsType = ExceptionHandling::None;
-
-  // TODO: UseIntegratedAssembler?
-
-  // ZCPU's stack is never executable.
-  UsesNonexecutableStackSection = false;
+    // ZCPU's stack is never executable.
+    UsesNonexecutableStackSection = false;
+    NeedsLocalForSize = false;
 }

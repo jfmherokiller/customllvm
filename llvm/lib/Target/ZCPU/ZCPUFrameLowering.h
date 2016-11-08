@@ -19,37 +19,40 @@
 #include "llvm/Target/TargetFrameLowering.h"
 
 namespace llvm {
-class MachineFrameInfo;
+    class MachineFrameInfo;
 
-class ZCPUFrameLowering final : public TargetFrameLowering {
- public:
-  /// Size of the red zone for the user stack (leaf functions can use this much
-  /// space below the stack pointer without writing it back to memory).
-  // TODO: (ABI) Revisit and decide how large it should be.
-  static const size_t RedZoneSize = 128;
+    class ZCPUFrameLowering final : public TargetFrameLowering {
+    public:
+        /// Size of the red zone for the user stack (leaf functions can use this much
+        /// space below the stack pointer without writing it back to memory).
+        // TODO: (ABI) Revisit and decide how large it should be.
+        static const size_t RedZoneSize = 128;
 
-  ZCPUFrameLowering()
-      : TargetFrameLowering(StackGrowsDown, /*StackAlignment=*/16,
-                            /*LocalAreaOffset=*/0,
-                            /*TransientStackAlignment=*/16,
-                            /*StackRealignable=*/true) {}
+        ZCPUFrameLowering()
+                : TargetFrameLowering(StackGrowsDown, /*StackAlignment=*/16,
+                /*LocalAreaOffset=*/0,
+                /*TransientStackAlignment=*/16,
+                /*StackRealignable=*/true) {}
 
-  MachineBasicBlock::iterator eliminateCallFramePseudoInstr(
-      MachineFunction &MF, MachineBasicBlock &MBB,
-      MachineBasicBlock::iterator I) const override;
+        MachineBasicBlock::iterator eliminateCallFramePseudoInstr(
+                MachineFunction &MF, MachineBasicBlock &MBB,
+                MachineBasicBlock::iterator I) const override;
 
-  /// These methods insert prolog and epilog code into the function.
-  void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
-  void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
+        /// These methods insert prolog and epilog code into the function.
+        void emitPrologue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
 
-  bool hasFP(const MachineFunction &MF) const override;
-  bool hasReservedCallFrame(const MachineFunction &MF) const override;
+        void emitEpilogue(MachineFunction &MF, MachineBasicBlock &MBB) const override;
 
- private:
-  bool needsSP(const MachineFunction &MF, const MachineFrameInfo &MFI) const;
-  bool needsSPWriteback(const MachineFunction &MF,
-                        const MachineFrameInfo &MFI) const;
-};
+        bool hasFP(const MachineFunction &MF) const override;
+
+        bool hasReservedCallFrame(const MachineFunction &MF) const override;
+
+    private:
+        bool needsSP(const MachineFunction &MF, const MachineFrameInfo &MFI) const;
+
+        bool needsSPWriteback(const MachineFunction &MF,
+                              const MachineFrameInfo &MFI) const;
+    };
 
 }  // end namespace llvm
 

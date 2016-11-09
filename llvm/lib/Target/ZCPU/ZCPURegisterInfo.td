@@ -98,29 +98,20 @@ def TimerAddress: ZCPUReg<"TimerAddress">; //67 Number of external interrupt to 
 
 def RM: ZCPUReg<"RM">;
 
-def FP32 : ZCPUReg<"%FP32">;
-def FP64 : ZCPUReg<"%FP64">;
-def SP32 : ZCPUReg<"%SP32">;
-def SP64 : ZCPUReg<"%SP64">;
 
 // The register allocation framework requires register classes have at least
 // one register, so we define a few for the floating point register classes
 // since we otherwise don't need a physical register in those classes.
-def F32_0 : ZCPUReg<"%f32.0">;
-def F64_0 : ZCPUReg<"%f64.0">;
 
 
 //===----------------------------------------------------------------------===//
 //  Register classes
 //===----------------------------------------------------------------------===//
 
-def I32 : ZCPURegClass<[i32], 32, (add FP32, SP32,ESP,EAX, (sequence "R%u", 0, 31))>;
-def I64 : ZCPURegClass<[i64], 64, (add FP64, SP64)>;
-def F32 : ZCPURegClass<[f32], 32, (add F32_0)>;
-def F64 : ZCPURegClass<[f64], 64, (add F64_0)>;
+
 def GPRInt : ZCPURegClass<[i64], 64, (add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
 def GPRFloat : ZCPURegClass<[f64], 64, (add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
-
+def BothNormAndExtended: ZCPURegClass<[i64],64,(add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
 def ExtendedGPRFloat:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
 def ExtendedGPRInt:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
 

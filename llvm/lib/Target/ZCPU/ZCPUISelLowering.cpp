@@ -48,28 +48,28 @@ ZCPUTargetLowering::ZCPUTargetLowering(
     // We don't know the microarchitecture here, so just reduce register pressure.
     setSchedulingPreference(Sched::RegPressure);
     // Tell ISel that we have a stack pointer.
-    //setStackPointerRegisterToSaveRestore(
-    //Subtarget->hasAddr64() ? ZCPU::SP64 : ZCPU::SP32);
-    // Set up the register classes.
-    addRegisterClass(MVT::i32, &ZCPU::I32RegClass);
-    addRegisterClass(MVT::i64, &ZCPU::I64RegClass);
-    addRegisterClass(MVT::f32, &ZCPU::F32RegClass);
-    addRegisterClass(MVT::f64, &ZCPU::F64RegClass);
+    setStackPointerRegisterToSaveRestore(ZCPU::ESP);
+    addRegisterClass(MVT::i64, &ZCPU::GPRIntRegClass);
+    addRegisterClass(MVT::i64,&ZCPU::SegmentRegsRegClass);
+    addRegisterClass(MVT::i64,&ZCPU::ExtendedGPRIntRegClass);
+    addRegisterClass(MVT::f64, &ZCPU::GPRFloatRegClass);
+    addRegisterClass(MVT::f64,&ZCPU::ExtendedGPRFloatRegClass);
+
     // Compute derived properties from the register classes.
     computeRegisterProperties(Subtarget->getRegisterInfo());
 
-    setOperationAction(ISD::GlobalAddress, MVTPtr, Custom);
-    setOperationAction(ISD::ExternalSymbol, MVTPtr, Custom);
-    setOperationAction(ISD::JumpTable, MVTPtr, Custom);
-    setOperationAction(ISD::BlockAddress, MVTPtr, Custom);
-    setOperationAction(ISD::BRIND, MVT::Other, Custom);
+    //setOperationAction(ISD::GlobalAddress, MVTPtr, Custom);
+    //setOperationAction(ISD::ExternalSymbol, MVTPtr, Custom);
+    //setOperationAction(ISD::JumpTable, MVTPtr, Custom);
+    //setOperationAction(ISD::BlockAddress, MVTPtr, Custom);
+    //setOperationAction(ISD::BRIND, MVT::Other, Custom);
 
     // Take the default expansion for va_arg, va_copy, and va_end. There is no
     // default action for va_start, so we do that custom.
-    setOperationAction(ISD::VASTART, MVT::Other, Custom);
-    setOperationAction(ISD::VAARG, MVT::Other, Expand);
-    setOperationAction(ISD::VACOPY, MVT::Other, Expand);
-    setOperationAction(ISD::VAEND, MVT::Other, Expand);
+    //setOperationAction(ISD::VASTART, MVT::Other, Custom);
+    //setOperationAction(ISD::VAARG, MVT::Other, Expand);
+    //setOperationAction(ISD::VACOPY, MVT::Other, Expand);
+    //setOperationAction(ISD::VAEND, MVT::Other, Expand);
 
     for (auto T : {MVT::f32, MVT::f64}) {
         // Don't expand the floating-point types to constant pools.
@@ -84,12 +84,11 @@ ZCPUTargetLowering::ZCPUTargetLowering(
             setOperationAction(Op, T, Expand);
         // Note supported floating-point library function operators that otherwise
         // default to expand.
-        for (auto Op :
-                {ISD::FCEIL, ISD::FFLOOR, ISD::FTRUNC, ISD::FNEARBYINT, ISD::FRINT})
+        for (auto Op :{ISD::FCEIL, ISD::FFLOOR, ISD::FTRUNC, ISD::FNEARBYINT, ISD::FRINT})
             setOperationAction(Op, T, Legal);
         // Support minnan and maxnan, which otherwise default to expand.
-        setOperationAction(ISD::FMINNAN, T, Legal);
-        setOperationAction(ISD::FMAXNAN, T, Legal);
+        //setOperationAction(ISD::FMINNAN, T, Legal);
+        //setOperationAction(ISD::FMAXNAN, T, Legal);
     }
 
     for (auto T : {MVT::i32, MVT::i64}) {
@@ -113,8 +112,8 @@ ZCPUTargetLowering::ZCPUTargetLowering(
     setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVTPtr, Expand);
 
-    setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
-    setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
+    //setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
+    //setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
 
     // Expand these forms; we pattern-match the forms that we can handle in isel.
     for (auto T : {MVT::i32, MVT::i64, MVT::f32, MVT::f64})
@@ -122,7 +121,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(
             setOperationAction(Op, T, Expand);
 
     // We have custom switch handling.
-    setOperationAction(ISD::BR_JT, MVT::Other, Custom);
+    //setOperationAction(ISD::BR_JT, MVT::Other, Custom);
 
     // ZCPU doesn't have:
     //  - Floating-point extending loads.
@@ -134,8 +133,20 @@ ZCPUTargetLowering::ZCPUTargetLowering(
         for (auto Ext : {ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD})
             setLoadExtAction(Ext, T, MVT::i1, Promote);
 
-    // Trap lowers to wasm unreachable
-    setOperationAction(ISD::TRAP, MVT::Other, Legal);
+    // We don't accept any truncstore of integer registers.
+    setTruncStoreAction(MVT::i64, MVT::i32, Expand);
+    setTruncStoreAction(MVT::i64, MVT::i16, Expand);
+    setTruncStoreAction(MVT::i64, MVT::i8 , Expand);
+    setTruncStoreAction(MVT::i32, MVT::i16, Expand);
+    setTruncStoreAction(MVT::i32, MVT::i8 , Expand);
+    setTruncStoreAction(MVT::i16, MVT::i8,  Expand);
+
+    setTruncStoreAction(MVT::f64, MVT::f32, Expand);
+
+    setOperationAction(ISD::UINT_TO_FP       , MVT::i1   , Promote);
+    setOperationAction(ISD::UINT_TO_FP       , MVT::i8   , Promote);
+    setOperationAction(ISD::UINT_TO_FP       , MVT::i16  , Promote);
+
 }
 
 FastISel *ZCPUTargetLowering::createFastISel(

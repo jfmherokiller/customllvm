@@ -53,11 +53,6 @@ namespace llvm {
                            unsigned Kind = 0) const override;
 
     private:
-        unsigned StackPtr;
-
-        /// FramePtr - X86 physical register used as frame ptr.
-        ///
-        unsigned FramePtr;
     };
 
 } // end namespace llvm

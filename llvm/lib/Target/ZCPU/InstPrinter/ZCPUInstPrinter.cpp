@@ -88,13 +88,13 @@ void ZCPUInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
 const char *llvm::ZCPU::TypeToString(MVT Ty) {
     switch (Ty.SimpleTy) {
         case MVT::i32:
-            return "i32";
+            return "INT48";
         case MVT::i64:
-            return "i64";
+            return "INT48";
         case MVT::f32:
-            return "f32";
+            return "FLOAT";
         case MVT::f64:
-            return "f64";
+            return "FLOAT";
         default:
             llvm_unreachable("unsupported type");
     }

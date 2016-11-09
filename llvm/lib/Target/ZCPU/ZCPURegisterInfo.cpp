@@ -56,13 +56,11 @@ void ZCPURegisterInfo::eliminateFrameIndex(
 }
 
 unsigned ZCPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {
-    const ZCPUFrameLowering *TFI = getFrameLowering(MF);
-    return TFI->hasFP(MF) ? FramePtr : StackPtr;
+    return ZCPU::ESP;
 }
 
 const TargetRegisterClass *
 ZCPURegisterInfo::getPointerRegClass(const MachineFunction &MF,
                                      unsigned Kind) const {
-    assert(Kind == 0 && "Only one kind of pointer on ZCPU");
-    return &ZCPU::I32RegClass;
+    return &ZCPU::BothNormAndExtendedRegClass;
 }

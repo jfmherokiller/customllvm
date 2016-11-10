@@ -45,9 +45,7 @@ static MCAsmInfo *createMCAsmInfo(const MCRegisterInfo & /*MRI*/,
 
 static void adjustCodeGenOpts(const Triple & /*TT*/, Reloc::Model /*RM*/,
                               CodeModel::Model &CM) {
-    CodeModel::Model M = (CM == CodeModel::Default || CM == CodeModel::JITDefault)
-                         ? CodeModel::Large
-                         : CM;
+    CodeModel::Model M = (CM == CodeModel::Default || CM == CodeModel::JITDefault) ? CodeModel::Large : CM;
     if (M != CodeModel::Large)
         report_fatal_error("Non-large code models are not supported yet");
 }

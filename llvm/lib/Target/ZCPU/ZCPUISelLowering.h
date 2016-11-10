@@ -96,6 +96,9 @@ namespace llvm {
         SDValue LowerVASTART(SDValue Op, SelectionDAG &DAG) const;
 
         SDValue LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const;
+
+        const MCPhysReg *getScratchRegisters(CallingConv::ID) const override;
+        bool IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const override;
     };
 
     namespace ZCPU {

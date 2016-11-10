@@ -26,7 +26,7 @@ ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
     HasSingleParameterDotFile = false;
     PointerSize = 64;
     CalleeSaveStackSlotSize = 64;
-    GlobalDirective = "//.globl";
+    GlobalDirective = "//.globl ";
     UseDataRegionDirectives = false;
 
 
@@ -41,8 +41,8 @@ ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
     CommentString = "//";
     AlignmentIsInBytes = false;
     HasDotTypeDotSizeDirective = false;
-    AsciiDirective = "DB";
-    AscizDirective = "DB";
+    AsciiDirective = "DB ";
+    AscizDirective = "DB ";
     SupportsDebugInformation = false;
 
     // For now, ZCPU does not support exceptions.
@@ -51,4 +51,5 @@ ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
     // ZCPU's stack is never executable.
     UsesNonexecutableStackSection = false;
     NeedsLocalForSize = false;
+    HasIdentDirective = false;
 }

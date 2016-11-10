@@ -35,8 +35,7 @@ using namespace llvm;
 
 #define DEBUG_TYPE "zcpu-lower"
 
-ZCPUTargetLowering::ZCPUTargetLowering(
-        const TargetMachine &TM, const ZCPUSubtarget &STI)
+ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtarget &STI)
         : TargetLowering(TM), Subtarget(&STI) {
     auto MVTPtr = MVT::i32;
 
@@ -57,50 +56,6 @@ ZCPUTargetLowering::ZCPUTargetLowering(
 
     // Compute derived properties from the register classes.
     computeRegisterProperties(Subtarget->getRegisterInfo());
-
-    //setOperationAction(ISD::GlobalAddress, MVTPtr, Custom);
-    //setOperationAction(ISD::ExternalSymbol, MVTPtr, Custom);
-    //setOperationAction(ISD::JumpTable, MVTPtr, Custom);
-    //setOperationAction(ISD::BlockAddress, MVTPtr, Custom);
-    //setOperationAction(ISD::BRIND, MVT::Other, Custom);
-
-    // Take the default expansion for va_arg, va_copy, and va_end. There is no
-    // default action for va_start, so we do that custom.
-    //setOperationAction(ISD::VASTART, MVT::Other, Custom);
-    //setOperationAction(ISD::VAARG, MVT::Other, Expand);
-    //setOperationAction(ISD::VACOPY, MVT::Other, Expand);
-    //setOperationAction(ISD::VAEND, MVT::Other, Expand);
-
-    for (auto T : {MVT::f32, MVT::f64}) {
-        // Don't expand the floating-point types to constant pools.
-        setOperationAction(ISD::ConstantFP, T, Legal);
-        // Expand floating-point comparisons.
-        for (auto CC : {ISD::SETO, ISD::SETUO, ISD::SETUEQ, ISD::SETONE,
-                        ISD::SETULT, ISD::SETULE, ISD::SETUGT, ISD::SETUGE})
-            setCondCodeAction(CC, T, Expand);
-        // Expand floating-point library function operators.
-        for (auto Op : {ISD::FSIN, ISD::FCOS, ISD::FSINCOS, ISD::FPOWI, ISD::FPOW,
-                        ISD::FREM, ISD::FMA})
-            setOperationAction(Op, T, Expand);
-        // Note supported floating-point library function operators that otherwise
-        // default to expand.
-        for (auto Op :{ISD::FCEIL, ISD::FFLOOR, ISD::FTRUNC, ISD::FNEARBYINT, ISD::FRINT})
-            setOperationAction(Op, T, Legal);
-        // Support minnan and maxnan, which otherwise default to expand.
-        //setOperationAction(ISD::FMINNAN, T, Legal);
-        //setOperationAction(ISD::FMAXNAN, T, Legal);
-    }
-
-    for (auto T : {MVT::i32, MVT::i64}) {
-        // Expand unavailable integer operations.
-        for (auto Op :
-                {ISD::BSWAP, ISD::SMUL_LOHI, ISD::UMUL_LOHI,
-                 ISD::MULHS, ISD::MULHU, ISD::SDIVREM, ISD::UDIVREM, ISD::SHL_PARTS,
-                 ISD::SRA_PARTS, ISD::SRL_PARTS, ISD::ADDC, ISD::ADDE, ISD::SUBC,
-                 ISD::SUBE}) {
-            setOperationAction(Op, T, Expand);
-        }
-    }
 
     // As a special case, these operators use the type to mean the type to
     // sign-extend from.
@@ -128,7 +83,6 @@ ZCPUTargetLowering::ZCPUTargetLowering(
     //  - Floating-point truncating stores.
     //  - i1 extending loads.
     setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f32, Expand);
-    setTruncStoreAction(MVT::f64, MVT::f32, Expand);
     for (auto T : MVT::integer_valuetypes())
         for (auto Ext : {ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD})
             setLoadExtAction(Ext, T, MVT::i1, Promote);
@@ -136,16 +90,15 @@ ZCPUTargetLowering::ZCPUTargetLowering(
     // We don't accept any truncstore of integer registers.
     setTruncStoreAction(MVT::i64, MVT::i32, Expand);
     setTruncStoreAction(MVT::i64, MVT::i16, Expand);
-    setTruncStoreAction(MVT::i64, MVT::i8 , Expand);
-    setTruncStoreAction(MVT::i32, MVT::i16, Expand);
-    setTruncStoreAction(MVT::i32, MVT::i8 , Expand);
-    setTruncStoreAction(MVT::i16, MVT::i8,  Expand);
-
+    setTruncStoreAction(MVT::i64, MVT::i8,  Expand);
+    setTruncStoreAction(MVT::i64, MVT::i1,  Expand);
     setTruncStoreAction(MVT::f64, MVT::f32, Expand);
+    setTruncStoreAction(MVT::f64, MVT::f16, Expand);
 
     setOperationAction(ISD::UINT_TO_FP       , MVT::i1   , Promote);
     setOperationAction(ISD::UINT_TO_FP       , MVT::i8   , Promote);
     setOperationAction(ISD::UINT_TO_FP       , MVT::i16  , Promote);
+    setOperationAction(ISD::UINT_TO_FP       , MVT::i32  , Promote);
 
 }
 
@@ -160,8 +113,7 @@ bool ZCPUTargetLowering::isOffsetFoldingLegal(
     return true;
 }
 
-MVT ZCPUTargetLowering::getScalarShiftAmountTy(const DataLayout & /*DL*/,
-                                               EVT VT) const {
+MVT ZCPUTargetLowering::getScalarShiftAmountTy(const DataLayout & /*DL*/, EVT VT) const {
     unsigned BitWidth = NextPowerOf2(VT.getSizeInBits() - 1);
     if (BitWidth > 1 && BitWidth < 8) BitWidth = 8;
 
@@ -184,8 +136,7 @@ const char *ZCPUTargetLowering::getTargetNodeName(
     return nullptr;
 }
 
-std::pair<unsigned, const TargetRegisterClass *>
-ZCPUTargetLowering::getRegForInlineAsmConstraint(
+std::pair<unsigned, const TargetRegisterClass *> ZCPUTargetLowering::getRegForInlineAsmConstraint(
         const TargetRegisterInfo *TRI, StringRef Constraint, MVT VT) const {
     // First, see if this is a constraint that directly corresponds to a
     // ZCPU register class.
@@ -217,21 +168,11 @@ bool ZCPUTargetLowering::isLegalAddressingMode(const DataLayout &DL,
     return true;
 }
 
-bool ZCPUTargetLowering::allowsMisalignedMemoryAccesses(
-        EVT /*VT*/, unsigned /*AddrSpace*/, unsigned /*Align*/, bool *Fast) const {
-    // ZCPU supports unaligned accesses, though it should be declared
-    // with the p2align attribute on loads and stores which do so, and there
-    // may be a performance impact. We tell LLVM they're "fast" because
-    // for the kinds of things that LLVM uses this for (merging adjacent stores
-    // of constants, etc.), ZCPU implementations will either want the
-    // unaligned access or they'll split anyway.
-    if (Fast) *Fast = true;
+bool ZCPUTargetLowering::allowsMisalignedMemoryAccesses(EVT /*VT*/, unsigned /*AddrSpace*/, unsigned /*Align*/, bool *Fast) const {
     return true;
 }
 
 bool ZCPUTargetLowering::isIntDivCheap(EVT VT, AttributeSet Attr) const {
-    // The current thinking is that wasm engines will perform this optimization,
-    // so we can save on code size.
     return true;
 }
 
@@ -242,7 +183,29 @@ bool ZCPUTargetLowering::isIntDivCheap(EVT VT, AttributeSet Attr) const {
 //===----------------------------------------------------------------------===//
 // Lowering Code
 //===----------------------------------------------------------------------===//
-
+const MCPhysReg *ZCPUTargetLowering::getScratchRegisters(CallingConv::ID) const {
+    static const MCPhysReg ScratchRegs[] = { ZCPU::R0,
+                                             ZCPU::R1,ZCPU::R2,ZCPU::R3,ZCPU::R4,
+                                             ZCPU::R5, ZCPU::R6,ZCPU::R7,ZCPU::R8,
+                                             ZCPU::R9,ZCPU::R10,ZCPU::R10,ZCPU::R11,
+                                             ZCPU::R12,ZCPU::R13,ZCPU::R14,ZCPU::R15,
+                                             ZCPU::R16,ZCPU::R17,ZCPU::R18,ZCPU::R19,
+                                             ZCPU::R20,ZCPU::R21,ZCPU::R22,ZCPU::R22,
+                                             ZCPU::R23,ZCPU::R24,ZCPU::R25,ZCPU::R26,
+                                             ZCPU::R27,ZCPU::R28,ZCPU::R29,ZCPU::R30,
+                                             ZCPU::R31
+            , 0 };
+    return ScratchRegs;
+}
+bool ZCPUTargetLowering::IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const {
+    EVT VT = Op.getValueType();
+    if ((VT != MVT::i64)&(VT != MVT::f64))
+    {
+        return true;
+    } else {
+        return false;
+    }
+}
 static void fail(const SDLoc &DL, SelectionDAG &DAG, const char *msg) {
     MachineFunction &MF = DAG.getMachineFunction();
     DAG.getContext()->diagnose(
@@ -251,15 +214,13 @@ static void fail(const SDLoc &DL, SelectionDAG &DAG, const char *msg) {
 
 // Test whether the given calling convention is supported.
 static bool CallingConvSupported(CallingConv::ID CallConv) {
-    // We currently support the language-independent target-independent
-    // conventions. We don't yet have a way to annotate calls with properties like
-    // "cold", and we don't have any call-clobbered registers, so these are mostly
-    // all handled the same.
-    return CallConv == CallingConv::C || CallConv == CallingConv::Fast ||
-           CallConv == CallingConv::Cold ||
-           CallConv == CallingConv::PreserveMost ||
-           CallConv == CallingConv::PreserveAll ||
-           CallConv == CallingConv::CXX_FAST_TLS;
+
+    if(CallConv == CallingConv::C)
+    {
+        return true;
+    } else {
+        return false;
+    }
 }
 
 SDValue ZCPUTargetLowering::LowerCall(
@@ -489,7 +450,6 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
     SDLoc DL(Op);
     switch (Op.getOpcode()) {
         default:
-            llvm_unreachable("unimplemented operation lowering");
             return SDValue();
     }
 }

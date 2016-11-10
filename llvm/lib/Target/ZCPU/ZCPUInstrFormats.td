@@ -39,4 +39,8 @@ class IPsudo<dag oops, dag iops, list<dag> pattern, string asmstr = "">
   dag InOperandList  = iops;
   let Pattern        = pattern;
 }
+def brtarget : Operand<OtherVT>;
 
+class ImmType<bits<4> val> {
+  bits<4> Value = val;
+}

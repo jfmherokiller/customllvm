@@ -97,11 +97,7 @@ def TimerPrevTime: ZCPUReg<"TimerPrevTime">; //66 Previous timer fire time
 def TimerAddress: ZCPUReg<"TimerAddress">; //67 Number of external interrupt to call when timer fires
 
 def RM: ZCPUReg<"RM">;
-
-
-// The register allocation framework requires register classes have at least
-// one register, so we define a few for the floating point register classes
-// since we otherwise don't need a physical register in those classes.
+def CMPR: ZCPUReg<"CMPR">
 
 
 //===----------------------------------------------------------------------===//
@@ -111,7 +107,7 @@ def RM: ZCPUReg<"RM">;
 
 def GPRInt : ZCPURegClass<[i64], 64, (add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
 def GPRFloat : ZCPURegClass<[f64], 64, (add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
-def BothNormAndExtended: ZCPURegClass<[i64],64,(add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
+def BothNormAndExtended: ZCPURegClass<[i64,f64],64,(add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
 def ExtendedGPRFloat:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
 def ExtendedGPRInt:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
 

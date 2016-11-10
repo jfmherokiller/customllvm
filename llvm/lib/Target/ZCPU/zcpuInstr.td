@@ -1,37 +1,43 @@
-def JNE:I<001,(outs), (ins),[], "JNE">; //Jump to PTR if result is not equal
-def JNZ:I<001,(outs), (ins),[], "JNZ">; //Jump to PTR if result is not zero
-def JMP:I<002,(outs), (ins),[], "JMP">; //Jump to PTR
-def JG:I<003,(outs), (ins),[], "JG">; //Jump to PTR if result is greater
-def JNLE:I<003,(outs), (ins),[], "JNLE">; //Jump to PTR if result is not less or equal
-def JGE:I<004,(outs), (ins),[], "JGE">; //Jump to PTR if result is greater or equal
-def JNL:I<004,(outs), (ins),[], "JNL">; //Jump to PTR if result is not less
-def JL:I<005,(outs), (ins),[], "JL">; //Jump to PTR if result is less
-def JNGE:I<005,(outs), (ins),[], "JNGE">; //Jump to PTR if result is not greater or equal
-def JLE:I<006,(outs), (ins),[], "JLE">; //Jump to PTR if result is less or equal
-def JNG:I<006,(outs), (ins),[], "JNG">; //Jump to PTR if result is not greater
-def JE:I<007,(outs), (ins),[], "JE">; //Jump to PTR if result is equal
-def JZ:I<007,(outs), (ins),[], "JZ">; //Jump to PTR if result is zero
-def CPUID:I<008,(outs), (ins),[], "CPUID">; //Write processor information variable IDX into EAX register
+let isBranch = 1 in {
+def JNE:I<001,(outs), (ins brtarget:$dst),[], "JNE\t$dst">; //Jump to PTR if result is not equal
+def JNZ:I<001,(outs), (ins brtarget:$dst),[], "JNZ\t$dst">; //Jump to PTR if result is not zero
+def JMP:I<002,(outs), (ins brtarget:$dst),[(br bb:$dst)], "JMP\t$dst">; //Jump to PTR
+def JG:I<003,(outs), (ins brtarget:$dst),[], "JG\t$dst">; //Jump to PTR if result is greater
+def JNLE:I<003,(outs), (ins brtarget:$dst),[], "JNLE\t$dst">; //Jump to PTR if result is not less or equal
+def JGE:I<004,(outs), (ins brtarget:$dst),[], "JGE\t$dst">; //Jump to PTR if result is greater or equal
+def JNL:I<004,(outs), (ins brtarget:$dst),[], "JNL\t$dst">; //Jump to PTR if result is not less
+def JL:I<005,(outs), (ins brtarget:$dst),[], "JL\t$dst">; //Jump to PTR if result is less
+def JNGE:I<005,(outs), (ins brtarget:$dst),[], "JNGE\t$dst">; //Jump to PTR if result is not greater or equal
+def JLE:I<006,(outs), (ins brtarget:$dst),[], "JLE\t$dst">; //Jump to PTR if result is less or equal
+def JNG:I<006,(outs), (ins brtarget:$dst),[], "JNG\t$dst">; //Jump to PTR if result is not greater
+def JE:I<007,(outs), (ins brtarget:$dst),[], "JE\t$dst">; //Jump to PTR if result is equal
+def JZ:I<007,(outs), (ins brtarget:$dst),[], "JZ\t$dst">; //Jump to PTR if result is zero
+def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
+}
+
+def CPUID:I<008,(outs), (ins ),[], "CPUID">; //Write processor information variable IDX into EAX register
 def PUSH:I<009,(outs), (ins),[], "PUSH">; //Push X onto processor stack
-def ADD:I<010,(outs), (ins),[], "ADD">; //X = X + Y
-def SUB:I<011,(outs), (ins),[], "SUB">; //X = X - Y
-def MUL:I<012,(outs), (ins),[], "MUL">; //X = X * Y
-def DIV:I<013,(outs), (ins),[], "DIV">; //X = X / Y
-def MOV:I<014,(outs), (ins),[], "MOV">; //X = Y
-def CMP:I<015,(outs), (ins),[], "CMP">; //Compare X and Y. Use with conditional branching instructions
-def RD:I<016,(outs), (ins),[], "RD">; //Read value from memory by pointer PTR
-def WD:I<017,(outs), (ins),[], "WD">; //Write value to memory by pointer PTR
-def MIN:I<018,(outs), (ins),[], "MIN">; //Set X to smaller value out of X and Y
-def MAX:I<019,(outs), (ins),[], "MAX">; //Set X to bigger value out of X and Y
-def INC:I<020,(outs), (ins),[], "INC">; //Increase X by one
-def DEC:I<021,(outs), (ins),[], "DEC">; //Decrease X by one
-def NEG:I<022,(outs), (ins),[], "NEG">; //Change sign of X
+def ADD:I<010,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(add BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "ADD\t$src1,$src2">; //X = X + Y
+def SUB:I<011,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(sub BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "SUB\t$src1,$src2">; //X = X - Y
+def MUL:I<012,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(mul BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "MUL\t$src1,$src2">; //X = X * Y
+def DIV:I<013,(outs), (ins ),[], "DIV">; //X = X / Y
+def MOV:I<014,(outs), (ins ),[], "MOV">; //X = Y
+def CMP:I<015,(outs), (ins ),[], "CMP">; //Compare X and Y. Use with conditional branching instructions
+def RD:I<016,(outs), (ins ),[], "RD">; //Read value from memory by pointer PTR
+def WD:I<017,(outs), (ins ),[], "WD">; //Write value to memory by pointer PTR
+def MIN:I<018,(outs), (ins ),[], "MIN">; //Set X to smaller value out of X and Y
+def MAX:I<019,(outs), (ins ),[], "MAX">; //Set X to bigger value out of X and Y
+def INC:I<020,(outs), (ins ),[], "INC">; //Increase X by one
+def DEC:I<021,(outs), (ins ),[], "DEC">; //Decrease X by one
+def NEG:I<022,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1),[(set BothNormAndExtended:$dst, (ineg BothNormAndExtended:$src1))], "NEG\t$dst">; //Change sign of X
 def RAND:I<023,(outs), (ins),[], "RAND">; //Set X to random value
+
 def LOOP:I<024,(outs), (ins),[], "LOOP">; //"If ECX is not set to 
 def LOOPC:I<024,(outs), (ins),[], "LOOPC">; //"If ECX is not set to 
 def LOOPA:I<025,(outs), (ins),[], "LOOPA">; //"If EAX is not set to 
 def LOOPB:I<026,(outs), (ins),[], "LOOPB">; //"If EBX is not set to 
-def LOOPD:I<027,(outs), (ins),[], "LOOPD">; //"If EDX is not set to 
+def LOOPD:I<027,(outs), (ins),[], "LOOPD">; //"If EDX is not set to
+
 def SPG:I<028,(outs), (ins),[], "SPG">; //Make PAGE readonly
 def CPG:I<029,(outs), (ins),[], "CPG">; //Make PAGE readable and writeable
 def POP:I<030,(outs), (ins),[], "POP">; //Pop value off stack and write it into X
@@ -45,13 +51,16 @@ def FINV:I<036,(outs), (ins),[], "FINV">; //X = 1 / X
 def HALT:I<037,(outs), (ins),[], "HALT">; //Halt processor execution until PORT is written to
 def FSHL:I<038,(outs), (ins),[], "FSHL">; //Multiply X by 2 (does not floor)
 def FSHR:I<039,(outs), (ins),[], "FSHR">; //Divide X by 2 (does not floor)
+let isReturn = 1 in {
 def RET:I<040,(outs), (ins),[], "RET">; //Return from a subroutine
 def IRET:I<041,(outs), (ins),[], "IRET">; //Return from an interrupt
+def RETF:I<047,(outs), (ins),[], "RETF">; //Return from a far subroutine call
+}
 def STI:I<042,(outs), (ins),[], "STI">; //Enable interrupt handling
 def CLI:I<043,(outs), (ins),[], "CLI">; //Disable interrupt handling
 def STP:I<044,(outs), (ins),[], "STP">; //Enable protected mode
 def CLP:I<045,(outs), (ins),[], "CLP">; //Disable protected mode
-def RETF:I<047,(outs), (ins),[], "RETF">; //Return from a far subroutine call
+
 def STEF:I<048,(outs), (ins),[], "STEF">; //Enable extended mode
 def CLEF:I<049,(outs), (ins),[], "CLEF">; //Disable extended mode
 def AND:I<050,(outs), (ins),[], "AND">; //Logical AND between X and Y
@@ -73,7 +82,7 @@ def BOR:I<065,(outs), (ins),[], "BOR">; //Write result of binary OR between oper
 def BXOR:I<066,(outs), (ins),[], "BXOR">; //Write result of binary XOR between operands
 def BSHL:I<067,(outs), (ins),[], "BSHL">; //Shift bits of INT left by X
 def BSHR:I<068,(outs), (ins),[], "BSHR">; //Shift bits of INT right by X
-def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
+
 def NMIINT:I<070,(outs), (ins),[], "NMIINT">; //EXTINT
 def EXTINT:I<070,(outs), (ins),[], "EXTINT">; //Call interrupt INTR as an external interrupt
 def CNE:I<071,(outs), (ins),[], "CNE">; //Call subrotine if result is not equal
@@ -111,6 +120,7 @@ def WRPG:I<096,(outs), (ins),[], "WRPG">; //Copy RAM page into ROM page
 def RDPG:I<097,(outs), (ins),[], "RDPG">; //Read ROM page into RAM
 def TIMERI:I<098,(outs), (ins),[], "TIMER">; //Set X to value of the internal processor timer
 def LIDTR:I<099,(outs), (ins),[], "LIDTR">; //Set interrupt table pointer to PTR
+let isIndirectBranch = 1 in {
 def JNER:I<101,(outs), (ins),[], "JNER">; //Relative jump INT bytes forward if result is not equal
 def JNZR:I<101,(outs), (ins),[], "JNZR">; //Relative jump INT bytes forward if result is not zero
 def JMPR:I<102,(outs), (ins),[], "JMPR">; //Relative jump INT bytes forward
@@ -124,6 +134,7 @@ def JLER:I<106,(outs), (ins),[], "JLER">; //Relative jump INT bytes forward if r
 def JNGR:I<106,(outs), (ins),[], "JNGR">; //Relative jump INT bytes forward if result is not greater
 def JER:I<107,(outs), (ins),[], "JER">; //Relative jump INT bytes forward if result is equal
 def JZR:I<107,(outs), (ins),[], "JZR">; //Relative jump INT bytes forward if result is zero
+}
 def LNEG:I<108,(outs), (ins),[], "LNEG">; //Logically negate X
 def NMIRET:I<110,(outs), (ins),[], "NMIRET">; //EXTRET
 def EXTRET:I<110,(outs), (ins),[], "EXTRET">; //Return from an external interrupt

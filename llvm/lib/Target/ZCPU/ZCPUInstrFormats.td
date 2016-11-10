@@ -12,14 +12,9 @@
 ///
 //===----------------------------------------------------------------------===//
 // ZCPU Instruction Format.
+
 class ZCPUInst<bits<24> opcod,string asmstr> : Instruction {
   field bits<24> Inst = opcod; // Instruction encoding.
-  let Namespace   = "ZCPU";
-  let Pattern     = [];
-  let AsmString   = asmstr;
-}
-class ZCPUInst2<string asmstr> : Instruction {
-  field bits<0> Inst; // Instruction encoding.
   let Namespace   = "ZCPU";
   let Pattern     = [];
   let AsmString   = asmstr;
@@ -32,8 +27,20 @@ class I<bits<24> opcode,dag oops, dag iops, list<dag> pattern, string asmstr = "
   dag InOperandList  = iops;
   let Pattern        = pattern;
 }
+class IRegReg<bits<24> opcode,string instr, string asmstr = "">
+    : ZCPUInst<opcode,asmstr> {
+  dag OutOperandList = (outs BothNormAndExtended:$dst);
+  dag InOperandList  = (ins BothNormAndExtended:$src1 ,BothNormAndExtended:$src2);
+  let Pattern        = [(set BothNormAndExtended:$dst,(!cast<dag>(instr) BothNormAndExtended:$src1,BothNormAndExtended:$src2))];
+}
+class IRegRegFloatBinyOP<bits<24> opcode, string instr,string asmstr = "">
+    : ZCPUInst<opcode,asmstr> {
+  dag OutOperandList = (outs BothNormAndExtended:$dst);
+  dag InOperandList  = (ins BothNormAndExtended:$src1 ,BothNormAndExtended:$src2);
+  let Pattern        = [(set BothNormAndExtended:$dst,(!cast<dag>(!strconcat("f",instr)) BothNormAndExtended:$src1,BothNormAndExtended:$src2))];
+}
 class IPsudo<dag oops, dag iops, list<dag> pattern, string asmstr = "">
-    : ZCPUInst2<asmstr> {
+    : ZCPUInst<0,asmstr> {
 
   dag OutOperandList = oops;
   dag InOperandList  = iops;
@@ -41,6 +48,9 @@ class IPsudo<dag oops, dag iops, list<dag> pattern, string asmstr = "">
 }
 def brtarget : Operand<OtherVT>;
 
-class ImmType<bits<4> val> {
-  bits<4> Value = val;
+multiclass BinyOP <bits<24> opcode,string instr, string asmstr = ""> {
+let Constraints = "$src1 = $dst" in {
+    def regreg: IRegReg<opcode,instr,asmstr>;
+    def regfloat: IRegRegFloatBinyOP<opcode,instr,asmstr>;
+    }
 }

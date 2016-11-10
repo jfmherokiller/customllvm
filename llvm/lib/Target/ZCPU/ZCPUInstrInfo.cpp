@@ -91,19 +91,6 @@ bool ZCPUInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
 unsigned ZCPUInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
     MachineBasicBlock::instr_iterator I = MBB.instr_end();
     unsigned Count = 0;
-
-    while (I != MBB.instr_begin()) {
-        --I;
-        if (I->isDebugValue())
-            continue;
-        if (!I->isTerminator())
-            break;
-        // Remove the branch.
-        I->eraseFromParent();
-        I = MBB.instr_end();
-        ++Count;
-    }
-
     return Count;
 }
 

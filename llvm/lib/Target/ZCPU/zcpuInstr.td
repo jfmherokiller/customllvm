@@ -1,3 +1,6 @@
+
+
+
 let isBranch = 1 in {
 def JNE:I<001,(outs), (ins brtarget:$dst),[], "JNE\t$dst">; //Jump to PTR if result is not equal
 def JNZ:I<001,(outs), (ins brtarget:$dst),[], "JNZ\t$dst">; //Jump to PTR if result is not zero
@@ -15,11 +18,15 @@ def JZ:I<007,(outs), (ins brtarget:$dst),[], "JZ\t$dst">; //Jump to PTR if resul
 def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
 }
 
+defm ADD:BinyOP<010,"add","ADD\t$src1,$src2">;  //X = X + Y
+defm SUB:BinyOP<011,"sub","SUB\t$src1,$src2">; //X = X - Y
+defm MUL:BinyOP<012,"mul","MUL\t$src1,$src2">; //X = X * Y
+//def SUB:I<011,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(sub BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "SUB\t$src1,$src2">; //X = X - Y
+//def MUL:I<012,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(mul BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "MUL\t$src1,$src2">; //X = X * Y
+
 def CPUID:I<008,(outs), (ins ),[], "CPUID">; //Write processor information variable IDX into EAX register
 def PUSH:I<009,(outs), (ins),[], "PUSH">; //Push X onto processor stack
-def ADD:I<010,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(add BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "ADD\t$src1,$src2">; //X = X + Y
-def SUB:I<011,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(sub BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "SUB\t$src1,$src2">; //X = X - Y
-def MUL:I<012,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(mul BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "MUL\t$src1,$src2">; //X = X * Y
+
 def DIV:I<013,(outs), (ins ),[], "DIV">; //X = X / Y
 def MOV:I<014,(outs), (ins ),[], "MOV">; //X = Y
 def CMP:I<015,(outs), (ins ),[], "CMP">; //Compare X and Y. Use with conditional branching instructions
@@ -166,3 +173,5 @@ def IRETP:I<136,(outs), (ins),[], "IRETP">; //"Set PTB
 def EXTRETP:I<137,(outs), (ins),[], "EXTRETP">; //"Set PTB
 def EXTRETA:I<140,(outs), (ins),[], "EXTRETA">; //Return from an external interrupt and restore R0-R31 registers
 def EXTRETPA:I<141,(outs), (ins),[], "EXTRETPA">; //"Set PTB
+
+

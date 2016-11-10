@@ -97,8 +97,8 @@ def TimerPrevTime: ZCPUReg<"TimerPrevTime">; //66 Previous timer fire time
 def TimerAddress: ZCPUReg<"TimerAddress">; //67 Number of external interrupt to call when timer fires
 
 def RM: ZCPUReg<"RM">;
-def CMPR: ZCPUReg<"CMPR">
 
+//def FLAGS: ZCPUReg<"FLAGS">
 
 //===----------------------------------------------------------------------===//
 //  Register classes

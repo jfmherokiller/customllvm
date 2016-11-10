@@ -46,13 +46,19 @@ ZCPURegisterInfo::getCalleeSavedRegs(const MachineFunction *) const {
 
 BitVector
 ZCPURegisterInfo::getReservedRegs(const MachineFunction & /*MF*/) const {
+
     BitVector Reserved(getNumRegs());
+    static const uint16_t ReservedCPURegs[] = {
+            ZCPU::IP,ZCPU::SerialNo,ZCPU::XEIP,
+    };
+    for (unsigned I = 0; I < array_lengthof(ReservedCPURegs); ++I)
+        Reserved.set(ReservedCPURegs[I]);
     return Reserved;
 }
 
-void ZCPURegisterInfo::eliminateFrameIndex(
-        MachineBasicBlock::iterator II, int SPAdj, unsigned FIOperandNum,
-        RegScavenger * /*RS*/) const {
+void ZCPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj, unsigned FIOperandNum,
+                                           RegScavenger * /*RS*/) const {
+
 }
 
 unsigned ZCPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {
@@ -62,5 +68,5 @@ unsigned ZCPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {
 const TargetRegisterClass *
 ZCPURegisterInfo::getPointerRegClass(const MachineFunction &MF,
                                      unsigned Kind) const {
-    return &ZCPU::BothNormAndExtendedRegClass;
+    return &ZCPU::SegmentRegsRegClass;
 }

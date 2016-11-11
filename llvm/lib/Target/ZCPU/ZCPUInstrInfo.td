@@ -50,6 +50,11 @@ include "ZCPUInstrFormats.td"
 //===----------------------------------------------------------------------===//
 // Additional sets of instructions.
 //===----------------------------------------------------------------------===//
+def SDT_ZCPUArgument : SDTypeProfile<1, 1, [SDTCisVT<1, i64>]>;
+def SDTZCPURet     : SDTypeProfile<0, -1, []>;
+def ZCPUretflag : SDNode<"ZCPUISD::RET_FLAG", SDTZCPURet,
+                        [SDNPHasChain]>;
+def ZCPUiret : SDNode<"ZCPUISD::IRET", SDTZCPURet,[SDNPHasChain]>;
 
 include "zcpuInstr.td"
 include "vectorInstr.td"

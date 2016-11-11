@@ -21,13 +21,15 @@ def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
 defm ADD:BinyOP<010,"add","ADD\t$src1,$src2">;  //X = X + Y
 defm SUB:BinyOP<011,"sub","SUB\t$src1,$src2">; //X = X - Y
 defm MUL:BinyOP<012,"mul","MUL\t$src1,$src2">; //X = X * Y
+//defm DIV:BinyOP<012,"div","DIV\t$src1,$src2">; //X = X / Y
 //def SUB:I<011,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(sub BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "SUB\t$src1,$src2">; //X = X - Y
 //def MUL:I<012,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(mul BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "MUL\t$src1,$src2">; //X = X * Y
+def DIV:I<011,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(sdiv BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "DIV\t$src1,$src2">; //X = X - Y
 
 def CPUID:I<008,(outs), (ins ),[], "CPUID">; //Write processor information variable IDX into EAX register
 def PUSH:I<009,(outs), (ins),[], "PUSH">; //Push X onto processor stack
 
-def DIV:I<013,(outs), (ins ),[], "DIV">; //X = X / Y
+//def DIV:I<013,(outs), (ins ),[], "DIV">; //X = X / Y
 def MOV:I<014,(outs), (ins ),[], "MOV">; //X = Y
 def CMP:I<015,(outs), (ins ),[], "CMP">; //Compare X and Y. Use with conditional branching instructions
 def RD:I<016,(outs), (ins ),[], "RD">; //Read value from memory by pointer PTR
@@ -58,9 +60,9 @@ def FINV:I<036,(outs), (ins),[], "FINV">; //X = 1 / X
 def HALT:I<037,(outs), (ins),[], "HALT">; //Halt processor execution until PORT is written to
 def FSHL:I<038,(outs), (ins),[], "FSHL">; //Multiply X by 2 (does not floor)
 def FSHR:I<039,(outs), (ins),[], "FSHR">; //Divide X by 2 (does not floor)
-let isReturn = 1 in {
-def RET:I<040,(outs), (ins),[], "RET">; //Return from a subroutine
-def IRET:I<041,(outs), (ins),[], "IRET">; //Return from an interrupt
+let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in {
+def RET:I<040,(outs), (ins i64imm:$adj, variable_ops),[(ZCPUretflag timm:$adj)], "RET">; //Return from a subroutine
+def IRET:I<041,(outs), (ins i64imm:$adj),[(ZCPUiret timm:$adj)], "IRET">; //Return from an interrupt
 def RETF:I<047,(outs), (ins),[], "RETF">; //Return from a far subroutine call
 }
 def STI:I<042,(outs), (ins),[], "STI">; //Enable interrupt handling

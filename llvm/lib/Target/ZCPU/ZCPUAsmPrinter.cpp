@@ -109,7 +109,7 @@ namespace {
 
 MVT ZCPUAsmPrinter::getRegType(unsigned RegNo) const {
     const TargetRegisterClass *TRC = MRI->getRegClass(RegNo);
-    for (MVT T : {MVT::i32, MVT::i64, MVT::f32, MVT::f64})
+    for (MVT T : {MVT::i64,MVT::f64})
         if (TRC->hasType(T))
             return T;
     DEBUG(errs() << "Unknown type for register number: " << RegNo);
@@ -192,38 +192,6 @@ void ZCPUAsmPrinter::EmitJumpTableInfo() {
 }
 
 void ZCPUAsmPrinter::EmitFunctionBodyStart() {
-    if (!MFI->getParams().empty())
-        getTargetStreamer()->emitParam(MFI->getParams());
-
-    SmallVector<MVT, 4> ResultVTs;
-    const Function &F(*MF->getFunction());
-    ComputeLegalValueVTs(F, TM, F.getReturnType(), ResultVTs);
-
-    // If the return type needs to be legalized it will get converted into
-    // passing a pointer.
-    if (ResultVTs.size() == 1)
-        getTargetStreamer()->emitResult(ResultVTs);
-
-    bool AnyWARegs = false;
-    SmallVector<MVT, 16> LocalTypes;
-    for (unsigned Idx = 0, IdxE = MRI->getNumVirtRegs(); Idx != IdxE; ++Idx) {
-        unsigned VReg = TargetRegisterInfo::index2VirtReg(Idx);
-        unsigned WAReg = MFI->getWAReg(VReg);
-        // Don't declare unused registers.
-        if (WAReg == ZCPUFunctionInfo::UnusedReg)
-            continue;
-        // Don't redeclare parameters.
-        if (WAReg < MFI->getParams().size())
-            continue;
-        // Don't declare stackified registers.
-        if (int(WAReg) < 0)
-            continue;
-        LocalTypes.push_back(getRegType(VReg));
-        AnyWARegs = true;
-    }
-    if (AnyWARegs)
-        getTargetStreamer()->emitLocal(LocalTypes);
-
     AsmPrinter::EmitFunctionBodyStart();
 }
 
@@ -232,17 +200,7 @@ void ZCPUAsmPrinter::EmitFunctionBodyEnd() {
 }
 
 void ZCPUAsmPrinter::EmitInstruction(const MachineInstr *MI) {
-    DEBUG(dbgs() << "EmitInstruction: " << *MI << '\n');
-
-    switch (MI->getOpcode()) {
-        default: {
-            ZCPUMCInstLower MCInstLowering(OutContext, *this);
-            MCInst TmpInst;
-            MCInstLowering.Lower(MI, TmpInst);
-            EmitToStreamer(*OutStreamer, TmpInst);
-            break;
-        }
-    }
+    AsmPrinter::EmitInstruction(MI);
 }
 
 const MCExpr *ZCPUAsmPrinter::lowerConstant(const Constant *CV) {
@@ -253,38 +211,6 @@ bool ZCPUAsmPrinter::PrintAsmOperand(const MachineInstr *MI,
                                      unsigned OpNo, unsigned AsmVariant,
                                      const char *ExtraCode,
                                      raw_ostream &OS) {
-    if (AsmVariant != 0)
-        report_fatal_error("There are no defined alternate asm variants");
-
-    // First try the generic code, which knows about modifiers like 'c' and 'n'.
-    if (!AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, OS))
-        return false;
-
-    if (!ExtraCode) {
-        const MachineOperand &MO = MI->getOperand(OpNo);
-        switch (MO.getType()) {
-            case MachineOperand::MO_Immediate:
-                OS << MO.getImm();
-                return false;
-            case MachineOperand::MO_Register:
-                OS << regToString(MO);
-                return false;
-            case MachineOperand::MO_GlobalAddress:
-                getSymbol(MO.getGlobal())->print(OS, MAI);
-                printOffset(MO.getOffset(), OS);
-                return false;
-            case MachineOperand::MO_ExternalSymbol:
-                GetExternalSymbolSymbol(MO.getSymbolName())->print(OS, MAI);
-                printOffset(MO.getOffset(), OS);
-                return false;
-            case MachineOperand::MO_MachineBasicBlock:
-                MO.getMBB()->getSymbol()->print(OS, MAI);
-                return false;
-            default:
-                break;
-        }
-    }
-
     return true;
 }
 

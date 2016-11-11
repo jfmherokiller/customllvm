@@ -16,7 +16,10 @@
 #ifndef LLVM_LIB_TARGET_ZCPU_ZCPUISELLOWERING_H
 #define LLVM_LIB_TARGET_ZCPU_ZCPUISELLOWERING_H
 
+#include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/SelectionDAG.h"
 #include "llvm/Target/TargetLowering.h"
+#include "llvm/Target/TargetOptions.h"
 
 namespace llvm {
 
@@ -24,6 +27,22 @@ namespace llvm {
 
     class ZCPUTargetMachine;
 
+    namespace ZCPUISD {
+        // X86 Specific DAG Nodes
+        enum NodeType : unsigned {
+            FIRST_NUMBER = ISD::BUILTIN_OP_END,
+            RET_FLAG,
+            IRET,
+        };
+    }
+
+
+    namespace ZCPU {
+        FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
+                                 const TargetLibraryInfo *libInfo);
+    }  // end namespace ZCPU
+
+    // end namespace llvm
     class ZCPUTargetLowering final : public TargetLowering {
     public:
         ZCPUTargetLowering(const TargetMachine &TM,
@@ -98,14 +117,10 @@ namespace llvm {
         SDValue LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const;
 
         const MCPhysReg *getScratchRegisters(CallingConv::ID) const override;
+
         bool IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const override;
+
+        void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint, std::vector<SDValue> &Ops, SelectionDAG &DAG)  const override;
     };
-
-    namespace ZCPU {
-        FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
-                                 const TargetLibraryInfo *libInfo);
-    }  // end namespace ZCPU
-
-}  // end namespace llvm
-
+}
 #endif

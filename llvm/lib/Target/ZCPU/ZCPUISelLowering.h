@@ -120,7 +120,8 @@ namespace llvm {
 
         bool IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const override;
 
-        void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint, std::vector<SDValue> &Ops, SelectionDAG &DAG)  const override;
+        //void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint, std::vector<SDValue> &Ops, SelectionDAG &DAG)  const override;
+        SDValue LowerSRA(SDValue value, SelectionDAG &dag) const;
     };
 }
 #endif

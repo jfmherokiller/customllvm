@@ -27,17 +27,29 @@ class I<bits<24> opcode,dag oops, dag iops, list<dag> pattern, string asmstr = "
   dag InOperandList  = iops;
   let Pattern        = pattern;
 }
-class IRegReg<bits<24> opcode,string instr, string asmstr = "">
+class IRegRegSignIntBinyOP<bits<24> opcode,string instr, string asmstr = "">
     : ZCPUInst<opcode,asmstr> {
-  dag OutOperandList = (outs BothNormAndExtended:$dst);
-  dag InOperandList  = (ins BothNormAndExtended:$src1 ,BothNormAndExtended:$src2);
-  let Pattern        = [(set BothNormAndExtended:$dst,(!cast<dag>(instr) BothNormAndExtended:$src1,BothNormAndExtended:$src2))];
+  dag OutOperandList = (outs BothNormAndExtendedInt:$dst);
+  dag InOperandList  = (ins BothNormAndExtendedInt:$src1 ,BothNormAndExtendedInt:$src2);
+  let Pattern        = [(set BothNormAndExtendedInt:$dst,(!cast<dag>(!strconcat("s",instr)) BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))];
+}
+class IRegRegUnSignIntBinyOP<bits<24> opcode, string instr,string asmstr = "">
+    : ZCPUInst<opcode,asmstr> {
+  dag OutOperandList = (outs BothNormAndExtendedFloat:$dst);
+  dag InOperandList  = (ins BothNormAndExtendedFloat:$src1 ,BothNormAndExtendedFloat:$src2);
+  let Pattern        = [(set BothNormAndExtendedFloat:$dst,(!cast<dag>(!strconcat("u",instr)) BothNormAndExtendedFloat:$src1,BothNormAndExtendedFloat:$src2))];
+}
+class IRegRegIntBinyOP<bits<24> opcode,string instr, string asmstr = "">
+    : ZCPUInst<opcode,asmstr> {
+  dag OutOperandList = (outs BothNormAndExtendedInt:$dst);
+  dag InOperandList  = (ins BothNormAndExtendedInt:$src1 ,BothNormAndExtendedInt:$src2);
+  let Pattern        = [(set BothNormAndExtendedInt:$dst,(!cast<dag>(instr) BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))];
 }
 class IRegRegFloatBinyOP<bits<24> opcode, string instr,string asmstr = "">
     : ZCPUInst<opcode,asmstr> {
-  dag OutOperandList = (outs BothNormAndExtended:$dst);
-  dag InOperandList  = (ins BothNormAndExtended:$src1 ,BothNormAndExtended:$src2);
-  let Pattern        = [(set BothNormAndExtended:$dst,(!cast<dag>(!strconcat("f",instr)) BothNormAndExtended:$src1,BothNormAndExtended:$src2))];
+  dag OutOperandList = (outs BothNormAndExtendedFloat:$dst);
+  dag InOperandList  = (ins BothNormAndExtendedFloat:$src1 ,BothNormAndExtendedFloat:$src2);
+  let Pattern        = [(set BothNormAndExtendedFloat:$dst,(!cast<dag>(!strconcat("f",instr)) BothNormAndExtendedFloat:$src1,BothNormAndExtendedFloat:$src2))];
 }
 class IPsudo<dag oops, dag iops, list<dag> pattern, string asmstr = "">
     : ZCPUInst<0,asmstr> {
@@ -46,11 +58,18 @@ class IPsudo<dag oops, dag iops, list<dag> pattern, string asmstr = "">
   dag InOperandList  = iops;
   let Pattern        = pattern;
 }
+
 def brtarget : Operand<OtherVT>;
 
-multiclass BinyOP <bits<24> opcode,string instr, string asmstr = ""> {
+multiclass BinyOPSignUnSigned <bits<24> opcode,string instr, string asmstr = ""> {
 let Constraints = "$src1 = $dst" in {
-    def regreg: IRegReg<opcode,instr,asmstr>;
-    def regfloat: IRegRegFloatBinyOP<opcode,instr,asmstr>;
+    def regregSignedInt :IRegRegSignIntBinyOP<opcode,instr,asmstr>;
+    def regregUnSignedInt :IRegRegUnSignIntBinyOP<opcode,instr,asmstr>;
+    }
+}
+multiclass BinyFloatIntOP <bits<24> opcode,string instr, string asmstr = ""> {
+let Constraints = "$src1 = $dst" in {
+    def regregint: IRegRegIntBinyOP<opcode,instr,asmstr>;
+    def regregfloat: IRegRegFloatBinyOP<opcode,instr,asmstr>;
     }
 }

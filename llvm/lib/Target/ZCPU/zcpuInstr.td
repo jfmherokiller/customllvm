@@ -1,5 +1,24 @@
 
+multiclass RET<ZCPURegClass vt> {
+  def RETURN_#vt : I<040,(outs), (ins vt:$val), [(ZCPUretflag vt:$val)],"ret  \t$val">;
+  // Equivalent to RETURN_#vt, for use at the end of a function when wasm
+  // semantics return by falling off the end of the block.
+  let isCodeGenOnly = 1 in
+  def FALLTHROUGH_RETURN_#vt : I<040,(outs), (ins vt:$val), [],"">;
+}
 
+let isTerminator = 1, hasCtrlDep = 1, isBarrier = 1 in {
+let isReturn = 1 in {
+  defm : RET<BothNormAndExtendedInt>;
+  defm : RET<BothNormAndExtendedFloat>;
+  def RETURN_VOID : I<040,(outs), (ins), [(ZCPUretflag)], "ret">;
+
+  // This is to RETURN_VOID what FALLTHROUGH_RETURN_#vt is to RETURN_#vt.
+  let isCodeGenOnly = 1 in
+  def FALLTHROUGH_RETURN_VOID : I<040,(outs), (ins), [],"">;
+} // isReturn = 1
+  def UNREACHABLE : I<000,(outs), (ins), [(trap)], "unreachable">;
+} // isTerminator = 1, hasCtrlDep = 1, isBarrier = 1
 
 let isBranch = 1 in {
 def JNE:I<001,(outs), (ins brtarget:$dst),[], "JNE\t$dst">; //Jump to PTR if result is not equal
@@ -18,9 +37,9 @@ def JZ:I<007,(outs), (ins brtarget:$dst),[], "JZ\t$dst">; //Jump to PTR if resul
 def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
 }
 
-defm ADD:BinyOP<010,"add","ADD\t$src1,$src2">;  //X = X + Y
-defm SUB:BinyOP<011,"sub","SUB\t$src1,$src2">; //X = X - Y
-defm MUL:BinyOP<012,"mul","MUL\t$src1,$src2">; //X = X * Y
+defm ADD:BinyFloatIntOP<010,"add","ADD\t$src1,$src2">;  //X = X + Y
+defm SUB:BinyFloatIntOP<011,"sub","SUB\t$src1,$src2">; //X = X - Y
+defm MUL:BinyFloatIntOP<012,"mul","MUL\t$src1,$src2">; //X = X * Y
 //defm DIV:BinyOP<012,"div","DIV\t$src1,$src2">; //X = X / Y
 //def SUB:I<011,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(sub BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "SUB\t$src1,$src2">; //X = X - Y
 //def MUL:I<012,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1,BothNormAndExtended:$src2),[(set BothNormAndExtended:$dst,(mul BothNormAndExtended:$src1,BothNormAndExtended:$src2))], "MUL\t$src1,$src2">; //X = X * Y
@@ -58,13 +77,16 @@ def RND:I<034,(outs), (ins),[], "RND">; //FRND
 def FFRAC:I<035,(outs), (ins),[], "FFRAC">; //"Remove integer part of the 
 def FINV:I<036,(outs), (ins),[], "FINV">; //X = 1 / X
 def HALT:I<037,(outs), (ins),[], "HALT">; //Halt processor execution until PORT is written to
-def FSHL:I<038,(outs), (ins),[], "FSHL">; //Multiply X by 2 (does not floor)
-def FSHR:I<039,(outs), (ins),[], "FSHR">; //Divide X by 2 (does not floor)
-let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in {
-def RET:I<040,(outs), (ins i64imm:$adj, variable_ops),[(ZCPUretflag timm:$adj)], "RET">; //Return from a subroutine
-def IRET:I<041,(outs), (ins i64imm:$adj),[(ZCPUiret timm:$adj)], "IRET">; //Return from an interrupt
-def RETF:I<047,(outs), (ins),[], "RETF">; //Return from a far subroutine call
+
+let Constraints = "$src1 = $dst" in {
+def FSHR:I<039,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1, i64imm:$src2),[(set BothNormAndExtended:$dst,(sra BothNormAndExtended:$src1,immSExt64:$src2))], "FSHR\t$src1,$src2">; //Divide X by 2 (does not floor)
+def FSHL:I<038,(outs BothNormAndExtended:$dst), (ins BothNormAndExtended:$src1, i64imm:$src2),[(set BothNormAndExtended:$dst,(srl BothNormAndExtended:$src1,immSExt64:$src2))], "FSHL\t$src1,$src2">; //Multiply X by 2 (does not floor)
 }
+//let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in {
+//def RET:I<040,(outs), (ins i64imm:$adj, variable_ops),[(ZCPUretflag timm:$adj)], "RET">; //Return from a subroutine
+//def IRET:I<041,(outs), (ins i64imm:$adj),[(ZCPUiret timm:$adj)], "IRET">; //Return from an interrupt
+//def RETF:I<047,(outs), (ins),[], "RETF">; //Return from a far subroutine call
+//}
 def STI:I<042,(outs), (ins),[], "STI">; //Enable interrupt handling
 def CLI:I<043,(outs), (ins),[], "CLI">; //Disable interrupt handling
 def STP:I<044,(outs), (ins),[], "STP">; //Enable protected mode
@@ -106,8 +128,10 @@ def CLE:I<076,(outs), (ins),[], "CLE">; //Call subrotine if result is less or eq
 def CNG:I<076,(outs), (ins),[], "CNG">; //Call subrotine if result is not greater
 def CE:I<077,(outs), (ins),[], "CE">; //Call subrotine if result is equal
 def CZ:I<077,(outs), (ins),[], "CZ">; //Call subrotine if result is zero
+let Uses = [ESI,EDI] in {
 def MCOPY:I<078,(outs), (ins),[], "MCOPY">; //Copy INT bytes from array pointed by ESI to EDI
 def MXCHG:I<079,(outs), (ins),[], "MXCHG">; //Swap INT bytes between two arrays pointed by ESI and EDI
+}
 def FPWR:I<080,(outs), (ins),[], "FPWR">; //Raise X to power Y
 def XCHG:I<081,(outs), (ins),[], "XCHG">; //Swap X and Y
 def FLOG:I<082,(outs), (ins),[], "FLOG">; //FLN
@@ -161,7 +185,8 @@ def SPP:I<122,(outs), (ins),[], "SPP">; //Set page flag IDX
 def CPP:I<123,(outs), (ins),[], "CPP">; //Clear page flag IDX
 def SRL:I<124,(outs), (ins),[], "SRL">; //Set page runlevel to INT
 def CRLI:I<125,(outs), (ins),[], "CRL">; //Write page runlevel to INT
-def LEA:I<126,(outs), (ins),[], "LEA">; //Load absolute address fetched by operand Y into X
+
+def LEA: I<126,(outs BothNormAndExtended:$dst), (ins i64imm:$src),[],"LEA\t{$src|$dst}, {$dst|$src}">; //Load absolute address fetched by operand Y into X
 def BLOCK:I<127,(outs), (ins),[], "BLOCK">; //Make next instruction run on this block
 def CMPAND:I<128,(outs), (ins),[], "CMPAND">; //"Compare X and 
 def CMPOR:I<129,(outs), (ins),[], "CMPOR">; //"Compare X and 

@@ -38,7 +38,7 @@ using namespace llvm;
 
 ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtarget &STI)
         : TargetLowering(TM), Subtarget(&STI) {
-    auto MVTPtr = MVT::i32;
+    auto MVTPtr = MVT::i64;
 
     // Booleans always contain 0 or 1.
     setBooleanContents(ZeroOrOneBooleanContent);
@@ -397,129 +397,28 @@ SDValue ZCPUTargetLowering::LowerReturn(
         const SmallVectorImpl<ISD::OutputArg> &Outs,
         const SmallVectorImpl<SDValue> &OutVals, const SDLoc &DL,
         SelectionDAG &DAG) const {
-    MachineFunction &MF = DAG.getMachineFunction();
-    ZCPUFunctionInfo *FuncInfo = MF.getInfo<ZCPUFunctionInfo>();
+    assert(Outs.size() <= 1 && "WebAssembly can only return up to one value");
+    if (!CallingConvSupported(CallConv))
+        fail(DL, DAG, "WebAssembly doesn't support non-C calling conventions");
 
-    if (CallConv == CallingConv::X86_INTR && !Outs.empty())
-        report_fatal_error("X86 interrupts may not return any value");
+    SmallVector<SDValue, 4> RetOps(1, Chain);
+    RetOps.append(OutVals.begin(), OutVals.end());
+    Chain = DAG.getNode(ZCPUISD::RET_FLAG, DL, MVT::Other, RetOps);
 
-    SmallVector<CCValAssign, 16> RVLocs;
-    CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
-    CCInfo.AnalyzeReturn(Outs, RetCC_ZCPU);
-
-    SDValue Flag;
-    SmallVector<SDValue, 6> RetOps;
-    RetOps.push_back(Chain); // Operand #0 = Chain (updated below)
-    // Operand #1 = Bytes To Pop
-    RetOps.push_back(DAG.getTargetConstant(48, DL,
-                                           MVT::i64));
-
-    // Copy the result values into the output registers.
-    for (unsigned i = 0, e = RVLocs.size(); i != e; ++i) {
-        CCValAssign &VA = RVLocs[i];
-        assert(VA.isRegLoc() && "Can only return in registers!");
-        SDValue ValToCopy = OutVals[i];
-        EVT ValVT = ValToCopy.getValueType();
-
-        // Promote values to the appropriate types.
-        if (VA.getLocInfo() == CCValAssign::SExt)
-            ValToCopy = DAG.getNode(ISD::SIGN_EXTEND, DL, VA.getLocVT(), ValToCopy);
-        else if (VA.getLocInfo() == CCValAssign::ZExt)
-            ValToCopy = DAG.getNode(ISD::ZERO_EXTEND, DL, VA.getLocVT(), ValToCopy);
-        else if (VA.getLocInfo() == CCValAssign::AExt) {
-            if (ValVT.isVector() && ValVT.getVectorElementType() == MVT::i1)
-                ValToCopy = DAG.getNode(ISD::SIGN_EXTEND, DL, VA.getLocVT(), ValToCopy);
-            else
-                ValToCopy = DAG.getNode(ISD::ANY_EXTEND, DL, VA.getLocVT(), ValToCopy);
-        }
-        else if (VA.getLocInfo() == CCValAssign::BCvt)
-            ValToCopy = DAG.getBitcast(VA.getLocVT(), ValToCopy);
-
-        assert(VA.getLocInfo() != CCValAssign::FPExt &&
-               "Unexpected FP-extend for return value.");
-
-        // If this is x86-64, and we disabled SSE, we can't return FP values,
-        // or SSE or MMX vectors.
-        // Likewise we can't return F64 values with SSE1 only.  gcc does so, but
-        // llvm-gcc has never done it right and no one has noticed, so this
-        // should be OK for now.
-
-        // Returns in ST0/ST1 are handled specially: these are pushed as operands to
-        // the RET instruction and handled by the FP Stackifier.
-
-        Chain = DAG.getCopyToReg(Chain, DL, VA.getLocReg(), ValToCopy, Flag);
-        Flag = Chain.getValue(1);
-        RetOps.push_back(DAG.getRegister(VA.getLocReg(), VA.getLocVT()));
+    // Record the number and types of the return values.
+    for (const ISD::OutputArg &Out : Outs) {
+        assert(!Out.Flags.isByVal() && "byval is not valid for return values");
+        assert(!Out.Flags.isNest() && "nest is not valid for return values");
+        assert(Out.IsFixed && "non-fixed return value is not valid");
+        if (Out.Flags.isInAlloca())
+            fail(DL, DAG, "WebAssembly hasn't implemented inalloca results");
+        if (Out.Flags.isInConsecutiveRegs())
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs results");
+        if (Out.Flags.isInConsecutiveRegsLast())
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs last results");
     }
 
-    // Swift calling convention does not require we copy the sret argument
-    // into %rax/%eax for the return, and SRetReturnReg is not set for Swift.
-
-    // All x86 ABIs require that for returning structs by value we copy
-    // the sret argument into %rax/%eax (depending on ABI) for the return.
-    // We saved the argument into a virtual register in the entry block,
-    // so now we copy the value out and into %rax/%eax.
-    //
-    // Checking Function.hasStructRetAttr() here is insufficient because the IR
-    // may not have an explicit sret argument. If FuncInfo.CanLowerReturn is
-    // false, then an sret argument may be implicitly inserted in the SelDAG. In
-    // either case FuncInfo->setSRetReturnReg() will have been called.
-    if (unsigned SRetReg = ZCPU::EAX) {
-        // When we have both sret and another return value, we should use the
-        // original Chain stored in RetOps[0], instead of the current Chain updated
-        // in the above loop. If we only have sret, RetOps[0] equals to Chain.
-
-        // For the case of sret and another return value, we have
-        //   Chain_0 at the function entry
-        //   Chain_1 = getCopyToReg(Chain_0) in the above loop
-        // If we use Chain_1 in getCopyFromReg, we will have
-        //   Val = getCopyFromReg(Chain_1)
-        //   Chain_2 = getCopyToReg(Chain_1, Val) from below
-
-        // getCopyToReg(Chain_0) will be glued together with
-        // getCopyToReg(Chain_1, Val) into Unit A, getCopyFromReg(Chain_1) will be
-        // in Unit B, and we will have cyclic dependency between Unit A and Unit B:
-        //   Data dependency from Unit B to Unit A due to usage of Val in
-        //     getCopyToReg(Chain_1, Val)
-        //   Chain dependency from Unit A to Unit B
-
-        // So here, we use RetOps[0] (i.e Chain_0) for getCopyFromReg.
-        SDValue Val = DAG.getCopyFromReg(RetOps[0], DL, SRetReg,
-                                         getPointerTy(MF.getDataLayout()));
-
-        unsigned RetValReg
-                = ZCPU::EAX;
-        Chain = DAG.getCopyToReg(Chain, DL, RetValReg, Val, Flag);
-        Flag = Chain.getValue(1);
-
-        // RAX/EAX now acts like a return value.
-        RetOps.push_back(
-                DAG.getRegister(RetValReg, getPointerTy(DAG.getDataLayout())));
-    }
-
-    const ZCPURegisterInfo *TRI = Subtarget->getRegisterInfo();
-    const MCPhysReg *I =
-            TRI->getCalleeSavedRegsViaCopy(&DAG.getMachineFunction());
-    if (I) {
-        for (; *I; ++I) {
-            if (ZCPU::BothNormAndExtendedRegClass.contains(*I))
-                RetOps.push_back(DAG.getRegister(*I, MVT::i64));
-            else
-                llvm_unreachable("Unexpected register class in CSRsViaCopy!");
-        }
-    }
-
-    RetOps[0] = Chain;  // Update chain.
-
-    // Add the flag if we have it.
-    if (Flag.getNode())
-        RetOps.push_back(Flag);
-
-   auto opcode = ZCPUISD::RET_FLAG;
-    if (CallConv == CallingConv::X86_INTR)
-        opcode = ZCPUISD::IRET;
-
-    return DAG.getNode(opcode, DL, MVT::Other, RetOps);
+    return Chain;
 }
 
 SDValue ZCPUTargetLowering::LowerFormalArguments(
@@ -550,7 +449,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         InVals.push_back(
                 In.Used
                 ? DAG.getNode(ZCPUISD::RET_FLAG, DL, In.VT,
-                              DAG.getTargetConstant(InVals.size(), DL, MVT::i32))
+                              DAG.getTargetConstant(InVals.size(), DL, MVT::i64))
                 : DAG.getUNDEF(In.VT));
 
         // Record the number and types of arguments.
@@ -584,6 +483,8 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
     switch (Op.getOpcode()) {
         default:
             return SDValue();
+        case ISD::CopyToReg:
+            return LowerCopyToReg(Op, DAG);
     }
 }
 //===----------------------------------------------------------------------===//
@@ -608,156 +509,20 @@ SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
     int FI = cast<FrameIndexSDNode>(Op)->getIndex();
     return DAG.getTargetFrameIndex(FI, Op.getValueType());
 }
-void ZCPUTargetLowering::LowerAsmOperandForConstraint(SDValue Op,
-                                                     std::string &Constraint,
-                                                     std::vector<SDValue>&Ops,
-                                                     SelectionDAG &DAG) const {
-    SDValue Result;
-
-    // Only support length 1 constraints for now.
-    if (Constraint.length() > 1) return;
-
-    char ConstraintLetter = Constraint[0];
-    switch (ConstraintLetter) {
-        default: break;
-        case 'I':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (C->getZExtValue() <= 31) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'J':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (C->getZExtValue() <= 63) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'K':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (isInt<8>(C->getSExtValue())) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'L':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (C->getZExtValue() == 0xff || C->getZExtValue() == 0xffff ) {
-                    Result = DAG.getTargetConstant(C->getSExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'M':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (C->getZExtValue() <= 3) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'N':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (C->getZExtValue() <= 255) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'O':
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (C->getZExtValue() <= 127) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            return;
-        case 'e': {
-            // 32-bit signed value
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (ConstantInt::isValueValidForType(Type::getInt32Ty(*DAG.getContext()),
-                                                     C->getSExtValue())) {
-                    // Widen to 64 bits here to get it sign extended.
-                    Result = DAG.getTargetConstant(C->getSExtValue(), SDLoc(Op), MVT::i64);
-                    break;
-                }
-                // FIXME gcc accepts some relocatable values here too, but only in certain
-                // memory models; it's complicated.
-            }
-            return;
-        }
-        case 'Z': {
-            // 32-bit unsigned value
-            if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-                if (ConstantInt::isValueValidForType(Type::getInt32Ty(*DAG.getContext()),
-                                                     C->getZExtValue())) {
-                    Result = DAG.getTargetConstant(C->getZExtValue(), SDLoc(Op),
-                                                   Op.getValueType());
-                    break;
-                }
-            }
-            // FIXME gcc accepts some relocatable values here too, but only in certain
-            // memory models; it's complicated.
-            return;
-        }
-        case 'i': {
-            // Literal immediates are always ok.
-            if (ConstantSDNode *CST = dyn_cast<ConstantSDNode>(Op)) {
-                // Widen to 64 bits here to get it sign extended.
-                Result = DAG.getTargetConstant(CST->getSExtValue(), SDLoc(Op), MVT::i64);
-                break;
-            }
-
-            // If we are in non-pic codegen mode, we allow the address of a global (with
-            // an optional displacement) to be used with 'i'.
-            GlobalAddressSDNode *GA = nullptr;
-            int64_t Offset = 0;
-
-            // Match either (GA), (GA+C), (GA+C1+C2), etc.
-            while (1) {
-                if ((GA = dyn_cast<GlobalAddressSDNode>(Op))) {
-                    Offset += GA->getOffset();
-                    break;
-                } else if (Op.getOpcode() == ISD::ADD) {
-                    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op.getOperand(1))) {
-                        Offset += C->getZExtValue();
-                        Op = Op.getOperand(0);
-                        continue;
-                    }
-                } else if (Op.getOpcode() == ISD::SUB) {
-                    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op.getOperand(1))) {
-                        Offset += -C->getZExtValue();
-                        Op = Op.getOperand(0);
-                        continue;
-                    }
-                }
-
-                // Otherwise, this isn't something we can handle, reject it.
-                return;
-            }
-
-            const GlobalValue *GV = GA->getGlobal();
-
-            Result = DAG.getTargetGlobalAddress(GV, SDLoc(Op),
-                                                GA->getValueType(0), Offset);
-            break;
-        }
+SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op,
+                                                  SelectionDAG &DAG) const {
+    SDValue Src = Op.getOperand(2);
+    if (isa<FrameIndexSDNode>(Src.getNode())) {
+        SDValue Chain = Op.getOperand(0);
+        SDLoc DL(Op);
+        unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
+        EVT VT = Src.getValueType();
+        SDValue Copy(DAG.getMachineNode(ZCPU::LEA, DL, VT, Src), 0);
+        return Op.getNode()->getNumValues() == 1
+               ? DAG.getCopyToReg(Chain, DL, Reg, Copy)
+               : DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getNumOperands() == 4
+                                                        ? Op.getOperand(3)
+                                                        : SDValue());
     }
-
-    if (Result.getNode()) {
-        Ops.push_back(Result);
-        return;
-    }
-    return TargetLowering::LowerAsmOperandForConstraint(Op, Constraint, Ops, DAG);
+    return SDValue();
 }

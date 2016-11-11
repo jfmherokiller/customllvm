@@ -52,9 +52,9 @@ include "ZCPUInstrFormats.td"
 //===----------------------------------------------------------------------===//
 def SDT_ZCPUArgument : SDTypeProfile<1, 1, [SDTCisVT<1, i64>]>;
 def SDTZCPURet     : SDTypeProfile<0, -1, []>;
-def ZCPUretflag : SDNode<"ZCPUISD::RET_FLAG", SDTZCPURet,
-                        [SDNPHasChain]>;
+def ZCPUretflag : SDNode<"ZCPUISD::RET_FLAG", SDTZCPURet,[SDNPHasChain]>;
 def ZCPUiret : SDNode<"ZCPUISD::IRET", SDTZCPURet,[SDNPHasChain]>;
+def immSExt64  : PatLeaf<(imm), [{ return isInt<64>(N->getSExtValue()); }]>;
 
 include "zcpuInstr.td"
 include "vectorInstr.td"

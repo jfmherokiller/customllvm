@@ -101,8 +101,6 @@ namespace {
             return getTM<ZCPUTargetMachine>();
         }
 
-        FunctionPass *createTargetRegisterAllocator(bool) override;
-
         void addIRPasses() override;
 
         bool addInstSelector() override;
@@ -125,10 +123,6 @@ TargetPassConfig *ZCPUTargetMachine::createPassConfig(PassManagerBase &PM) {
     return new ZCPUPassConfig(this, PM);
 }
 
-FunctionPass *ZCPUPassConfig::createTargetRegisterAllocator(bool) {
-    return nullptr; // No reg alloc
-}
-
 //===----------------------------------------------------------------------===//
 // The following functions are called from lib/CodeGen/Passes.cpp to modify
 // the CodeGen pass sequence.
@@ -142,8 +136,7 @@ void ZCPUPassConfig::addIRPasses() {
 
 bool ZCPUPassConfig::addInstSelector() {
     (void) TargetPassConfig::addInstSelector();
-    addPass(
-            createZCPUISelDag(getZCPUTargetMachine(), getOptLevel()));
+    addPass(createZCPUISelDag(getZCPUTargetMachine(), getOptLevel()));
     return false;
 }
 

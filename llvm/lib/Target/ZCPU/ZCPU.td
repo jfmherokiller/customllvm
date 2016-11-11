@@ -50,6 +50,7 @@ def ZCPUInstrInfo : InstrInfo;
 // Minimal Viable Product.
 def : ProcessorModel<"mvp", NoSchedModel, []>;
 
+def : ProcessorModel<"generic", NoSchedModel, []>;
 //===----------------------------------------------------------------------===//
 // Target Declaration
 //===----------------------------------------------------------------------===//

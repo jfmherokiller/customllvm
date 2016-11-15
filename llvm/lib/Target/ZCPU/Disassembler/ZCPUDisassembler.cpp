@@ -109,7 +109,6 @@ MCDisassembler::DecodeStatus ZCPUDisassembler::getInstruction(
                 MI.addOperand(MCOperand::createReg(Reg));
                 break;
             }
-            case ZCPU::OPERAND_FP32IMM:
             case ZCPU::OPERAND_FP64IMM: {
                 // TODO: MC converts all floating point immediate operands to double.
                 // This is fine for numeric values, but may cause NaNs to change bits.

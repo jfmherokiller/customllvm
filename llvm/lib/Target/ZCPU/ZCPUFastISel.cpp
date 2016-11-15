@@ -122,10 +122,11 @@ namespace {
                 case MVT::i1:
                 case MVT::i8:
                 case MVT::i16:
-                    return MVT::i32;
                 case MVT::i32:
+                    return MVT::i64;
                 case MVT::i64:
                 case MVT::f32:
+                    return MVT::f64;
                 case MVT::f64:
                     return VT;
                 default:

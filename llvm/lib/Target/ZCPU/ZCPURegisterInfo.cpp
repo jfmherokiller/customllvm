@@ -49,7 +49,7 @@ ZCPURegisterInfo::getReservedRegs(const MachineFunction & /*MF*/) const {
 
     BitVector Reserved(getNumRegs());
     static const uint16_t ReservedCPURegs[] = {
-            ZCPU::IP,ZCPU::SerialNo,ZCPU::XEIP,
+            ZCPU::SerialNo,ZCPU::XEIP,
     };
     for (unsigned I = 0; I < array_lengthof(ReservedCPURegs); ++I)
         Reserved.set(ReservedCPURegs[I]);

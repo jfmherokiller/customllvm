@@ -12,7 +12,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include <llvm/Target/TargetLowering.h>
+
 #include "ZCPUISelLowering.h"
 #include "MCTargetDesc/ZCPUMCTargetDesc.h"
 #include "ZCPUMachineFunctionInfo.h"
@@ -33,7 +33,10 @@
 #include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
-
+#include "ZCPUGenInstrInfo.inc"
+#define GET_INSTRINFO_ENUM
+#include "ZCPUGenRegisterInfo.inc"
+#define GET_REGINFO_ENUM
 #define DEBUG_TYPE "zcpu-lower"
 
 ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtarget &STI)
@@ -68,8 +71,8 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVTPtr, Expand);
 
-    //setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
-    //setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
+    setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
+    setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
 
     // Expand these forms; we pattern-match the forms that we can handle in isel.
     for (auto T : {MVT::i32, MVT::i64, MVT::f32, MVT::f64})
@@ -137,6 +140,12 @@ const char *ZCPUTargetLowering::getTargetNodeName(
     switch (Opcode) {
         case ZCPUISD::RET_FLAG:               return "ZCPUISD::RET_FLAG";
         case ZCPUISD::IRET:               return "ZCPUISD::IRET";
+        case ZCPUISD::Wrapper:
+            return "ZCPUISD::Wrapper";
+        case ZCPUISD::CALL0:
+            return "ZCPUISD::CALL0";
+        case ZCPUISD::CALL1:
+            return "ZCPUISD::CALL1";
         default:                         return NULL;
     }
 }
@@ -191,7 +200,6 @@ bool ZCPUTargetLowering::isIntDivCheap(EVT VT, AttributeSet Attr) const {
 //===----------------------------------------------------------------------===//
 // ZCPU Lowering private implementation.
 //===----------------------------------------------------------------------===//
-#include "ZCPUGenCallingConv.inc"
 //===----------------------------------------------------------------------===//
 // Lowering Code
 //===----------------------------------------------------------------------===//
@@ -425,51 +433,6 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
         const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
         SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
-    MachineFunction &MF = DAG.getMachineFunction();
-    auto *MFI = MF.getInfo<ZCPUFunctionInfo>();
-
-    if (!CallingConvSupported(CallConv))
-        fail(DL, DAG, "WebAssembly doesn't support non-C calling conventions");
-
-    // Set up the incoming ARGUMENTS value, which serves to represent the liveness
-    // of the incoming values before they're represented by virtual registers.
-    MF.getRegInfo().addLiveIn(ZCPU::EAX);
-
-    for (const ISD::InputArg &In : Ins) {
-        if (In.Flags.isInAlloca())
-            fail(DL, DAG, "WebAssembly hasn't implemented inalloca arguments");
-        if (In.Flags.isNest())
-            fail(DL, DAG, "WebAssembly hasn't implemented nest arguments");
-        if (In.Flags.isInConsecutiveRegs())
-            fail(DL, DAG, "WebAssembly hasn't implemented cons regs arguments");
-        if (In.Flags.isInConsecutiveRegsLast())
-            fail(DL, DAG, "WebAssembly hasn't implemented cons regs last arguments");
-        // Ignore In.getOrigAlign() because all our arguments are passed in
-        // registers.
-        InVals.push_back(
-                In.Used
-                ? DAG.getNode(ZCPUISD::RET_FLAG, DL, In.VT,
-                              DAG.getTargetConstant(InVals.size(), DL, MVT::i64))
-                : DAG.getUNDEF(In.VT));
-
-        // Record the number and types of arguments.
-        MFI->addParam(In.VT);
-    }
-
-    // Varargs are copied into a buffer allocated by the caller, and a pointer to
-    // the buffer is passed as an argument.
-    if (IsVarArg) {
-        MVT PtrVT = getPointerTy(MF.getDataLayout());
-        unsigned VarargVreg =
-                MF.getRegInfo().createVirtualRegister(getRegClassFor(PtrVT));
-        MFI->setVarargBufferVreg(VarargVreg);
-        Chain = DAG.getCopyToReg(
-                Chain, DL, VarargVreg,
-                DAG.getNode(ZCPUISD::RET_FLAG, DL, PtrVT,
-                            DAG.getTargetConstant(Ins.size(), DL, MVT::i64)));
-        MFI->addParam(PtrVT);
-    }
-
     return Chain;
 }
 
@@ -485,6 +448,10 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
             return SDValue();
         case ISD::CopyToReg:
             return LowerCopyToReg(Op, DAG);
+        case ISD::FRAMEADDR:
+            return LowerFRAMEADDR(Op,DAG);
+        case ISD::FrameIndex:
+            return LowerFrameIndex(Op,DAG);
     }
 }
 //===----------------------------------------------------------------------===//

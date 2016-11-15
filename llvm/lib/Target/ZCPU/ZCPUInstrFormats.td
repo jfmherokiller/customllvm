@@ -35,9 +35,9 @@ class IRegRegSignIntBinyOP<bits<24> opcode,string instr, string asmstr = "">
 }
 class IRegRegUnSignIntBinyOP<bits<24> opcode, string instr,string asmstr = "">
     : ZCPUInst<opcode,asmstr> {
-  dag OutOperandList = (outs BothNormAndExtendedFloat:$dst);
-  dag InOperandList  = (ins BothNormAndExtendedFloat:$src1 ,BothNormAndExtendedFloat:$src2);
-  let Pattern        = [(set BothNormAndExtendedFloat:$dst,(!cast<dag>(!strconcat("u",instr)) BothNormAndExtendedFloat:$src1,BothNormAndExtendedFloat:$src2))];
+  dag OutOperandList = (outs BothNormAndExtendedInt:$dst);
+  dag InOperandList  = (ins BothNormAndExtendedInt:$src1 ,BothNormAndExtendedInt:$src2);
+  let Pattern        = [(set BothNormAndExtendedInt:$dst,(!cast<dag>(!strconcat("u",instr)) BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))];
 }
 class IRegRegIntBinyOP<bits<24> opcode,string instr, string asmstr = "">
     : ZCPUInst<opcode,asmstr> {

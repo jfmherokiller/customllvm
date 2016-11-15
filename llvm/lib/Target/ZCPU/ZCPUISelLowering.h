@@ -32,6 +32,9 @@ namespace llvm {
         enum NodeType : unsigned {
             FIRST_NUMBER = ISD::BUILTIN_OP_END,
             RET_FLAG,
+            Wrapper,
+            CALL1,
+            CALL0,
             IRET,
         };
     }

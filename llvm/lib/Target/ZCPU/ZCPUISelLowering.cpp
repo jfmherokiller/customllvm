@@ -33,10 +33,7 @@
 #include "llvm/Target/TargetOptions.h"
 
 using namespace llvm;
-#include "ZCPUGenInstrInfo.inc"
-#define GET_INSTRINFO_ENUM
-#include "ZCPUGenRegisterInfo.inc"
-#define GET_REGINFO_ENUM
+
 #define DEBUG_TYPE "zcpu-lower"
 
 ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtarget &STI)
@@ -95,10 +92,10 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setTruncStoreAction(MVT::i64, MVT::i32, Promote);
     setTruncStoreAction(MVT::i64, MVT::i16, Promote);
     setTruncStoreAction(MVT::i64, MVT::i8, Promote);
-    setTruncStoreAction(MVT::i64, MVT::i1, Promote);
-    setTruncStoreAction(MVT::f64, MVT::f32, Promote);
+   setTruncStoreAction(MVT::i64, MVT::i1, Promote);
+   setTruncStoreAction(MVT::f64, MVT::f32, Promote);
     setTruncStoreAction(MVT::f64, MVT::f16, Promote);
-
+    setTruncStoreAction(MVT::i64,MVT::i64,Legal);
     setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i8, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i16, Promote);
@@ -159,7 +156,7 @@ std::pair<unsigned, const TargetRegisterClass *> ZCPUTargetLowering::getRegForIn
             case 'r':
                 assert(VT != MVT::iPTR && "Pointer MVT not expected here");
                 if (VT.isInteger() && !VT.isVector()) {
-                    return std::make_pair(0U, &ZCPU::BothNormAndExtendedRegClass);
+                    return std::make_pair(0U, &ZCPU::BothNormAndExtendedIntRegClass);
                 }
                 break;
             default:
@@ -286,7 +283,7 @@ SDValue ZCPUTargetLowering::LowerCall(
                                             Out.Flags.getByValAlign(),
                     /*isSS=*/false);
             SDValue SizeNode =
-                    DAG.getConstant(Out.Flags.getByValSize(), DL, MVT::i32);
+                    DAG.getConstant(Out.Flags.getByValSize(), DL, MVT::i64);
             SDValue FINode = DAG.getFrameIndex(FI, getPointerTy(Layout));
             Chain = DAG.getMemcpy(
                     Chain, DL, FINode, OutVal, SizeNode, Out.Flags.getByValAlign(),
@@ -452,6 +449,8 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
             return LowerFRAMEADDR(Op,DAG);
         case ISD::FrameIndex:
             return LowerFrameIndex(Op,DAG);
+        case ISD::STORE:
+            return LowerStore(Op,DAG);
     }
 }
 //===----------------------------------------------------------------------===//

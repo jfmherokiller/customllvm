@@ -23,7 +23,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-isel"
+#define DEBUG_TYPE "zcpu-isel"
 
 //===--------------------------------------------------------------------===//
 /// ZCPU-specific code to select ZCPU machine instructions for

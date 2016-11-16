@@ -16,6 +16,8 @@ def JZ:I<007,(outs), (ins brtarget:$dst),[], "JZ\t$dst">; //Jump to PTR if resul
 def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
 }
 
+def MOVInt:I<014,(outs BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src),[(set BothNormAndExtendedInt:$dst,BothNormAndExtendedInt:$src)], "MOV\t$dst,$src">; //X = Y
+def MOVF:I<014,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,BothNormAndExtendedFloat:$src)], "MOV\t$dst,$src">;
 
 def CPUID:I<008,(outs), (ins ),[], "CPUID">; //Write processor information variable IDX into EAX register
 def PUSH:I<009,(outs), (ins),[], "PUSH">; //Push X onto processor stack
@@ -39,7 +41,7 @@ def HALT:I<037,(outs), (ins),[], "HALT">; //Halt processor execution until PORT 
 
 
 //let isReturn=1, isTerminator=1, hasDelaySlot=1, isBarrier=1, hasCtrlDep=1 in {
-//def RET:I<040,(outs), (ins i64imm:$adj, variable_ops),[(ZCPUretflag imm:$adj)], "RET">; //Return from a subroutine
+//def RET:I<040,(outs), (ins i64imm:$adj, variable_ops),[(ZCPUretflag timm:$adj)], "RET">; //Return from a subroutine
 //def IRET:I<041,(outs), (ins i64imm:$adj),[(ZCPUiret timm:$adj)], "IRET">; //Return from an interrupt
 //def RETF:I<047,(outs), (ins),[], "RETF">; //Return from a far subroutine call
 //}
@@ -133,7 +135,8 @@ def CPP:I<123,(outs), (ins),[], "CPP">; //Clear page flag IDX
 def SRL:I<124,(outs), (ins),[], "SRL">; //Set page runlevel to INT
 def CRLI:I<125,(outs), (ins),[], "CRL">; //Write page runlevel to INT
 
-def LEA: I<126,(outs BothNormAndExtended:$dst), (ins i64imm:$src),[(set BothNormAndExtended:$dst, timm:$src)],"LEA\t{$src|$dst}, {$dst|$src}">; //Load absolute address fetched by operand Y into X
+def LEA: I<126,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load timm:$src))],"LEA\t{$src|$dst}, {$dst|$src}">; //Load absolute address fetched by operand Y into X
+
 def BLOCK:I<127,(outs), (ins),[], "BLOCK">; //Make next instruction run on this block
 def CMPAND:I<128,(outs), (ins),[], "CMPAND">; //"Compare X and 
 def CMPOR:I<129,(outs), (ins),[], "CMPOR">; //"Compare X and 
@@ -149,3 +152,6 @@ def EXTRETA:I<140,(outs), (ins),[], "EXTRETA">; //Return from an external interr
 def EXTRETPA:I<141,(outs), (ins),[], "EXTRETPA">; //"Set PTB
 
 
+
+//def RD:I<016,(outs), (ins ),[], "RD\t$src1,$src2">; //Read value from memory by pointer PTR
+//def WD:I<017,(outs), (ins ),[], "WD\t$src1,$src2">; //Write value to memory by pointer PTR

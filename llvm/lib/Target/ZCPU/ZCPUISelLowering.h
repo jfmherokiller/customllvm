@@ -125,6 +125,8 @@ namespace llvm {
 
         //void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint, std::vector<SDValue> &Ops, SelectionDAG &DAG)  const override;
         SDValue LowerSRA(SDValue value, SelectionDAG &dag) const;
+
+        SDValue LowerStore(SDValue Op, SelectionDAG &DAG) const;
     };
 }
 #endif

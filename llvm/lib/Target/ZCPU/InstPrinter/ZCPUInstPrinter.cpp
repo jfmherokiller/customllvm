@@ -33,7 +33,7 @@ using namespace llvm;
 #define DEBUG_TYPE "asm-printer"
 #define GET_INSTRUCTION_NAME
 
-#include "ZCPUGenAsmWriterinc.h"
+#include "ZCPUGenAsmWriter.inc"
 
 ZCPUInstPrinter::ZCPUInstPrinter(const MCAsmInfo &MAI,
                                  const MCInstrInfo &MII,
@@ -83,7 +83,6 @@ void ZCPUInstPrinter::printOperand(const MCInst *MI, unsigned OpNo,
     assert(MO.isExpr() && "Unknown operand kind in printOperand");
     MO.getExpr()->print(O, &MAI);
 }
-
 
 const char *llvm::ZCPU::TypeToString(MVT Ty) {
     switch (Ty.SimpleTy) {

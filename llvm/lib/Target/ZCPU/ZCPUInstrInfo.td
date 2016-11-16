@@ -41,6 +41,31 @@ def ZCPUcallseq_end :SDNode<"ISD::CALLSEQ_END", SDT_ZCPUCallSeqEnd,[SDNPHasChain
 
 include "ZCPUInstrFormats.td"
 
+def loadi32 : PatFrag<(ops node:$ptr), (i32 (unindexedload node:$ptr)), [{
+  LoadSDNode *LD = cast<LoadSDNode>(N);
+  ISD::LoadExtType ExtType = LD->getExtensionType();
+  if (ExtType == ISD::NON_EXTLOAD)
+    return true;
+  if (ExtType == ISD::EXTLOAD)
+    return LD->getAlignment() >= 4 && !LD->isVolatile();
+  return false;
+}]>;
+
+// An 'and' node with a single use.
+def and_su : PatFrag<(ops node:$lhs, node:$rhs), (and node:$lhs, node:$rhs), [{
+  return N->hasOneUse();
+}]>;
+// An 'srl' node with a single use.
+def srl_su : PatFrag<(ops node:$lhs, node:$rhs), (srl node:$lhs, node:$rhs), [{
+  return N->hasOneUse();
+}]>;
+// An 'trunc' node with a single use.
+def trunc_su : PatFrag<(ops node:$src), (trunc node:$src), [{
+  return N->hasOneUse();
+}]>;
+def i64immSExt32 : ImmLeaf<i64, [{ return isInt<32>(Imm); }]>;
+def loadi64  : PatFrag<(ops node:$ptr), (i64 (load node:$ptr))>;
+def loadf64  : PatFrag<(ops node:$ptr), (f64 (load node:$ptr))>;
 //===----------------------------------------------------------------------===//
 // Additional instructions.
 //===----------------------------------------------------------------------===//

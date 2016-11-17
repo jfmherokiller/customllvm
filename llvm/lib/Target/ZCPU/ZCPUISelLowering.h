@@ -31,6 +31,7 @@ namespace llvm {
         // X86 Specific DAG Nodes
         enum NodeType : unsigned {
             FIRST_NUMBER = ISD::BUILTIN_OP_END,
+            ARGUMENT,
             RET_FLAG,
             Wrapper,
             CALL1,
@@ -125,8 +126,6 @@ namespace llvm {
 
         //void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint, std::vector<SDValue> &Ops, SelectionDAG &DAG)  const override;
         SDValue LowerSRA(SDValue value, SelectionDAG &dag) const;
-
-        SDValue LowerStore(SDValue Op, SelectionDAG &DAG) const;
     };
 }
 #endif

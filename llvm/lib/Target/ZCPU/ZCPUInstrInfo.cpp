@@ -52,10 +52,12 @@ void ZCPUInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     // This method is called by post-RA expansion, which expects only pregs to
     // exist. However we need to handle both here.
     auto &MRI = MBB.getParent()->getRegInfo();
-    const TargetRegisterClass *RC =
-            TargetRegisterInfo::isVirtualRegister(DestReg)
-            ? MRI.getRegClass(DestReg)
-            : MRI.getTargetRegisterInfo()->getMinimalPhysRegClass(DestReg);
+    const TargetRegisterClass *RC;
+    if (TargetRegisterInfo::isVirtualRegister(DestReg)) {
+        RC = MRI.getRegClass(DestReg);
+    } else {
+        RC = MRI.getTargetRegisterInfo()->getMinimalPhysRegClass(DestReg);
+    }
 
     unsigned CopyLocalOpcode;
     llvm_unreachable("Unexpected register class");

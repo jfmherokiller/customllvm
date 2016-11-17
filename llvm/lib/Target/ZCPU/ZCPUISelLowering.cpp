@@ -49,19 +49,19 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setSchedulingPreference(Sched::RegPressure);
     // Tell ISel that we have a stack pointer.
     setStackPointerRegisterToSaveRestore(ZCPU::ESP);
-    addRegisterClass(MVT::i64, &ZCPU::GPRIntRegClass);
     addRegisterClass(MVT::i64, &ZCPU::SegmentRegsRegClass);
-    addRegisterClass(MVT::i64, &ZCPU::ExtendedGPRIntRegClass);
-    addRegisterClass(MVT::f64, &ZCPU::GPRFloatRegClass);
-    addRegisterClass(MVT::f64, &ZCPU::ExtendedGPRFloatRegClass);
+    addRegisterClass(MVT::i64, &ZCPU::BothNormAndExtendedIntRegClass);
+    addRegisterClass(MVT::f64, &ZCPU::BothNormAndExtendedFloatRegClass);
+    addRegisterClass(MVT::i32,&ZCPU::BothNormAndExtendedInt32RegClass);
 
     // Compute derived properties from the register classes.
     computeRegisterProperties(Subtarget->getRegisterInfo());
 
-    // As a special case, these operators use the type to mean the type to
-    // sign-extend from.
-    for (auto T : {MVT::i1, MVT::i8, MVT::i16, MVT::i32})
-        setOperationAction(ISD::SIGN_EXTEND_INREG, T, Expand);
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i1 , Expand);
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i8 , Expand);
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i16 , Expand);
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::i32 , Expand);
+    setOperationAction(ISD::SIGN_EXTEND_INREG, MVT::Other , Expand);
 
     // Dynamic stack allocation: use the default expansion.
     setOperationAction(ISD::STACKSAVE, MVT::Other, Expand);
@@ -83,7 +83,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     //  - Floating-point extending loads.
     //  - Floating-point truncating stores.
     //  - i1 extending loads.
-    setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f32, Expand);
+    //setLoadExtAction(ISD::EXTLOAD, MVT::f64, MVT::f32, Expand);
     for (auto T : MVT::integer_valuetypes())
         for (auto Ext : {ISD::EXTLOAD, ISD::ZEXTLOAD, ISD::SEXTLOAD})
             setLoadExtAction(Ext, T, MVT::i1, Promote);
@@ -95,12 +95,22 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
    setTruncStoreAction(MVT::i64, MVT::i1, Promote);
    setTruncStoreAction(MVT::f64, MVT::f32, Promote);
     setTruncStoreAction(MVT::f64, MVT::f16, Promote);
-    setTruncStoreAction(MVT::i64,MVT::i64,Legal);
     setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i8, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i16, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i32, Promote);
-
+    for (auto T : {MVT::i32, MVT::i64}) {
+        // Expand unavailable integer operations.
+        for (auto Op :
+                {ISD::BSWAP, ISD::SMUL_LOHI, ISD::UMUL_LOHI,
+                 ISD::MULHS, ISD::MULHU, ISD::SDIVREM, ISD::UDIVREM, ISD::SHL_PARTS,
+                 ISD::SRA_PARTS, ISD::SRL_PARTS, ISD::ADDC, ISD::ADDE, ISD::SUBC,
+                 ISD::SUBE}) {
+            setOperationAction(Op, T, Expand);
+        }
+    }
+    //setOperationAction(ISD::GlobalAddress,MVT::i32,Expand);
+    //setOperationAction(ISD::STORE,MVT::i32,Legal);
 }
 
 FastISel *ZCPUTargetLowering::createFastISel(
@@ -137,6 +147,8 @@ const char *ZCPUTargetLowering::getTargetNodeName(
     switch (Opcode) {
         case ZCPUISD::RET_FLAG:               return "ZCPUISD::RET_FLAG";
         case ZCPUISD::IRET:               return "ZCPUISD::IRET";
+        case ZCPUISD::ARGUMENT:
+            return "ZCPUISD::ARGUMENT";
         case ZCPUISD::Wrapper:
             return "ZCPUISD::Wrapper";
         case ZCPUISD::CALL0:
@@ -181,6 +193,14 @@ bool ZCPUTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                                const AddrMode &AM,
                                                Type *Ty,
                                                unsigned AS) const {
+    // WebAssembly offsets are added as unsigned without wrapping. The
+    // isLegalAddressingMode gives us no way to determine if wrapping could be
+    // happening, so we approximate this by accepting only non-negative offsets.
+    if (AM.BaseOffs < 0) return false;
+
+    // WebAssembly has no scale register operands.
+    if (AM.Scale != 0) return false;
+
     // Everything else is legal.
     return true;
 }
@@ -430,6 +450,50 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         SDValue Chain, CallingConv::ID CallConv, bool IsVarArg,
         const SmallVectorImpl<ISD::InputArg> &Ins, const SDLoc &DL,
         SelectionDAG &DAG, SmallVectorImpl<SDValue> &InVals) const {
+    MachineFunction &MF = DAG.getMachineFunction();
+    auto *MFI = MF.getInfo<ZCPUFunctionInfo>();
+
+    if (!CallingConvSupported(CallConv))
+        fail(DL, DAG, "WebAssembly doesn't support non-C calling conventions");
+
+    // Set up the incoming ARGUMENTS value, which serves to represent the liveness
+    // of the incoming values before they're represented by virtual registers.
+    MF.getRegInfo().addLiveIn(ZCPU::ARGUMENTS);
+
+    for (const ISD::InputArg &In : Ins) {
+        if (In.Flags.isInAlloca())
+            fail(DL, DAG, "WebAssembly hasn't implemented inalloca arguments");
+        if (In.Flags.isNest())
+            fail(DL, DAG, "WebAssembly hasn't implemented nest arguments");
+        if (In.Flags.isInConsecutiveRegs())
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs arguments");
+        if (In.Flags.isInConsecutiveRegsLast())
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs last arguments");
+        // Ignore In.getOrigAlign() because all our arguments are passed in
+        // registers.
+        InVals.push_back(
+                In.Used
+                ? DAG.getNode(ZCPUISD::ARGUMENT, DL, In.VT,
+                              DAG.getTargetConstant(InVals.size(), DL, MVT::i32))
+                : DAG.getUNDEF(In.VT));
+
+        // Record the number and types of arguments.
+        MFI->addParam(In.VT);
+    }
+
+    // Varargs are copied into a buffer allocated by the caller, and a pointer to
+    // the buffer is passed as an argument.
+    if (IsVarArg) {
+        MVT PtrVT = getPointerTy(MF.getDataLayout());
+        unsigned VarargVreg =
+                MF.getRegInfo().createVirtualRegister(getRegClassFor(PtrVT));
+        MFI->setVarargBufferVreg(VarargVreg);
+        Chain = DAG.getCopyToReg(
+                Chain, DL, VarargVreg,
+                DAG.getNode(ZCPUISD::ARGUMENT, DL, PtrVT,
+                            DAG.getTargetConstant(Ins.size(), DL, MVT::i32)));
+        MFI->addParam(PtrVT);
+    }
     return Chain;
 }
 
@@ -449,8 +513,6 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
             return LowerFRAMEADDR(Op,DAG);
         case ISD::FrameIndex:
             return LowerFrameIndex(Op,DAG);
-        case ISD::STORE:
-            return LowerStore(Op,DAG);
     }
 }
 //===----------------------------------------------------------------------===//
@@ -484,11 +546,15 @@ SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op,
         unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
         EVT VT = Src.getValueType();
         SDValue Copy(DAG.getMachineNode(ZCPU::LEA, DL, VT, Src), 0);
-        return Op.getNode()->getNumValues() == 1
-               ? DAG.getCopyToReg(Chain, DL, Reg, Copy)
-               : DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getNumOperands() == 4
-                                                        ? Op.getOperand(3)
-                                                        : SDValue());
+        if (Op.getNode()->getNumValues() == 1) {
+            return DAG.getCopyToReg(Chain, DL, Reg, Copy);
+        } else {
+            if (Op.getNumOperands() == 4) {
+                return DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getOperand(3));
+            } else {
+                return DAG.getCopyToReg(Chain, DL, Reg, Copy, SDValue());
+            }
+        }
     }
     return SDValue();
 }

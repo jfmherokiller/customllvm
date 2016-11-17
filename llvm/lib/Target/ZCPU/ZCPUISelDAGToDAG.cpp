@@ -65,6 +65,7 @@ namespace {
 
     private:
         // add select functions here...
+        bool SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset);
     };
 } // end anonymous namespace
 
@@ -95,6 +96,65 @@ void ZCPUDAGToDAGISel::Select(SDNode *Node) {
 
     // Select the default instruction.
     SelectCode(Node);
+}
+bool ZCPUDAGToDAGISel::SelectAddr(SDNode *Parent, SDValue Addr, SDValue &Base, SDValue &Offset) {
+//@SelectAddr }
+    EVT ValTy = Addr.getValueType();
+    SDLoc DL(Addr);
+
+    // If Parent is an unaligned f32 load or store, select a (base + index)
+    // floating point load/store instruction (luxc1 or suxc1).
+    const LSBaseSDNode* LS = 0;
+
+    if (Parent && (LS = dyn_cast<LSBaseSDNode>(Parent))) {
+        EVT VT = LS->getMemoryVT();
+
+        if (VT.getSizeInBits() / 8 > LS->getAlignment()) {
+            assert("Unaligned loads/stores not supported for this type.");
+            if (VT == MVT::f32)
+                return false;
+        }
+    }
+
+    // if Address is FI, get the TargetFrameIndex.
+    if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>(Addr)) {
+        Base   = CurDAG->getTargetFrameIndex(FIN->getIndex(), ValTy);
+        Offset = CurDAG->getTargetConstant(0, DL, ValTy);
+        return true;
+    }
+    // on PIC code Load GA
+    if (Addr.getOpcode() == ZCPUISD::Wrapper) {
+        Base   = Addr.getOperand(0);
+        Offset = Addr.getOperand(1);
+        return true;
+    }
+
+    //@static
+    if (TM.getRelocationModel() != Reloc::PIC_) {
+        if ((Addr.getOpcode() == ISD::TargetExternalSymbol ||
+             Addr.getOpcode() == ISD::TargetGlobalAddress))
+            return false;
+    }
+    // Addresses of the form FI+const or FI|const
+    if (CurDAG->isBaseWithConstantOffset(Addr)) {
+        ConstantSDNode *CN = dyn_cast<ConstantSDNode>(Addr.getOperand(1));
+        if (isInt<32>(CN->getSExtValue())) {
+
+            // If the first operand is a FI, get the TargetFI Node
+            if (FrameIndexSDNode *FIN = dyn_cast<FrameIndexSDNode>
+                    (Addr.getOperand(0)))
+                Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), ValTy);
+            else
+                Base = Addr.getOperand(0);
+
+            Offset = CurDAG->getTargetConstant(CN->getZExtValue(), DL, ValTy);
+            return true;
+        }
+    }
+
+    Base   = Addr;
+    Offset = CurDAG->getTargetConstant(0, DL, ValTy);
+    return true;
 }
 
 bool ZCPUDAGToDAGISel::SelectInlineAsmMemoryOperand(

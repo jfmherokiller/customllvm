@@ -15,9 +15,10 @@ def JE:I<007,(outs), (ins brtarget:$dst),[], "JE\t$dst">; //Jump to PTR if resul
 def JZ:I<007,(outs), (ins brtarget:$dst),[], "JZ\t$dst">; //Jump to PTR if result is zero
 def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
 }
-
 def MOVInt:I<014,(outs BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src),[(set BothNormAndExtendedInt:$dst,BothNormAndExtendedInt:$src)], "MOV\t$dst,$src">; //X = Y
-def MOVF:I<014,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,BothNormAndExtendedFloat:$src)], "MOV\t$dst,$src">;
+def MOVF:I<014,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,BothNormAndExtendedFloat:$src)], "MOV\t$dst,$src">; //X = Y
+def MOVInt32Imm: I<014,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst,(zext (i32 imm:$src)))], "MOV\t$dst,$src">; //X = Y
+def MOVRegGlobal: I<014,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst,(zext (i32 tglobaladdr:$src)))], "MOV\t$dst,$src">; //X = Y
 
 def CPUID:I<008,(outs), (ins ),[], "CPUID">; //Write processor information variable IDX into EAX register
 def PUSH:I<009,(outs), (ins),[], "PUSH">; //Push X onto processor stack
@@ -135,7 +136,7 @@ def CPP:I<123,(outs), (ins),[], "CPP">; //Clear page flag IDX
 def SRL:I<124,(outs), (ins),[], "SRL">; //Set page runlevel to INT
 def CRLI:I<125,(outs), (ins),[], "CRL">; //Write page runlevel to INT
 
-def LEA: I<126,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load timm:$src))],"LEA\t{$src|$dst}, {$dst|$src}">; //Load absolute address fetched by operand Y into X
+def LEA: I<126,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load addr:$src))],"LEA\t{$dst|$src}">; //Load absolute address fetched by operand Y into X
 
 def BLOCK:I<127,(outs), (ins),[], "BLOCK">; //Make next instruction run on this block
 def CMPAND:I<128,(outs), (ins),[], "CMPAND">; //"Compare X and 
@@ -153,5 +154,8 @@ def EXTRETPA:I<141,(outs), (ins),[], "EXTRETPA">; //"Set PTB
 
 
 
-//def RD:I<016,(outs), (ins ),[], "RD\t$src1,$src2">; //Read value from memory by pointer PTR
-//def WD:I<017,(outs), (ins ),[], "WD\t$src1,$src2">; //Write value to memory by pointer PTR
+def RDInt:I<016,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load addr:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
+def RDFloat:I<016,(outs BothNormAndExtendedFloat:$dst), (ins i64imm:$src),[(set BothNormAndExtendedFloat:$dst,(load addr:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
+
+def WDInt:I<017,(outs ), (ins BothNormAndExtendedInt:$val, i64imm:$ptr),[(store BothNormAndExtendedInt:$val,addr:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
+def WDFloat:I<017,(outs ), (ins BothNormAndExtendedFloat:$val, i64imm:$ptr),[(store BothNormAndExtendedFloat:$val,addr:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR

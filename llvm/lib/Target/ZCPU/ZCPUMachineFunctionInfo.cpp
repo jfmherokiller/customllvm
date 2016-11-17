@@ -14,7 +14,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "ZCPUMachineFunctionInfo.h"
-
+#include "ZCPURegisterInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 using namespace llvm;
 
 ZCPUFunctionInfo::~ZCPUFunctionInfo() {}

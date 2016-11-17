@@ -29,8 +29,8 @@ def FFRAC:I<035,(outs), (ins),[], "FFRAC">; //"Remove integer part of the fracti
 def FINV:I<036,(outs), (ins),[], "FINV">; //X = 1 / X
 
 let Constraints = "$src1 = $dst" in {
-def FSHR:I<039,(outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1, i64imm:$src2),[(set BothNormAndExtendedInt:$dst,(i64 (sra BothNormAndExtendedInt:$src1,i64immSExt32:$src2)))], "FSHR\t$src1,$src2">; //Divide X by 2 (does not floor)
-def FSHL:I<038,(outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1, i64imm:$src2),[(set BothNormAndExtendedInt:$dst,(i64 (srl BothNormAndExtendedInt:$src1,i64immSExt32:$src2)))], "FSHL\t$src1,$src2">; //Multiply X by 2 (does not floor)
+def FSHR:I<039,(outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1, i64imm:$src2),[(set BothNormAndExtendedInt:$dst,(sra BothNormAndExtendedInt:$src1,(i64 imm:$src2)))], "FSHR\t$src1,$src2">; //Divide X by 2 (does not floor)
+def FSHL:I<038,(outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1, i64imm:$src2),[(set BothNormAndExtendedInt:$dst,(srl BothNormAndExtendedInt:$src1,(i64 imm:$src2)))], "FSHL\t$src1,$src2">; //Multiply X by 2 (does not floor)
 
 def AND:I<050, (outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2),[(set BothNormAndExtendedInt:$dst,(and BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))], "AND\t$src1,$src2">; //Logical AND between X and Y
 def OR:I<051,  (outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2),[(set BothNormAndExtendedInt:$dst,(or BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))],  "OR\t$src1,$src2">; //Logical OR between X and Y

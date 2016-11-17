@@ -33,7 +33,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "wasm-frame-info"
+#define DEBUG_TYPE "zcpu-frame-info"
 
 // TODO: wasm64
 // TODO: Emit TargetOpcode::CFI_INSTRUCTION instructions
@@ -87,6 +87,7 @@ ZCPUFrameLowering::eliminateCallFramePseudoInstr(
 
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
+
 }
 
 void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,

@@ -48,7 +48,7 @@ include "ZCPUInstrFormats.td"
 
 
 
-def i64immSExt32 : ImmLeaf<i64, [{ return isInt<32>(Imm); }]>;
+def i64immSExt32 : ImmLeaf<i64, [{ return isInt<32>(Imm)?Imm:Imm; }]>;
 
 //===----------------------------------------------------------------------===//
 // Additional instructions.

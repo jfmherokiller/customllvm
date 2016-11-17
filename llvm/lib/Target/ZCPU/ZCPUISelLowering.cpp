@@ -408,7 +408,11 @@ SDValue ZCPUTargetLowering::LowerCall(
 
     return Chain;
 }
+//===----------------------------------------------------------------------===//
+//               Return Value Calling Convention Implementation
+//===----------------------------------------------------------------------===//
 
+#include "ZCPUGenCallingConv.inc"
 bool ZCPUTargetLowering::CanLowerReturn(
         CallingConv::ID /*CallConv*/, MachineFunction & /*MF*/, bool /*IsVarArg*/,
         const SmallVectorImpl<ISD::OutputArg> &Outs,
@@ -422,9 +426,16 @@ SDValue ZCPUTargetLowering::LowerReturn(
         const SmallVectorImpl<ISD::OutputArg> &Outs,
         const SmallVectorImpl<SDValue> &OutVals, const SDLoc &DL,
         SelectionDAG &DAG) const {
+    MachineFunction &MF = DAG.getMachineFunction();
+    auto *MFI = MF.getInfo<ZCPUFunctionInfo>();
+
     assert(Outs.size() <= 1 && "WebAssembly can only return up to one value");
     if (!CallingConvSupported(CallConv))
         fail(DL, DAG, "WebAssembly doesn't support non-C calling conventions");
+
+    SmallVector<CCValAssign, 16> RVLocs;
+    CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
+    CCInfo.AnalyzeReturn(Outs, RetCC_ZCPU);
 
     SmallVector<SDValue, 4> RetOps(1, Chain);
     RetOps.append(OutVals.begin(), OutVals.end());
@@ -474,7 +485,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         InVals.push_back(
                 In.Used
                 ? DAG.getNode(ZCPUISD::ARGUMENT, DL, In.VT,
-                              DAG.getTargetConstant(InVals.size(), DL, MVT::i32))
+                              DAG.getTargetConstant(InVals.size(), DL, MVT::i64))
                 : DAG.getUNDEF(In.VT));
 
         // Record the number and types of arguments.
@@ -491,7 +502,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         Chain = DAG.getCopyToReg(
                 Chain, DL, VarargVreg,
                 DAG.getNode(ZCPUISD::ARGUMENT, DL, PtrVT,
-                            DAG.getTargetConstant(Ins.size(), DL, MVT::i32)));
+                            DAG.getTargetConstant(Ins.size(), DL, MVT::i64)));
         MFI->addParam(PtrVT);
     }
     return Chain;

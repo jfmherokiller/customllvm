@@ -7,6 +7,7 @@ tablegen(LLVM ZCPUGenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM ZCPUGenMCCodeEmitter.inc -gen-emitter)
 tablegen(LLVM ZCPUGenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM ZCPUGenSubtargetInfo.inc -gen-subtarget)
+tablegen(LLVM ZCPUGenCallingConv.inc -gen-callingconv)
 add_public_tablegen_target(ZCPUCommonTableGen)
 
 add_llvm_target(ZCPUCodeGen

@@ -141,9 +141,9 @@ bool ZCPUPassConfig::addInstSelector() {
 }
 
 void ZCPUPassConfig::addPostRegAlloc() {
-    disablePass(&ShrinkWrapID);
-    disablePass(&MachineCopyPropagationID);
-    disablePass(&PostRASchedulerID);
+    //disablePass(&ShrinkWrapID);
+    //disablePass(&MachineCopyPropagationID);
+    //disablePass(&PostRASchedulerID);
     disablePass(&FuncletLayoutID);
     disablePass(&StackMapLivenessID);
     disablePass(&LiveDebugValuesID);

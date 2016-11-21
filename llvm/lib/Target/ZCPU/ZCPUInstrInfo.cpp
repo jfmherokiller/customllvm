@@ -27,7 +27,6 @@ using namespace llvm;
 #define DEBUG_TYPE "zcpu-instr-info"
 
 #define GET_INSTRINFO_CTOR_DTOR
-
 #include "ZCPUGenInstrInfo.inc"
 
 ZCPUInstrInfo::ZCPUInstrInfo(const ZCPUSubtarget &STI)
@@ -60,7 +59,7 @@ void ZCPUInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     }
 
     unsigned CopyLocalOpcode;
-    //llvm_unreachable("Unexpected register class");
+    llvm_unreachable("Unexpected register class");
 
     BuildMI(MBB, I, DL, get(CopyLocalOpcode), DestReg)
             .addReg(SrcReg, KillSrc ? RegState::Kill : 0);
@@ -91,7 +90,7 @@ bool ZCPUInstrInfo::analyzeBranch(MachineBasicBlock &MBB,
 }
 
 unsigned ZCPUInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
-    MachineBasicBlock::instr_iterator I = MBB.instr_end();
+    //MachineBasicBlock::instr_iterator I = MBB.instr_end();
     unsigned Count = 0;
     return Count;
 }

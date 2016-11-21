@@ -47,11 +47,6 @@ ZCPUSubtarget::ZCPUSubtarget(const Triple &TT,
           InstrInfo(initializeSubtargetDependencies(FS)), TSInfo(),
           TLInfo(TM, *this) {}
 
-bool ZCPUSubtarget::enableMachineScheduler() const {
-    // Disable the MachineScheduler for now. Even with ShouldTrackPressure set and
-    // enableMachineSchedDefaultSched overridden, it appears to have an overall
-    // negative effect for the kinds of register optimizations we're doing.
-    return false;
-}
+
 
 bool ZCPUSubtarget::useAA() const { return true; }

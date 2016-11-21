@@ -74,7 +74,7 @@ namespace llvm {
 
         const Triple &getTargetTriple() const { return TargetTriple; }
 
-        bool enableMachineScheduler() const override;
+        bool enableMachineScheduler() const override { return true; }
 
         bool useAA() const override;
 

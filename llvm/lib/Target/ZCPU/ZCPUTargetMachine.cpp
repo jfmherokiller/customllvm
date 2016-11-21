@@ -144,12 +144,12 @@ void ZCPUPassConfig::addPostRegAlloc() {
     //disablePass(&ShrinkWrapID);
     //disablePass(&MachineCopyPropagationID);
     //disablePass(&PostRASchedulerID);
-    disablePass(&FuncletLayoutID);
-    disablePass(&StackMapLivenessID);
-    disablePass(&LiveDebugValuesID);
-    disablePass(&PatchableFunctionID);
+   // disablePass(&FuncletLayoutID);
+   // disablePass(&StackMapLivenessID);
+    //disablePass(&LiveDebugValuesID);
+    //disablePass(&PatchableFunctionID);
 
-    TargetPassConfig::addPostRegAlloc();
+    //TargetPassConfig::addPostRegAlloc();
 }
 
 void ZCPUPassConfig::addPreEmitPass() {

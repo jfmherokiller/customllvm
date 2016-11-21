@@ -30,15 +30,11 @@ def ZCPUcallseq_end :SDNode<"ISD::CALLSEQ_END", SDT_ZCPUCallSeqEnd,[SDNPHasChain
 //===----------------------------------------------------------------------===//
 // ZCPU-specific DAG Nodes.
 //===----------------------------------------------------------------------===//
-def addr : ComplexPattern<iPTR, 2, "SelectAddr", [frameindex], [SDNPWantParent]>;
+//def addr : ComplexPattern<iPTR, 2, "SelectAddr", [frameindex], [SDNPWantParent]>;
 //===----------------------------------------------------------------------===//
 // ZCPU-specific Operands.
 //===----------------------------------------------------------------------===//
-def mem : Operand<iPTR> {
-  let PrintMethod = "printMemOperand";
-  let MIOperandInfo = (ops BothNormAndExtendedInt,i64imm);
-  let EncoderMethod = "getMemEncoding";
-}
+
 
 //===----------------------------------------------------------------------===//
 // ZCPU Instruction Format Definitions.
@@ -46,9 +42,6 @@ def mem : Operand<iPTR> {
 
 include "ZCPUInstrFormats.td"
 
-
-
-def i64immSExt32 : ImmLeaf<i64, [{ return isInt<32>(Imm)?Imm:Imm; }]>;
 
 //===----------------------------------------------------------------------===//
 // Additional instructions.

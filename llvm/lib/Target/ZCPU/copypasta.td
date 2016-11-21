@@ -50,7 +50,7 @@ multiclass CALL<ZCPURegClass vt, string prefix> {
 let Uses = [ESP], isCall = 1 in {
   defm : CALL<BothNormAndExtendedInt, "i64.">;
   defm : CALL<BothNormAndExtendedFloat, "f64.">;
-  defm : CALL<BothNormAndExtendedInt32, "i32.">;
+  //defm : CALL<BothNormAndExtendedInt32, "i32.">;
   def CALL_VOID : I<0,(outs), (ins i64imm:$callee, variable_ops),
                     [(WebAssemblycall0 (i64 imm:$callee))],
                     "call    \t$callee">;
@@ -76,12 +76,8 @@ def : Pat<(WebAssemblycall0 (WebAssemblywrapper texternalsym:$callee)),
           (CALL_VOID texternalsym:$callee)>;
 
 let isMoveImm = 1, isAsCheapAsAMove = 1, isReMaterializable = 1 in {
-def CONST_BothNormAndExtendedInt32 : I<0,(outs BothNormAndExtendedInt32:$res), (ins i32imm:$imm),
-                  [(set BothNormAndExtendedInt32:$res, imm:$imm)],
-                  "i32.const\t$res, $imm">;
-def CONST_BothNormAndExtendedInt : I<0,(outs BothNormAndExtendedInt:$res), (ins i64imm:$imm),
-                  [(set BothNormAndExtendedInt:$res, imm:$imm)],
-                  "i64.const\t$res, $imm">;
+//def CONST_BothNormAndExtendedInt32 : I<0,(outs BothNormAndExtendedInt32:$res), (ins i32imm:$imm),[(set BothNormAndExtendedInt32:$res, imm:$imm)],"i32.const\t$res, $imm">;
+//def CONST_BothNormAndExtendedInt : I<0,(outs BothNormAndExtendedInt:$res), (ins i64imm:$imm),[(set BothNormAndExtendedInt:$res, imm:$imm)],"i64.const\t$res, $imm">;
 def CONST_BothNormAndExtendedFloat : I<0,(outs BothNormAndExtendedFloat:$res), (ins f64imm_op:$imm),
                   [(set BothNormAndExtendedFloat:$res, fpimm:$imm)],
                   "f64.const\t$res, $imm">;
@@ -92,13 +88,12 @@ multiclass ARGUMENT<ZCPURegClass vt> {
   def ARGUMENT_#vt : I<0,(outs vt:$res), (ins i32imm:$argno),
                        [(set vt:$res, (WebAssemblyargument timm:$argno))]>;
 }
-defm : ARGUMENT<BothNormAndExtendedInt32>;
+//defm : ARGUMENT<BothNormAndExtendedInt32>;
 defm : ARGUMENT<BothNormAndExtendedInt>;
 defm : ARGUMENT<BothNormAndExtendedFloat>;
 
 multiclass RETURN<ZCPURegClass vt> {
-  def RETURN_#vt : I<0,(outs), (ins vt:$val), [(WebAssemblyreturn vt:$val)],
-                     "return  \t$val">;
+  def RETURN_#vt : I<0,(outs), (ins vt:$val), [(WebAssemblyreturn vt:$val)],"return  \t$val">;
   // Equivalent to RETURN_#vt, for use at the end of a function when wasm
   // semantics return by falling off the end of the block.
   let isCodeGenOnly = 1 in
@@ -107,7 +102,7 @@ multiclass RETURN<ZCPURegClass vt> {
 
 let isTerminator = 1, hasCtrlDep = 1, isBarrier = 1 in {
 let isReturn = 1 in {
-  defm : RETURN<BothNormAndExtendedInt32>;
+  //defm : RETURN<BothNormAndExtendedInt32>;
   defm : RETURN<BothNormAndExtendedInt>;
   defm : RETURN<BothNormAndExtendedFloat>;
   def RETURN_VOID : I<0,(outs), (ins), [(WebAssemblyreturn)], "ret">;
@@ -120,8 +115,7 @@ let isReturn = 1 in {
 } // isTerminator = 1, hasCtrlDep = 1, isBarrier = 1
 
 // Patterns for matching a direct call to a global address.
-def : Pat<(i32 (WebAssemblycall1 (WebAssemblywrapper tglobaladdr:$callee))),
-          (CALL_BothNormAndExtendedInt32 tglobaladdr:$callee)>;
+//def : Pat<(i32 (WebAssemblycall1 (WebAssemblywrapper tglobaladdr:$callee))),(CALL_BothNormAndExtendedInt32 tglobaladdr:$callee)>;
 def : Pat<(i64 (WebAssemblycall1 (WebAssemblywrapper tglobaladdr:$callee))),
           (CALL_BothNormAndExtendedInt tglobaladdr:$callee)>;
 def : Pat<(f64 (WebAssemblycall1 (WebAssemblywrapper tglobaladdr:$callee))),
@@ -130,11 +124,20 @@ def : Pat<(WebAssemblycall0 (WebAssemblywrapper tglobaladdr:$callee)),
           (CALL_VOID tglobaladdr:$callee)>;
 
 // Patterns for matching a direct call to an external symbol.
-def : Pat<(i32 (WebAssemblycall1 (WebAssemblywrapper texternalsym:$callee))),
-          (CALL_BothNormAndExtendedInt32 texternalsym:$callee)>;
+//def : Pat<(i32 (WebAssemblycall1 (WebAssemblywrapper texternalsym:$callee))),(CALL_BothNormAndExtendedInt32 texternalsym:$callee)>;
 def : Pat<(i64 (WebAssemblycall1 (WebAssemblywrapper texternalsym:$callee))),
           (CALL_BothNormAndExtendedInt texternalsym:$callee)>;
 def : Pat<(f64 (WebAssemblycall1 (WebAssemblywrapper texternalsym:$callee))),
           (CALL_BothNormAndExtendedFloat texternalsym:$callee)>;
 def : Pat<(WebAssemblycall0 (WebAssemblywrapper texternalsym:$callee)),
           (CALL_VOID texternalsym:$callee)>;
+
+
+// ConstantPool GlobalAddress, ExternalSymbol, and JumpTable
+def : Pat<(WebAssemblywrapper tconstpool  :$dst), (MOVI tconstpool  :$dst)>;
+def : Pat<(WebAssemblywrapper tjumptable  :$dst), (MOVI tjumptable  :$dst)>;
+def : Pat<(WebAssemblywrapper tglobaltlsaddr:$dst),(MOVI tglobaltlsaddr:$dst)>;
+def : Pat<(WebAssemblywrapper tglobaladdr :$dst), (MOVI tglobaladdr :$dst)>;
+def : Pat<(WebAssemblywrapper texternalsym:$dst), (MOVI texternalsym:$dst)>;
+def : Pat<(WebAssemblywrapper mcsym:$dst), (MOVI mcsym:$dst)>;
+def : Pat<(WebAssemblywrapper tblockaddress:$dst), (MOVI tblockaddress:$dst)>;

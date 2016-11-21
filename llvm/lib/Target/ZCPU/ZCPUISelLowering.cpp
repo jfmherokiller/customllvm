@@ -52,8 +52,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     addRegisterClass(MVT::i64, &ZCPU::SegmentRegsRegClass);
     addRegisterClass(MVT::i64, &ZCPU::BothNormAndExtendedIntRegClass);
     addRegisterClass(MVT::f64, &ZCPU::BothNormAndExtendedFloatRegClass);
-    addRegisterClass(MVT::i32,&ZCPU::BothNormAndExtendedInt32RegClass);
-
+    //addRegisterClass(MVT::i32, &ZCPU::BothNormAndExtendedInt32RegClass);
     // Compute derived properties from the register classes.
     computeRegisterProperties(Subtarget->getRegisterInfo());
 
@@ -68,7 +67,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVTPtr, Expand);
 
-    setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
+    setOperationAction(ISD::FrameIndex, MVT::i64, Custom);
     setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
 
     // Expand these forms; we pattern-match the forms that we can handle in isel.
@@ -89,11 +88,11 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
             setLoadExtAction(Ext, T, MVT::i1, Promote);
 
     // We don't accept any truncstore of integer registers.
-    setTruncStoreAction(MVT::i64, MVT::i32, Promote);
+    //setTruncStoreAction(MVT::i64, MVT::i32, Promote);
     setTruncStoreAction(MVT::i64, MVT::i16, Promote);
     setTruncStoreAction(MVT::i64, MVT::i8, Promote);
-   setTruncStoreAction(MVT::i64, MVT::i1, Promote);
-   setTruncStoreAction(MVT::f64, MVT::f32, Promote);
+    setTruncStoreAction(MVT::i64, MVT::i1, Promote);
+    setTruncStoreAction(MVT::f64, MVT::f32, Promote);
     setTruncStoreAction(MVT::f64, MVT::f16, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i1, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i8, Promote);
@@ -111,6 +110,8 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     }
     //setOperationAction(ISD::GlobalAddress,MVT::i32,Expand);
     //setOperationAction(ISD::STORE,MVT::i32,Legal);
+    //setOperationAction(ISD::Constant,MVT::i32,Promote);
+
 }
 
 FastISel *ZCPUTargetLowering::createFastISel(
@@ -469,7 +470,57 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
 
     // Set up the incoming ARGUMENTS value, which serves to represent the liveness
     // of the incoming values before they're represented by virtual registers.
-    MF.getRegInfo().addLiveIn(ZCPU::ARGUMENTS);
+    SDValue ArgValue;
+    unsigned LastVal = ~0U;
+    SmallVector<CCValAssign, 16> ArgLocs;
+    CCState CCInfo(CallConv, IsVarArg, MF, ArgLocs, *DAG.getContext());
+
+    for (unsigned i = 0, e = ArgLocs.size(); i != e; ++i) {
+        CCValAssign &VA = ArgLocs[i];
+        // TODO: If an arg is passed in two places (e.g. reg and stack), skip later
+        // places.
+        assert(VA.getValNo() != LastVal &&
+               "Don't support value assigned to multiple locs yet");
+        (void)LastVal;
+        LastVal = VA.getValNo();
+
+        if (VA.isRegLoc()) {
+            EVT RegVT = VA.getLocVT();
+            const TargetRegisterClass *RC;
+            if (RegVT == MVT::i64)
+                RC = &ZCPU::ExtendedGPRIntRegClass;
+            else if (RegVT == MVT::f64)
+                RC = &ZCPU::ExtendedGPRFloatRegClass;
+            else
+                llvm_unreachable("Unknown argument type!");
+
+            unsigned Reg = MF.addLiveIn(VA.getLocReg(), RC);
+            ArgValue = DAG.getCopyFromReg(Chain, DL, Reg, RegVT);
+
+            // If this is an 8 or 16-bit value, it is really passed promoted to 32
+            // bits.  Insert an assert[sz]ext to capture this, then truncate to the
+            // right size.
+            if (VA.getLocInfo() == CCValAssign::SExt)
+                ArgValue = DAG.getNode(ISD::AssertSext, DL, RegVT, ArgValue,
+                                       DAG.getValueType(VA.getValVT()));
+            else if (VA.getLocInfo() == CCValAssign::ZExt)
+                ArgValue = DAG.getNode(ISD::AssertZext, DL, RegVT, ArgValue,
+                                       DAG.getValueType(VA.getValVT()));
+            else if (VA.getLocInfo() == CCValAssign::BCvt)
+                ArgValue = DAG.getBitcast(VA.getValVT(), ArgValue);
+        } else {
+            assert(VA.isMemLoc());
+            //ArgValue = LowerMemArgument(Chain, CallConv, Ins, DL, DAG, VA, MFI, i);
+        }
+
+        // If value is passed via pointer - do a load.
+        if (VA.getLocInfo() == CCValAssign::Indirect)
+            ArgValue =
+                    DAG.getLoad(VA.getValVT(), DL, Chain, ArgValue, MachinePointerInfo());
+
+        InVals.push_back(ArgValue);
+    }
+    //MF.getRegInfo().addLiveIn(ZCPU::ARGUMENTS);
 
     for (const ISD::InputArg &In : Ins) {
         if (In.Flags.isInAlloca())
@@ -482,11 +533,12 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
             fail(DL, DAG, "WebAssembly hasn't implemented cons regs last arguments");
         // Ignore In.getOrigAlign() because all our arguments are passed in
         // registers.
-        InVals.push_back(
-                In.Used
-                ? DAG.getNode(ZCPUISD::ARGUMENT, DL, In.VT,
-                              DAG.getTargetConstant(InVals.size(), DL, MVT::i64))
-                : DAG.getUNDEF(In.VT));
+        if (In.Used) {
+            //InVals.push_back(DAG.getNode(ZCPUISD::ARGUMENT, DL, In.VT, DAG.getTargetConstant(InVals.size(), DL, MVT::i64)));
+        } else {
+            InVals.push_back(
+                    DAG.getUNDEF(In.VT));
+        }
 
         // Record the number and types of arguments.
         MFI->addParam(In.VT);
@@ -539,9 +591,8 @@ SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
 
     DAG.getMachineFunction().getFrameInfo()->setFrameAddressIsTaken(true);
     EVT VT = Op.getValueType();
-    unsigned FP =
-            Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
-    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
+    //unsigned FP = Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
+    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), ZCPU::ESP, VT);
 }
 SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
                                                    SelectionDAG &DAG) const {
@@ -550,13 +601,14 @@ SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
 }
 SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op,
                                                   SelectionDAG &DAG) const {
+    DAG.viewGraph();
     SDValue Src = Op.getOperand(2);
     if (isa<FrameIndexSDNode>(Src.getNode())) {
         SDValue Chain = Op.getOperand(0);
         SDLoc DL(Op);
         unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
         EVT VT = Src.getValueType();
-        SDValue Copy(DAG.getMachineNode(ZCPU::LEA, DL, VT, Src), 0);
+        SDValue Copy(DAG.getMachineNode(ZCPU::LEAInt, DL, VT, Src), 0);
         if (Op.getNode()->getNumValues() == 1) {
             return DAG.getCopyToReg(Chain, DL, Reg, Copy);
         } else {

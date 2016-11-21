@@ -50,7 +50,7 @@ ZCPUTargetMachine::ZCPUTargetMachine(
         const TargetOptions &Options, Optional<Reloc::Model> RM,
         CodeModel::Model CM, CodeGenOpt::Level OL)
         : LLVMTargetMachine(T,
-                            "e-p:64:64-f64:64",
+                            "e-p:64:64:64-i64:64:64-f64:64:64-n64:64",
                             TT, CPU, FS, Options, getEffectiveRelocModel(RM),
                             CM, OL), TLOF(make_unique<ZCPUTargetObjectFile>()) {
     // ZCPU type-checks expressions, but a noreturn function with a return

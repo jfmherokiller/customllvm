@@ -109,7 +109,7 @@ def GPRInt : ZCPURegClass<[i64], 64, (add IP,EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
 def GPRFloat : ZCPURegClass<[f64], 64, (add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP)>;
 def BothNormAndExtendedInt: ZCPURegClass<[i64],64,(add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
 def BothNormAndExtendedFloat: ZCPURegClass<[f64],64,(add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
-def BothNormAndExtendedInt32: ZCPURegClass<[i32],32,(add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
+//def BothNormAndExtendedInt32: ZCPURegClass<[i32],32,(add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
 //def BothNormAndExtended: ZCPURegClass<[i64,f64],64,(add EAX,EBX,ECX,EDX,ESI,EDI,ESP,EBP,(sequence "R%u", 0, 31))>;
 def ExtendedGPRFloat:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;
 def ExtendedGPRInt:ZCPURegClass<[f64], 64,(sequence "R%u", 0, 31)>;

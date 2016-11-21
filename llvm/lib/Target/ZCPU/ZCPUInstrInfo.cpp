@@ -60,7 +60,7 @@ void ZCPUInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     }
 
     unsigned CopyLocalOpcode;
-    llvm_unreachable("Unexpected register class");
+    //llvm_unreachable("Unexpected register class");
 
     BuildMI(MBB, I, DL, get(CopyLocalOpcode), DestReg)
             .addReg(SrcReg, KillSrc ? RegState::Kill : 0);

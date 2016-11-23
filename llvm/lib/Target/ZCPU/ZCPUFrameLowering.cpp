@@ -82,12 +82,22 @@ MachineBasicBlock::iterator
 ZCPUFrameLowering::eliminateCallFramePseudoInstr(
         MachineFunction &MF, MachineBasicBlock &MBB,
         MachineBasicBlock::iterator I) const {
-    return MBB.erase(I);
+    //return MBB.erase(I);
+    return I;
 }
 
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
+    auto *MFI = MF.getFrameInfo();
+    uint64_t StackSize = MFI->getStackSize();
 
+    const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
+    auto &MRI = MF.getRegInfo();
+
+    auto InsertPt = MBB.begin();
+    DebugLoc DL;
+
+    BuildMI(MBB, InsertPt, DL, TII->get(ZCPU::ENTER), StackSize);
 }
 
 void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,

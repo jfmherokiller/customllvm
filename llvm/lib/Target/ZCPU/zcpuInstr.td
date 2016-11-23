@@ -148,7 +148,7 @@ def SMAP:I<131,(outs), (ins),[], "SMAP">; //Remap PAGE1 to physical page PAGE2
 def GMAP:I<132,(outs), (ins),[], "GMAP">; //Read what physical page PAGE is mapped to
 def RSTACK:I<133,(outs), (ins),[], "RSTACK">; //Read value from stack at offset IDX (from address SS+IDX)
 def SSTACK:I<134,(outs), (ins),[], "SSTACK">; //Write value to stack at offset IDX (to address SS+IDX)
-//def ENTER:I<135,(outs), (ins i64imm:$amt),[(ZCPUcallseq_start timm:$amt)], "ENTER">; //Enter stack frame and allocate SIZE bytes on stack for local variables
+def ENTER:I<135,(outs), (ins i64imm:$amt),[(ZCPUcallseq_start timm:$amt)], "ENTER">; //Enter stack frame and allocate SIZE bytes on stack for local variables
 def IRETP:I<136,(outs), (ins),[], "IRETP">; //"Set PTB
 def EXTRETP:I<137,(outs), (ins),[], "EXTRETP">; //"Set PTB
 def EXTRETA:I<140,(outs), (ins),[], "EXTRETA">; //Return from an external interrupt and restore R0-R31 registers

@@ -68,8 +68,7 @@ ZCPUTargetMachine::ZCPUTargetMachine(
 
 ZCPUTargetMachine::~ZCPUTargetMachine() {}
 
-const ZCPUSubtarget *
-ZCPUTargetMachine::getSubtargetImpl(const Function &F) const {
+const ZCPUSubtarget *ZCPUTargetMachine::getSubtargetImpl(const Function &F) const {
     Attribute CPUAttr = F.getFnAttribute("target-cpu");
     Attribute FSAttr = F.getFnAttribute("target-features");
 
@@ -141,15 +140,15 @@ bool ZCPUPassConfig::addInstSelector() {
 }
 
 void ZCPUPassConfig::addPostRegAlloc() {
-    //disablePass(&ShrinkWrapID);
-    //disablePass(&MachineCopyPropagationID);
-    //disablePass(&PostRASchedulerID);
-   // disablePass(&FuncletLayoutID);
-   // disablePass(&StackMapLivenessID);
-    //disablePass(&LiveDebugValuesID);
-    //disablePass(&PatchableFunctionID);
+    disablePass(&ShrinkWrapID);
+    disablePass(&MachineCopyPropagationID);
+    disablePass(&PostRASchedulerID);
+    disablePass(&FuncletLayoutID);
+    disablePass(&StackMapLivenessID);
+    disablePass(&LiveDebugValuesID);
+    disablePass(&PatchableFunctionID);
 
-    //TargetPassConfig::addPostRegAlloc();
+    TargetPassConfig::addPostRegAlloc();
 }
 
 void ZCPUPassConfig::addPreEmitPass() {

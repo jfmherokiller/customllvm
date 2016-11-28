@@ -51,7 +51,7 @@ include "ZCPUInstrFormats.td"
 // Additional sets of instructions.
 //===----------------------------------------------------------------------===//
 
-
+include "SpecialFragments.td"
 include "zcpuInstr.td"
 include "vectorInstr.td"
 include "zgpuInstr.td"

@@ -82,25 +82,23 @@ MachineBasicBlock::iterator
 ZCPUFrameLowering::eliminateCallFramePseudoInstr(
         MachineFunction &MF, MachineBasicBlock &MBB,
         MachineBasicBlock::iterator I) const {
-    //return MBB.erase(I);
-    return I;
+    assert(!I->getOperand(0).getImm() && hasFP(MF) &&
+           "Call frame pseudos should only be used for dynamic stack adjustment");
+    const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
+    if (I->getOpcode() == TII->getCallFrameDestroyOpcode() &&
+        needsSPWriteback(MF, *MF.getFrameInfo())) {
+        DebugLoc DL = I->getDebugLoc();
+        //writeSPToMemory(WebAssembly::SP32, MF, MBB, I, I, DL);
+    }
+    return MBB.erase(I);
 }
 
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
-    auto *MFI = MF.getFrameInfo();
-    uint64_t StackSize = MFI->getStackSize();
-
-    const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
-    auto &MRI = MF.getRegInfo();
-
-    auto InsertPt = MBB.begin();
-    DebugLoc DL;
-
-    BuildMI(MBB, InsertPt, DL, TII->get(ZCPU::ENTER), StackSize);
+//return TargetFrameLowering::emitPrologue(MF,MBB);
 }
 
 void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
-
+    //return TargetFrameLowering::emitEpilogue(MF,MBB);
 }

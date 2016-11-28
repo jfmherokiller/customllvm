@@ -68,7 +68,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVTPtr, Expand);
 
     setOperationAction(ISD::FrameIndex, MVT::i64, Custom);
-    setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
+    //setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
 
     // Expand these forms; we pattern-match the forms that we can handle in isel.
     for (auto T : {MVT::i32, MVT::i64, MVT::f32, MVT::f64})
@@ -206,8 +206,7 @@ bool ZCPUTargetLowering::isLegalAddressingMode(const DataLayout &DL,
     return true;
 }
 
-bool ZCPUTargetLowering::allowsMisalignedMemoryAccesses(EVT /*VT*/, unsigned /*AddrSpace*/, unsigned /*Align*/,
-                                                        bool *Fast) const {
+bool ZCPUTargetLowering::allowsMisalignedMemoryAccesses(EVT /*VT*/, unsigned /*AddrSpace*/, unsigned /*Align*/,bool *Fast) const {
     return true;
 }
 
@@ -501,11 +500,9 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
             // bits.  Insert an assert[sz]ext to capture this, then truncate to the
             // right size.
             if (VA.getLocInfo() == CCValAssign::SExt)
-                ArgValue = DAG.getNode(ISD::AssertSext, DL, RegVT, ArgValue,
-                                       DAG.getValueType(VA.getValVT()));
+                ArgValue = DAG.getNode(ISD::AssertSext, DL, RegVT, ArgValue, DAG.getValueType(VA.getValVT()));
             else if (VA.getLocInfo() == CCValAssign::ZExt)
-                ArgValue = DAG.getNode(ISD::AssertZext, DL, RegVT, ArgValue,
-                                       DAG.getValueType(VA.getValVT()));
+                ArgValue = DAG.getNode(ISD::AssertZext, DL, RegVT, ArgValue, DAG.getValueType(VA.getValVT()));
             else if (VA.getLocInfo() == CCValAssign::BCvt)
                 ArgValue = DAG.getBitcast(VA.getValVT(), ArgValue);
         } else {
@@ -515,9 +512,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
 
         // If value is passed via pointer - do a load.
         if (VA.getLocInfo() == CCValAssign::Indirect)
-            ArgValue =
-                    DAG.getLoad(VA.getValVT(), DL, Chain, ArgValue, MachinePointerInfo());
-
+            ArgValue = DAG.getLoad(VA.getValVT(), DL, Chain, ArgValue, MachinePointerInfo());
         InVals.push_back(ArgValue);
     }
     //MF.getRegInfo().addLiveIn(ZCPU::ARGUMENTS);
@@ -534,10 +529,9 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         // Ignore In.getOrigAlign() because all our arguments are passed in
         // registers.
         if (In.Used) {
-            //InVals.push_back(DAG.getNode(ZCPUISD::ARGUMENT, DL, In.VT, DAG.getTargetConstant(InVals.size(), DL, MVT::i64)));
+            InVals.push_back(DAG.getNode(ISD::TargetConstant, DL, In.VT, DAG.getTargetConstant(InVals.size(), DL, MVT::i64)));
         } else {
-            InVals.push_back(
-                    DAG.getUNDEF(In.VT));
+            InVals.push_back(DAG.getUNDEF(In.VT));
         }
 
         // Record the number and types of arguments.
@@ -553,8 +547,7 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
         MFI->setVarargBufferVreg(VarargVreg);
         Chain = DAG.getCopyToReg(
                 Chain, DL, VarargVreg,
-                DAG.getNode(ZCPUISD::ARGUMENT, DL, PtrVT,
-                            DAG.getTargetConstant(Ins.size(), DL, MVT::i64)));
+                DAG.getNode(ISD::TargetConstant, DL, PtrVT, DAG.getTargetConstant(Ins.size(), DL, MVT::i64)));
         MFI->addParam(PtrVT);
     }
     return Chain;
@@ -591,16 +584,15 @@ SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
 
     DAG.getMachineFunction().getFrameInfo()->setFrameAddressIsTaken(true);
     EVT VT = Op.getValueType();
-    //unsigned FP = Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
-    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), ZCPU::ESP, VT);
+    unsigned FP = Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
+    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
 }
 SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
                                                    SelectionDAG &DAG) const {
     int FI = cast<FrameIndexSDNode>(Op)->getIndex();
     return DAG.getTargetFrameIndex(FI, Op.getValueType());
 }
-SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op,
-                                                  SelectionDAG &DAG) const {
+SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const {
     DAG.viewGraph();
     SDValue Src = Op.getOperand(2);
     if (isa<FrameIndexSDNode>(Src.getNode())) {

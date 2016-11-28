@@ -13,7 +13,7 @@ def RetCC_ZCPU : CallingConv<[
   CCIfType<[i8, i16, i32], CCPromoteToType<i64>>,
   CCIfType<[f16,f32],CCPromoteToType<f64>>,
   CCIfType<[i64,f64], CCAssignToReg<[EAX, EBX, ECX, EDX]>>,
-  CCIfType<[i64, f64], CCAssignToStack<8, 8>>
+  CCIfType<[i64, f64], CCAssignToStack<64, 64>>
 ]>;
 def CSR_Saved : CalleeSavedRegs<(add EAX,EBX,ECX,EDX)>;
 def CSR_NoRegs : CalleeSavedRegs<(add)>;

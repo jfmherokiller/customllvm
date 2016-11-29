@@ -26,7 +26,6 @@ ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
     HasSingleParameterDotFile = false;
     PointerSize = 64;
     CalleeSaveStackSlotSize = 64;
-    GlobalDirective = "//.globl ";
     UseDataRegionDirectives = false;
 
 

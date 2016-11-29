@@ -72,10 +72,8 @@ void ZCPUMCInstLower::Lower(const MachineInstr *MI,
                 // Ignore all implicit register operands.
                 if (MO.isImplicit())
                     continue;
-                const ZCPUFunctionInfo &MFI =
-                        *MI->getParent()->getParent()->getInfo<ZCPUFunctionInfo>();
-                unsigned WAReg = MFI.getWAReg(MO.getReg());
-                MCOp = MCOperand::createReg(WAReg);
+                //const ZCPUFunctionInfo &MFI = *MI->getParent()->getParent()->getInfo<ZCPUFunctionInfo>();
+                MCOp = MCOperand::createReg(MO.getReg());
                 break;
             }
             case MachineOperand::MO_Immediate:
@@ -104,8 +102,7 @@ void ZCPUMCInstLower::Lower(const MachineInstr *MI,
                 // variable or a function.
                 assert((MO.getTargetFlags() & -2) == 0 &&
                        "ZCPU uses only one target flag bit on ExternalSymbols");
-                MCOp = LowerSymbolOperand(GetExternalSymbolSymbol(MO), /*Offset=*/0,
-                                          MO.getTargetFlags() & 1);
+                MCOp = LowerSymbolOperand(GetExternalSymbolSymbol(MO), /*Offset=*/0, MO.getTargetFlags() & 1);
                 break;
         }
 

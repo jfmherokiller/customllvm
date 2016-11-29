@@ -37,7 +37,49 @@ using namespace llvm;
 
 // TODO: wasm64
 // TODO: Emit TargetOpcode::CFI_INSTRUCTION instructions
+ZCPUFrameLowering::ZCPUFrameLowering(const ZCPUSubtarget &STI,
+                                   unsigned StackAlignOverride)
+        : TargetFrameLowering(StackGrowsDown, StackAlignOverride, -8),
+          STI(STI), TII(*STI.getInstrInfo()), TRI(STI.getRegisterInfo()) {
+    // Cache a bunch of frame-related predicates for this subtarget.
+    //SlotSize = TRI->getSlotSize();
+    // standard x86_64 and NaCl use 64-bit frame/stack pointers, x32 - 32-bit.
+    //Uses64BitFramePtr = STI.isTarget64BitLP64() || STI.isTargetNaCl64();
+    //StackPtr = TRI->getStackRegister();
+}
+// Determines the size of the frame and maximum call frame size.
+void ZCPUFrameLowering::determineFrameLayout(MachineFunction &MF) const {
+    MachineFrameInfo *MFI = MF.getFrameInfo();
+    const ZCPURegisterInfo *LRI = STI.getRegisterInfo();
 
+    // Get the number of bytes to allocate from the FrameInfo.
+    unsigned FrameSize = MFI->getStackSize();
+
+    // Get the alignment.
+    unsigned StackAlign = LRI->needsStackRealignment(MF) ? MFI->getMaxAlignment()
+                                                         : getStackAlignment();
+
+    // Get the maximum call frame size of all the calls.
+    unsigned MaxCallFrameSize = MFI->getMaxCallFrameSize();
+
+    // If we have dynamic alloca then MaxCallFrameSize needs to be aligned so
+    // that allocations will be aligned.
+    if (MFI->hasVarSizedObjects())
+        MaxCallFrameSize = alignTo(MaxCallFrameSize, StackAlign);
+
+    // Update maximum call frame size.
+    MFI->setMaxCallFrameSize(MaxCallFrameSize);
+
+    // Include call frame size in total.
+    if (!(hasReservedCallFrame(MF) && MFI->adjustsStack()))
+        FrameSize += MaxCallFrameSize;
+
+    // Make sure the frame is aligned.
+    FrameSize = alignTo(FrameSize, StackAlign);
+
+    // Update frame info.
+    MFI->setStackSize(FrameSize);
+}
 /// Return true if the specified function should have a dedicated frame pointer
 /// register.
 bool ZCPUFrameLowering::hasFP(const MachineFunction &MF) const {
@@ -82,23 +124,50 @@ MachineBasicBlock::iterator
 ZCPUFrameLowering::eliminateCallFramePseudoInstr(
         MachineFunction &MF, MachineBasicBlock &MBB,
         MachineBasicBlock::iterator I) const {
-    assert(!I->getOperand(0).getImm() && hasFP(MF) &&
-           "Call frame pseudos should only be used for dynamic stack adjustment");
-    const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
-    if (I->getOpcode() == TII->getCallFrameDestroyOpcode() &&
-        needsSPWriteback(MF, *MF.getFrameInfo())) {
-        DebugLoc DL = I->getDebugLoc();
-        //writeSPToMemory(WebAssembly::SP32, MF, MBB, I, I, DL);
-    }
     return MBB.erase(I);
 }
 
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
+    assert(&MF.front() == &MBB && "Shrink-wrapping not yet supported");
+
+    MachineFrameInfo *MFI = MF.getFrameInfo();
+    MachineBasicBlock::iterator MBBI = MBB.begin();
+
+    // Debug location must be unknown since the first debug location is used
+    // to determine the end of the prologue.
+    DebugLoc DL;
+    // Determine the correct frame layout
+    //determineFrameLayout(MF);
+    unsigned StackSize = MFI->getStackSize();
+    // Generate new FP
+    // add %sp,8,%fp
+    DEBUG(errs() << "ENTER\n");
+    BuildMI(MBB, MBBI, DL, TII.get(ZCPU::ENTER))
+            .addImm(StackSize)
+            .setMIFlag(MachineInstr::FrameSetup);
+    DEBUG(errs() << "Dumping MBB\n");
+    MBB.dump();
+    //llvm_unreachable("failed in enter");
+
 //return TargetFrameLowering::emitPrologue(MF,MBB);
 }
 
 void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
+    auto *MFI = MF.getFrameInfo();
+    uint64_t StackSize = MFI->getStackSize();
+    if (!needsSP(MF, *MFI) || !needsSPWriteback(MF, *MFI)) return;
+    const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
+    auto &MRI = MF.getRegInfo();
+    auto InsertPt = MBB.getLastNonDebugInstr();
+    DebugLoc DL;
+    if (InsertPt != MBB.end())
+        DL = InsertPt->getDebugLoc();
+
+    DEBUG(errs() << "LEAVE\n");
+    BuildMI(MBB, InsertPt, DL, TII->get(ZCPU::LEAVE))
+            .setMIFlag(MachineInstr::FrameSetup);
+    llvm_unreachable("failed in leave");
     //return TargetFrameLowering::emitEpilogue(MF,MBB);
 }

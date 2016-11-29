@@ -68,7 +68,9 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVTPtr, Expand);
 
     setOperationAction(ISD::FrameIndex, MVT::i64, Custom);
-    //setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
+    setOperationAction(ISD::CopyToReg, MVT::Other, Custom);
+    setOperationAction(ISD::FRAMEADDR, MVT::Other, Custom);
+
 
     // Expand these forms; we pattern-match the forms that we can handle in isel.
     for (auto T : {MVT::i32, MVT::i64, MVT::f32, MVT::f64})
@@ -111,7 +113,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     //setOperationAction(ISD::GlobalAddress,MVT::i32,Expand);
     //setOperationAction(ISD::STORE,MVT::i32,Legal);
     //setOperationAction(ISD::Constant,MVT::i32,Promote);
-
+    setMinFunctionAlignment(2);
 }
 
 FastISel *ZCPUTargetLowering::createFastISel(
@@ -267,22 +269,22 @@ SDValue ZCPUTargetLowering::LowerCall(
     CallingConv::ID CallConv = CLI.CallConv;
     if (!CallingConvSupported(CallConv))
         fail(DL, DAG,
-             "ZCPU doesn't support language-specific or target-specific "
+             "WebAssembly doesn't support language-specific or target-specific "
                      "calling conventions yet");
     if (CLI.IsPatchPoint)
-        fail(DL, DAG, "ZCPU doesn't support patch point yet");
+        fail(DL, DAG, "WebAssembly doesn't support patch point yet");
 
-    // ZCPU doesn't currently support explicit tail calls. If they are
+    // WebAssembly doesn't currently support explicit tail calls. If they are
     // required, fail. Otherwise, just disable them.
     if ((CallConv == CallingConv::Fast && CLI.IsTailCall &&
          MF.getTarget().Options.GuaranteedTailCallOpt) ||
         (CLI.CS && CLI.CS->isMustTailCall()))
-        fail(DL, DAG, "ZCPU doesn't support tail call yet");
+        fail(DL, DAG, "WebAssembly doesn't support tail call yet");
     CLI.IsTailCall = false;
 
     SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
     if (Ins.size() > 1)
-        fail(DL, DAG, "ZCPU doesn't support more than 1 returned value yet");
+        fail(DL, DAG, "WebAssembly doesn't support more than 1 returned value yet");
 
     SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
     SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
@@ -290,20 +292,20 @@ SDValue ZCPUTargetLowering::LowerCall(
         const ISD::OutputArg &Out = Outs[i];
         SDValue &OutVal = OutVals[i];
         if (Out.Flags.isNest())
-            fail(DL, DAG, "ZCPU hasn't implemented nest arguments");
+            fail(DL, DAG, "WebAssembly hasn't implemented nest arguments");
         if (Out.Flags.isInAlloca())
-            fail(DL, DAG, "ZCPU hasn't implemented inalloca arguments");
+            fail(DL, DAG, "WebAssembly hasn't implemented inalloca arguments");
         if (Out.Flags.isInConsecutiveRegs())
-            fail(DL, DAG, "ZCPU hasn't implemented cons regs arguments");
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs arguments");
         if (Out.Flags.isInConsecutiveRegsLast())
-            fail(DL, DAG, "ZCPU hasn't implemented cons regs last arguments");
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs last arguments");
         if (Out.Flags.isByVal() && Out.Flags.getByValSize() != 0) {
             auto *MFI = MF.getFrameInfo();
             int FI = MFI->CreateStackObject(Out.Flags.getByValSize(),
                                             Out.Flags.getByValAlign(),
                     /*isSS=*/false);
             SDValue SizeNode =
-                    DAG.getConstant(Out.Flags.getByValSize(), DL, MVT::i64);
+                    DAG.getConstant(Out.Flags.getByValSize(), DL, MVT::i32);
             SDValue FINode = DAG.getFrameIndex(FI, getPointerTy(Layout));
             Chain = DAG.getMemcpy(
                     Chain, DL, FINode, OutVal, SizeNode, Out.Flags.getByValAlign(),
@@ -384,12 +386,12 @@ SDValue ZCPUTargetLowering::LowerCall(
         assert(!In.Flags.isByVal() && "byval is not valid for return values");
         assert(!In.Flags.isNest() && "nest is not valid for return values");
         if (In.Flags.isInAlloca())
-            fail(DL, DAG, "ZCPU hasn't implemented inalloca return values");
+            fail(DL, DAG, "WebAssembly hasn't implemented inalloca return values");
         if (In.Flags.isInConsecutiveRegs())
-            fail(DL, DAG, "ZCPU hasn't implemented cons regs return values");
+            fail(DL, DAG, "WebAssembly hasn't implemented cons regs return values");
         if (In.Flags.isInConsecutiveRegsLast())
             fail(DL, DAG,
-                 "ZCPU hasn't implemented cons regs last return values");
+                 "WebAssembly hasn't implemented cons regs last return values");
         // Ignore In.getOrigAlign() because all our arguments are passed in
         // registers.
         InTys.push_back(In.VT);
@@ -397,7 +399,7 @@ SDValue ZCPUTargetLowering::LowerCall(
     InTys.push_back(MVT::Other);
     SDVTList InTyList = DAG.getVTList(InTys);
     SDValue Res =
-            DAG.getNode(Ins.empty(),
+            DAG.getNode(Ins.empty() ? ZCPUISD::CALL0 : ZCPUISD::CALL1,
                         DL, InTyList, Ops);
     if (Ins.empty()) {
         Chain = Res;
@@ -426,16 +428,9 @@ SDValue ZCPUTargetLowering::LowerReturn(
         const SmallVectorImpl<ISD::OutputArg> &Outs,
         const SmallVectorImpl<SDValue> &OutVals, const SDLoc &DL,
         SelectionDAG &DAG) const {
-    MachineFunction &MF = DAG.getMachineFunction();
-    auto *MFI = MF.getInfo<ZCPUFunctionInfo>();
-
     assert(Outs.size() <= 1 && "WebAssembly can only return up to one value");
     if (!CallingConvSupported(CallConv))
         fail(DL, DAG, "WebAssembly doesn't support non-C calling conventions");
-
-    SmallVector<CCValAssign, 16> RVLocs;
-    CCState CCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
-    CCInfo.AnalyzeReturn(Outs, RetCC_ZCPU);
 
     SmallVector<SDValue, 4> RetOps(1, Chain);
     RetOps.append(OutVals.begin(), OutVals.end());
@@ -487,9 +482,9 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
             EVT RegVT = VA.getLocVT();
             const TargetRegisterClass *RC;
             if (RegVT == MVT::i64)
-                RC = &ZCPU::ExtendedGPRIntRegClass;
+                RC = &ZCPU::BothNormAndExtendedIntRegClass;
             else if (RegVT == MVT::f64)
-                RC = &ZCPU::ExtendedGPRFloatRegClass;
+                RC = &ZCPU::BothNormAndExtendedFloatRegClass;
             else
                 llvm_unreachable("Unknown argument type!");
 
@@ -556,7 +551,47 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
 //===----------------------------------------------------------------------===//
 //  Custom lowering hooks.
 //===----------------------------------------------------------------------===//
+SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
+                                            SelectionDAG &DAG) const {
+    int FI = cast<FrameIndexSDNode>(Op)->getIndex();
+    return DAG.getTargetFrameIndex(FI, Op.getValueType());
+}
+SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const {
+    SDValue Src = Op.getOperand(2);
+    if (isa<FrameIndexSDNode>(Src.getNode())) {
+        // CopyToReg nodes don't support FrameIndex operands. Other targets select
+        // the FI to some LEA-like instruction, but since we don't have that, we
+        // need to insert some kind of instruction that can take an FI operand and
+        // produces a value usable by CopyToReg (i.e. in a vreg). So insert a dummy
+        // copy_local between Op and its FI operand.
+        SDValue Chain = Op.getOperand(0);
+        SDLoc DL(Op);
+        unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
+        EVT VT = Src.getValueType();
+        SDValue Copy(
+                DAG.getMachineNode( ZCPU::COPY, DL, VT, Src), 0);
+        return Op.getNode()->getNumValues() == 1
+               ? DAG.getCopyToReg(Chain, DL, Reg, Copy)
+               : DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getNumOperands() == 4
+                                                        ? Op.getOperand(3)
+                                                        : SDValue());
+    }
+    return SDValue();
+}
+SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
+                                                  SelectionDAG &DAG) const {
+    // Non-zero depths are not supported by WebAssembly currently. Use the
+    // legalizer's default expansion, which is to return 0 (what this function is
+    // documented to do).
+    if (Op.getConstantOperandVal(0) > 0)
+        return SDValue();
 
+    DAG.getMachineFunction().getFrameInfo()->setFrameAddressIsTaken(true);
+    EVT VT = Op.getValueType();
+    unsigned FP =
+            Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
+    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
+}
 SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
                                            SelectionDAG &DAG) const {
     SDLoc DL(Op);
@@ -574,42 +609,4 @@ SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
 //===----------------------------------------------------------------------===//
 //                          ZCPU Optimization Hooks
 //===----------------------------------------------------------------------===//
-SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
-                                                  SelectionDAG &DAG) const {
-    // Non-zero depths are not supported by WebAssembly currently. Use the
-    // legalizer's default expansion, which is to return 0 (what this function is
-    // documented to do).
-    if (Op.getConstantOperandVal(0) > 0)
-        return SDValue();
 
-    DAG.getMachineFunction().getFrameInfo()->setFrameAddressIsTaken(true);
-    EVT VT = Op.getValueType();
-    unsigned FP = Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
-    return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
-}
-SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
-                                                   SelectionDAG &DAG) const {
-    int FI = cast<FrameIndexSDNode>(Op)->getIndex();
-    return DAG.getTargetFrameIndex(FI, Op.getValueType());
-}
-SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const {
-    DAG.viewGraph();
-    SDValue Src = Op.getOperand(2);
-    if (isa<FrameIndexSDNode>(Src.getNode())) {
-        SDValue Chain = Op.getOperand(0);
-        SDLoc DL(Op);
-        unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
-        EVT VT = Src.getValueType();
-        SDValue Copy(DAG.getMachineNode(ZCPU::LEAInt, DL, VT, Src), 0);
-        if (Op.getNode()->getNumValues() == 1) {
-            return DAG.getCopyToReg(Chain, DL, Reg, Copy);
-        } else {
-            if (Op.getNumOperands() == 4) {
-                return DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getOperand(3));
-            } else {
-                return DAG.getCopyToReg(Chain, DL, Reg, Copy, SDValue());
-            }
-        }
-    }
-    return SDValue();
-}

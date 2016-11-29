@@ -200,7 +200,24 @@ void ZCPUAsmPrinter::EmitFunctionBodyEnd() {
 }
 
 void ZCPUAsmPrinter::EmitInstruction(const MachineInstr *MI) {
-    AsmPrinter::EmitInstruction(MI);
+    DEBUG(dbgs() << "EmitInstruction: " << *MI << '\n');
+    switch (MI->getOpcode()) {
+        case ZCPU::FALLTHROUGH_RETURN_VOID:
+            // This instruction represents the implicit return at the end of a
+            // function body with no return value.
+            if (isVerbose()) {
+                OutStreamer->AddComment("fallthrough-return");
+                OutStreamer->AddBlankLine();
+            }
+            break;
+        default: {
+            ZCPUMCInstLower MCInstLowering(OutContext, *this);
+            MCInst TmpInst;
+            MCInstLowering.Lower(MI, TmpInst);
+            EmitToStreamer(*OutStreamer, TmpInst);
+            break;
+        }
+    }
 }
 
 const MCExpr *ZCPUAsmPrinter::lowerConstant(const Constant *CV) {
@@ -211,6 +228,38 @@ bool ZCPUAsmPrinter::PrintAsmOperand(const MachineInstr *MI,
                                      unsigned OpNo, unsigned AsmVariant,
                                      const char *ExtraCode,
                                      raw_ostream &OS) {
+
+    if (AsmVariant != 0)
+        report_fatal_error("There are no defined alternate asm variants");
+
+    // First try the generic code, which knows about modifiers like 'c' and 'n'.
+    if (!AsmPrinter::PrintAsmOperand(MI, OpNo, AsmVariant, ExtraCode, OS))
+        return false;
+
+    if (!ExtraCode) {
+        const MachineOperand &MO = MI->getOperand(OpNo);
+        switch (MO.getType()) {
+            case MachineOperand::MO_Immediate:
+                OS << MO.getImm();
+                return false;
+            case MachineOperand::MO_Register:
+                OS << regToString(MO);
+                return false;
+            case MachineOperand::MO_GlobalAddress:
+                getSymbol(MO.getGlobal())->print(OS, MAI);
+                printOffset(MO.getOffset(), OS);
+                return false;
+            case MachineOperand::MO_ExternalSymbol:
+                GetExternalSymbolSymbol(MO.getSymbolName())->print(OS, MAI);
+                printOffset(MO.getOffset(), OS);
+                return false;
+            case MachineOperand::MO_MachineBasicBlock:
+                MO.getMBB()->getSymbol()->print(OS, MAI);
+                return false;
+            default:
+                break;
+        }
+    }
     return true;
 }
 

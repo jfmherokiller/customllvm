@@ -137,7 +137,7 @@ def SRL:I<124,(outs), (ins),[], "SRL">; //Set page runlevel to INT
 def CRLI:I<125,(outs), (ins),[], "CRL">; //Write page runlevel to INT
 
 def LEAInt: I<126,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load imm:$src))],"LEA\t{$dst|$src}">; //Load absolute address fetched by operand Y into X
-def LEAFrame: I<126,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load frameindex:$src))],"LEA\t{$dst|$src}">; //Load absolute address fetched by operand Y into X
+//def LEAFrame: I<126,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load frameindex:$src))],"LEA\t{$dst|$src}">; //Load absolute address fetched by operand Y into X
 
 
 def BLOCK:I<127,(outs), (ins),[], "BLOCK">; //Make next instruction run on this block
@@ -146,9 +146,15 @@ def CMPOR:I<129,(outs), (ins),[], "CMPOR">; //"Compare X and
 def MSHIFT:I<130,(outs), (ins),[], "MSHIFT">; //Shift (and rotate) data pointed by ESI by OFFSET bytes
 def SMAP:I<131,(outs), (ins),[], "SMAP">; //Remap PAGE1 to physical page PAGE2
 def GMAP:I<132,(outs), (ins),[], "GMAP">; //Read what physical page PAGE is mapped to
-def RSTACK:I<133,(outs), (ins),[], "RSTACK">; //Read value from stack at offset IDX (from address SS+IDX)
-def SSTACK:I<134,(outs), (ins),[], "SSTACK">; //Write value to stack at offset IDX (to address SS+IDX)
-def ENTER:I<135,(outs), (ins i64imm:$amt),[(ZCPUcallseq_start timm:$amt)], "ENTER">; //Enter stack frame and allocate SIZE bytes on stack for local variables
+let mayLoad = 1 in {
+def RSTACKInt:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
+}
+let mayStore = 1 in {
+def SSTACK:I<134,(outs ), (ins i32imm:$val, i64imm:$ptr),[(store (i32 imm:$val),tframeindex:$ptr)], "SSTACK\t$val,$ptr">; //Write value to stack at offset IDX (to address SS+IDX)
+def SSTACKTrun:I<134,(outs ), (ins i64imm:$val, i64imm:$ptr),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "SSTACK\t$val,$ptr">; //Write value to stack at offset IDX (to address SS+IDX)
+}
+def ENTER:I<135,(outs), (ins i64imm:$amt),[], "ENTER $amt">; //Enter stack frame and allocate SIZE bytes on stack for local variables
+
 def IRETP:I<136,(outs), (ins),[], "IRETP">; //"Set PTB
 def EXTRETP:I<137,(outs), (ins),[], "EXTRETP">; //"Set PTB
 def EXTRETA:I<140,(outs), (ins),[], "EXTRETA">; //Return from an external interrupt and restore R0-R31 registers
@@ -163,8 +169,8 @@ def RDFloat:I<016,(outs BothNormAndExtendedFloat:$dst), (ins i64imm:$src),[(set 
 
 def WDInt:I<017,(outs ), (ins BothNormAndExtendedInt:$val, i64imm:$ptr),[(store BothNormAndExtendedInt:$val,imm:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
 
-def WDIntFrame32:I<017,(outs ), (ins i32imm:$val, i64imm:$ptr),[(store (i32 imm:$val),tframeindex:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
-def WDIntFrame32trunc:I<017,(outs ), (ins i64imm:$val, i64imm:$ptr),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
+//def WDIntFrame32:I<017,(outs ), (ins i32imm:$val, i64imm:$ptr),[(store (i32 imm:$val),tframeindex:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
+//def WDIntFrame32trunc:I<017,(outs ), (ins i64imm:$val, i64imm:$ptr),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
 
 def WDFloat:I<017,(outs ), (ins BothNormAndExtendedFloat:$val, i64imm:$ptr),[(store BothNormAndExtendedFloat:$val,imm:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
 

@@ -48,7 +48,7 @@ ZCPUMCAsmInfo::ZCPUMCAsmInfo(const Triple &T) {
     ExceptionsType = ExceptionHandling::None;
 
     // ZCPU's stack is never executable.
-    UsesNonexecutableStackSection = false;
+    UsesNonexecutableStackSection = true;
     NeedsLocalForSize = false;
     HasIdentDirective = false;
 }

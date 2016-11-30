@@ -130,8 +130,7 @@ ZCPUFrameLowering::eliminateCallFramePseudoInstr(
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
     assert(&MF.front() == &MBB && "Shrink-wrapping not yet supported");
-
-    MachineFrameInfo *MFI = MF.getFrameInfo();
+    auto *MFI = MF.getFrameInfo();
     MachineBasicBlock::iterator MBBI = MBB.begin();
 
     // Debug location must be unknown since the first debug location is used
@@ -157,10 +156,10 @@ void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
     auto *MFI = MF.getFrameInfo();
     uint64_t StackSize = MFI->getStackSize();
-    if (!needsSP(MF, *MFI) || !needsSPWriteback(MF, *MFI)) return;
+    //if (!needsSP(MF, *MFI) || !needsSPWriteback(MF, *MFI)) return;
     const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
     auto &MRI = MF.getRegInfo();
-    auto InsertPt = MBB.getLastNonDebugInstr();
+    auto InsertPt = MBB.getFirstTerminator();
     DebugLoc DL;
     if (InsertPt != MBB.end())
         DL = InsertPt->getDebugLoc();
@@ -168,6 +167,6 @@ void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
     DEBUG(errs() << "LEAVE\n");
     BuildMI(MBB, InsertPt, DL, TII->get(ZCPU::LEAVE))
             .setMIFlag(MachineInstr::FrameSetup);
-    llvm_unreachable("failed in leave");
+    //llvm_unreachable("failed in leave");
     //return TargetFrameLowering::emitEpilogue(MF,MBB);
 }

@@ -70,8 +70,8 @@ def CNG:I<076,(outs), (ins),[], "CNG">; //Call subrotine if result is not greate
 def CE:I<077,(outs), (ins),[], "CE">; //Call subrotine if result is equal
 def CZ:I<077,(outs), (ins),[], "CZ">; //Call subrotine if result is zero
 let Uses = [ESI,EDI], Defs = [ESI,EDI] in {
-def MCOPY:I<078,(outs), (ins),[], "MCOPY">; //Copy INT bytes from array pointed by ESI to EDI
-def MXCHG:I<079,(outs), (ins),[], "MXCHG">; //Swap INT bytes between two arrays pointed by ESI and EDI
+def MCOPY:I<078,(outs), (ins i64imm:$bytes),[], "MCOPY\t$bytes">; //Copy INT bytes from array pointed by ESI to EDI
+def MXCHG:I<079,(outs), (ins i64imm:$bytes),[], "MXCHG\t$bytes">; //Swap INT bytes between two arrays pointed by ESI and EDI
 }
 def FPWR:I<080,(outs), (ins),[], "FPWR">; //Raise X to power Y
 def XCHG:I<081,(outs), (ins),[], "XCHG">; //Swap X and Y

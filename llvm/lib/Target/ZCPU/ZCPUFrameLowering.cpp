@@ -149,8 +149,6 @@ void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
     BuildMI(MBB, MBBI, DL, TII.get(ZCPU::ENTER))
             .addImm(StackSize)
             .setMIFlag(MachineInstr::FrameSetup);
-    DEBUG(errs() << "Dumping MBB\n");
-    MBB.dump();
     // Replace ADJDYNANALLOC
     if (MFI->hasVarSizedObjects())
         replaceAdjDynAllocPseudo(MF);

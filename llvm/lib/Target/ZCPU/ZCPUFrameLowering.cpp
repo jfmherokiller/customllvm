@@ -140,11 +140,9 @@ void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
     // Debug location must be unknown since the first debug location is used
     // to determine the end of the prologue.
     DebugLoc DL;
-    // Determine the correct frame layout
-    //determineFrameLayout(MF);
+
     unsigned StackSize = MFI->getStackSize();
-    // Generate new FP
-    // add %sp,8,%fp
+
     DEBUG(errs() << "ENTER\n");
     BuildMI(MBB, MBBI, DL, TII.get(ZCPU::ENTER))
             .addImm(StackSize)

@@ -149,9 +149,9 @@ def GMAP:I<132,(outs), (ins),[], "GMAP">; //Read what physical page PAGE is mapp
 let mayLoad = 1 in {
 def RSTACKInt:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
 }
-let mayStore = 1 in {
-def SSTACK:I<134,(outs ), (ins i32imm:$val, i64imm:$ptr),[(store (i32 imm:$val),tframeindex:$ptr)], "SSTACK\t$val,$ptr">; //Write value to stack at offset IDX (to address SS+IDX)
-def SSTACKTrun:I<134,(outs ), (ins i64imm:$val, i64imm:$ptr),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "SSTACK\t$val,$ptr">; //Write value to stack at offset IDX (to address SS+IDX)
+let mayStore = 1,Uses = [ESP] in {
+def SSTACK:I<134,(outs ), (ins i64imm:$ptr,i32imm:$val),[(store (i32 imm:$val),tframeindex:$ptr)], "SSTACK\t$ptr,$val">; //Write value to stack at offset IDX (to address SS+IDX)
+def SSTACKTrun:I<134,(outs ), (ins i64imm:$ptr,i64imm:$val),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "SSTACK\tESP:$ptr,$val">; //Write value to stack at offset IDX (to address SS+IDX)
 }
 def ENTER:I<135,(outs), (ins i64imm:$amt),[], "ENTER $amt">; //Enter stack frame and allocate SIZE bytes on stack for local variables
 

@@ -58,13 +58,11 @@ void ZCPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II, int S
     MachineRegisterInfo &MRI = MF.getRegInfo();
     int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
     const MachineFrameInfo &MFI = *MF.getFrameInfo();
-    int64_t FrameOffset = MFI.getStackSize() + MFI.getObjectOffset(FrameIndex);
     DebugLoc DL = MI.getDebugLoc();
     const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
 
     if (MI.getOpcode() == ZCPU::SSTACKTrun) {
-        BuildMI(*MI.getParent(), II, DL, TII->get(ZCPU::PUSH)).addImm(MI.getOperand(FIOperandNum - 1).getImm());
-        MI.eraseFromParent();
+        MI.getOperand(FIOperandNum).ChangeToImmediate(FrameIndex);
     }
 }
 

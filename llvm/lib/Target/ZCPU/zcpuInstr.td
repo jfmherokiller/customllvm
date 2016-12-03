@@ -80,7 +80,7 @@ def MXCHG:I<079,(outs), (ins i64imm:$bytes),[], "MXCHG\t$bytes">; //Swap INT byt
 
 def INT:I<092,(outs), (ins i64imm:$intval),[], "INT\t$intval">; //Call interrupt INTR
 def TPG:I<093,(outs), (ins),[], "TPG">; //"Test PAGE. Use branching instructions to test for zero on failur
-def FCEIL:I<094,(outs), (ins),[], "FCEIL">; //Rounds X up to the next integer
+
 def ERPG:I<095,(outs), (ins),[], "ERPG">; //Erase ROM page
 def WRPG:I<096,(outs), (ins),[], "WRPG">; //Copy RAM page into ROM page
 def RDPG:I<097,(outs), (ins),[], "RDPG">; //Read ROM page into RAM

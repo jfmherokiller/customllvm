@@ -38,35 +38,65 @@ using namespace llvm;
 ZCPURegisterInfo::ZCPURegisterInfo(const Triple &TT)
         : ZCPUGenRegisterInfo(0), TT(TT) {}
 
-const MCPhysReg *
-ZCPURegisterInfo::getCalleeSavedRegs(const MachineFunction *) const {
-    static const MCPhysReg CalleeSavedRegs[] = {0};
-    return CalleeSavedRegs;
-}
-
-BitVector
-ZCPURegisterInfo::getReservedRegs(const MachineFunction & /*MF*/) const {
+BitVector ZCPURegisterInfo::getReservedRegs(const MachineFunction & /*MF*/) const {
 
     BitVector Reserved(getNumRegs());
     static const uint16_t ReservedCPURegs[] = {
-            ZCPU::SerialNo,ZCPU::XEIP,
+            ZCPU::SerialNo,ZCPU::XEIP,ZCPU::IP,ZCPU::ESP,ZCPU::EBP,
     };
     for (unsigned I = 0; I < array_lengthof(ReservedCPURegs); ++I)
         Reserved.set(ReservedCPURegs[I]);
     return Reserved;
 }
 
-void ZCPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj, unsigned FIOperandNum,
-                                           RegScavenger * /*RS*/) const {
+void ZCPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II, int SPAdj, unsigned FIOperandNum, RegScavenger * RS) const {
+    assert(SPAdj == 0);
+    MachineInstr &MI = *II;
 
+    MachineBasicBlock &MBB = *MI.getParent();
+    MachineFunction &MF = *MBB.getParent();
+    MachineRegisterInfo &MRI = MF.getRegInfo();
+    int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
+    const MachineFrameInfo &MFI = *MF.getFrameInfo();
+    int64_t FrameOffset = MFI.getStackSize() + MFI.getObjectOffset(FrameIndex);
+    DebugLoc DL = MI.getDebugLoc();
+    const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
+
+    if (MI.getOpcode() == ZCPU::SSTACKTrun) {
+        BuildMI(*MI.getParent(), II, DL, TII->get(ZCPU::PUSH)).addImm(MI.getOperand(FIOperandNum - 1).getImm());
+        MI.eraseFromParent();
+    }
 }
 
 unsigned ZCPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {
-    return ZCPU::ESP;
+    return ZCPU::EBP;
 }
 
 const TargetRegisterClass *
 ZCPURegisterInfo::getPointerRegClass(const MachineFunction &MF,
                                      unsigned Kind) const {
     return &ZCPU::SegmentRegsRegClass;
+}
+
+bool ZCPURegisterInfo::hasBasePointer(const MachineFunction &MF) const {
+    const MachineFrameInfo *MFI = MF.getFrameInfo();
+    // When we need stack realignment and there are dynamic allocas, we can't
+    // reference off of the stack pointer, so we reserve a base pointer.
+    if (needsStackRealignment(MF) && MFI->hasVarSizedObjects())
+        return true;
+    return false;
+}
+bool ZCPURegisterInfo::canRealignStack(const MachineFunction &MF) const {
+    if (!TargetRegisterInfo::canRealignStack(MF))
+        return false;
+    return true;
+}
+
+const uint32_t *
+ZCPURegisterInfo::getCallPreservedMask(const MachineFunction & /*MF*/,
+                                        CallingConv::ID /*CC*/) const {
+    return CSR_Saved_RegMask;
+}
+const MCPhysReg * ZCPURegisterInfo::getCalleeSavedRegs(const MachineFunction * /*MF*/) const {
+    return CSR_Saved_SaveList;
 }

@@ -38,7 +38,7 @@ using namespace llvm;
 
 ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtarget &STI)
         : TargetLowering(TM), Subtarget(&STI) {
-    auto MVTPtr = MVT::i64;
+    auto MVTPtr = MVT::i32;
 
     // Booleans always contain 0 or 1.
     setBooleanContents(ZeroOrOneBooleanContent);
@@ -114,17 +114,12 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     //setOperationAction(ISD::STORE,MVT::i32,Legal);
     //setOperationAction(ISD::Constant,MVT::i32,Promote);
     setMinFunctionAlignment(2);
+    setMinStackArgumentAlignment(2);
 }
 
 FastISel *ZCPUTargetLowering::createFastISel(
         FunctionLoweringInfo &FuncInfo, const TargetLibraryInfo *LibInfo) const {
     return ZCPU::createFastISel(FuncInfo, LibInfo);
-}
-
-bool ZCPUTargetLowering::isOffsetFoldingLegal(
-        const GlobalAddressSDNode * /*GA*/) const {
-    // All offsets can be folded.
-    return true;
 }
 
 MVT ZCPUTargetLowering::getScalarShiftAmountTy(const DataLayout & /*DL*/, EVT VT) const {
@@ -158,6 +153,8 @@ const char *ZCPUTargetLowering::getTargetNodeName(
             return "ZCPUISD::CALL0";
         case ZCPUISD::CALL1:
             return "ZCPUISD::CALL1";
+        case ZCPUISD::ADJDYNALLOC:
+            return "ZCPUISD::ADJDYNALLOC";
         default:                         return NULL;
     }
 }
@@ -551,6 +548,27 @@ SDValue ZCPUTargetLowering::LowerFormalArguments(
 //===----------------------------------------------------------------------===//
 //  Custom lowering hooks.
 //===----------------------------------------------------------------------===//
+
+SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
+                                           SelectionDAG &DAG) const {
+    SDLoc DL(Op);
+    switch (Op.getOpcode()) {
+        default:
+            return SDValue();
+        case ISD::CopyToReg:
+            return LowerCopyToReg(Op, DAG);
+        case ISD::FRAMEADDR:
+            return LowerFRAMEADDR(Op,DAG);
+        case ISD::FrameIndex:
+            return LowerFrameIndex(Op,DAG);
+        case ISD::DYNAMIC_STACKALLOC:
+            return LowerDYNAMIC_STACKALLOC(Op,DAG);
+
+    }
+}
+//===----------------------------------------------------------------------===//
+//                          ZCPU Optimization Hooks
+//===----------------------------------------------------------------------===//
 SDValue ZCPUTargetLowering::LowerFrameIndex(SDValue Op,
                                             SelectionDAG &DAG) const {
     int FI = cast<FrameIndexSDNode>(Op)->getIndex();
@@ -579,7 +597,7 @@ SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const 
     return SDValue();
 }
 SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
-                                                  SelectionDAG &DAG) const {
+                                           SelectionDAG &DAG) const {
     // Non-zero depths are not supported by WebAssembly currently. Use the
     // legalizer's default expansion, which is to return 0 (what this function is
     // documented to do).
@@ -592,21 +610,36 @@ SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
             Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
     return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
 }
-SDValue ZCPUTargetLowering::LowerOperation(SDValue Op,
-                                           SelectionDAG &DAG) const {
+SDValue ZCPUTargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG) const {
+    SDValue Chain = Op.getOperand(0);
+    SDValue Size = Op.getOperand(1);
     SDLoc DL(Op);
-    switch (Op.getOpcode()) {
-        default:
-            return SDValue();
-        case ISD::CopyToReg:
-            return LowerCopyToReg(Op, DAG);
-        case ISD::FRAMEADDR:
-            return LowerFRAMEADDR(Op,DAG);
-        case ISD::FrameIndex:
-            return LowerFrameIndex(Op,DAG);
-    }
-}
-//===----------------------------------------------------------------------===//
-//                          ZCPU Optimization Hooks
-//===----------------------------------------------------------------------===//
 
+    unsigned SPReg = getStackPointerRegisterToSaveRestore();
+
+    // Get a reference to the stack pointer.
+    SDValue StackPointer = DAG.getCopyFromReg(Chain, DL, SPReg, MVT::i32);
+
+    // Subtract the dynamic size from the actual stack size to
+    // obtain the new stack size.
+    SDValue Sub = DAG.getNode(ISD::SUB, DL, MVT::i64, StackPointer, Size);
+
+    // For Lanai, the outgoing memory arguments area should be on top of the
+    // alloca area on the stack i.e., the outgoing memory arguments should be
+    // at a lower address than the alloca area. Move the alloca area down the
+    // stack by adding back the space reserved for outgoing arguments to SP
+    // here.
+    //
+    // We do not know what the size of the outgoing args is at this point.
+    // So, we add a pseudo instruction ADJDYNALLOC that will adjust the
+    // stack pointer. We replace this instruction with on that has the correct,
+    // known offset in emitPrologue().
+    SDValue ArgAdjust = DAG.getNode(ZCPUISD::ADJDYNALLOC, DL, MVT::i32, Sub);
+
+    // The Sub result contains the new stack start address, so it
+    // must be placed in the stack pointer register.
+    SDValue CopyChain = DAG.getCopyToReg(Chain, DL, SPReg, Sub);
+
+    ArrayRef<SDValue> Ops = {ArgAdjust, CopyChain};
+    return DAG.getMergeValues(Ops, DL);
+}

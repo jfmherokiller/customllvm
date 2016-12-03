@@ -52,6 +52,7 @@ include "ZCPUInstrFormats.td"
 //===----------------------------------------------------------------------===//
 
 include "SpecialFragments.td"
+include "specialOps.td"
 include "zcpuInstr.td"
 include "vectorInstr.td"
 include "zgpuInstr.td"

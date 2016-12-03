@@ -21,7 +21,7 @@ def MOVI:I<014,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothN
 //def MOVInt32Imm: I<014,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst,(i64 (zext (i32 imm:$src))))], "MOV\t$dst,$src">; //X = Y
 //def MOVRegGlobal: I<014,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst,(zext (i32 tglobaladdr:$src)))], "MOV\t$dst,$src">; //X = Y
 def CPUID:I<008,(outs), (ins ),[], "CPUID">; //Write processor information variable IDX into EAX register
-def PUSH:I<009,(outs), (ins),[], "PUSH">; //Push X onto processor stack
+def PUSH:I<009,(outs), (ins i64imm:$val),[], "PUSH\t$val">; //Push X onto processor stack
 
 
 def LOOP:I<024,(outs), (ins),[], "LOOP">; //"If ECX is not set to 

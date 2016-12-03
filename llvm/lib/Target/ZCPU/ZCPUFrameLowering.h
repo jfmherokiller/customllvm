@@ -56,6 +56,10 @@ namespace llvm {
                               const MachineFrameInfo &MFI) const;
 
         void determineFrameLayout(MachineFunction &MF) const;
+
+        void replaceAdjDynAllocPseudo(MachineFunction &MF) const;
+
+        void determineCalleeSaves(MachineFunction &MF, BitVector &SavedRegs, RegScavenger *RS = nullptr) const override;
     };
 
 }  // end namespace llvm

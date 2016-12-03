@@ -37,6 +37,7 @@ namespace llvm {
             CALL1,
             CALL0,
             IRET,
+            ADJDYNALLOC,
         };
     }
 
@@ -57,10 +58,7 @@ namespace llvm {
         /// right decision when generating code for different targets.
         const ZCPUSubtarget *Subtarget;
 
-        FastISel *createFastISel(FunctionLoweringInfo &FuncInfo,
-                                 const TargetLibraryInfo *LibInfo) const override;
-
-        bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
+        FastISel *createFastISel(FunctionLoweringInfo &FuncInfo, const TargetLibraryInfo *LibInfo) const override;
 
         MVT getScalarShiftAmountTy(const DataLayout &DL, EVT) const override;
 
@@ -126,6 +124,8 @@ namespace llvm {
 
         //void LowerAsmOperandForConstraint(SDValue Op, std::string &Constraint, std::vector<SDValue> &Ops, SelectionDAG &DAG)  const override;
         SDValue LowerSRA(SDValue value, SelectionDAG &dag) const;
+
+        SDValue LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG) const;
     };
 }
 #endif

@@ -41,18 +41,18 @@ namespace llvm {
 
         BitVector getReservedRegs(const MachineFunction &MF) const override;
 
-        void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj,
-                                 unsigned FIOperandNum,
-                                 RegScavenger *RS = nullptr) const override;
+        void eliminateFrameIndex(MachineBasicBlock::iterator MI, int SPAdj, unsigned FIOperandNum, RegScavenger *RS = nullptr) const override;
 
         // Debug information queries.
         unsigned getFrameRegister(const MachineFunction &MF) const override;
 
-        const TargetRegisterClass *
-        getPointerRegClass(const MachineFunction &MF,
-                           unsigned Kind = 0) const override;
+        const TargetRegisterClass *getPointerRegClass(const MachineFunction &MF, unsigned Kind = 0) const override;
 
-    private:
+        bool hasBasePointer(const MachineFunction &MF) const;
+
+        bool canRealignStack(const MachineFunction &MF) const override;
+
+        const uint32_t *getCallPreservedMask(const MachineFunction &, CallingConv::ID) const override;
     };
 
 } // end namespace llvm

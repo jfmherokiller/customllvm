@@ -130,9 +130,13 @@ ZCPUFrameLowering::eliminateCallFramePseudoInstr(
 void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
     assert(&MF.front() == &MBB && "Shrink-wrapping not yet supported");
-    auto *MFI = MF.getFrameInfo();
-    MachineBasicBlock::iterator MBBI = MBB.begin();
 
+    auto *MFI = MF.getFrameInfo();
+    if (!needsSP(MF, *MFI) || !needsSPWriteback(MF, *MFI)) return;
+
+    MachineBasicBlock::iterator MBBI = MBB.begin();
+    // Determine the correct frame layout
+    determineFrameLayout(MF);
     // Debug location must be unknown since the first debug location is used
     // to determine the end of the prologue.
     DebugLoc DL;
@@ -147,6 +151,9 @@ void ZCPUFrameLowering::emitPrologue(MachineFunction &MF,
             .setMIFlag(MachineInstr::FrameSetup);
     DEBUG(errs() << "Dumping MBB\n");
     MBB.dump();
+    // Replace ADJDYNANALLOC
+    if (MFI->hasVarSizedObjects())
+        replaceAdjDynAllocPseudo(MF);
     //llvm_unreachable("failed in enter");
 
 //return TargetFrameLowering::emitPrologue(MF,MBB);
@@ -156,7 +163,7 @@ void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
                                      MachineBasicBlock &MBB) const {
     auto *MFI = MF.getFrameInfo();
     uint64_t StackSize = MFI->getStackSize();
-    //if (!needsSP(MF, *MFI) || !needsSPWriteback(MF, *MFI)) return;
+    if (!needsSP(MF, *MFI) || !needsSPWriteback(MF, *MFI)) return;
     const auto *TII = MF.getSubtarget<ZCPUSubtarget>().getInstrInfo();
     auto &MRI = MF.getRegInfo();
     auto InsertPt = MBB.getFirstTerminator();
@@ -169,4 +176,49 @@ void ZCPUFrameLowering::emitEpilogue(MachineFunction &MF,
             .setMIFlag(MachineInstr::FrameSetup);
     //llvm_unreachable("failed in leave");
     //return TargetFrameLowering::emitEpilogue(MF,MBB);
+}
+// Iterates through each basic block in a machine function and replaces
+// ADJDYNALLOC pseudo instructions with a ZCPU:ADDI with the
+// maximum call frame size as the immediate.
+void ZCPUFrameLowering::replaceAdjDynAllocPseudo(MachineFunction &MF) const {
+    const ZCPUInstrInfo &LII = *STI.getInstrInfo();
+    unsigned MaxCallFrameSize = MF.getFrameInfo()->getMaxCallFrameSize();
+
+    for (MachineFunction::iterator MBB = MF.begin(), E = MF.end(); MBB != E;
+         ++MBB) {
+        MachineBasicBlock::iterator MBBI = MBB->begin();
+        while (MBBI != MBB->end()) {
+            MachineInstr &MI = *MBBI++;
+            if (MI.getOpcode() == ZCPU::ADJDYNALLOC) {
+                DebugLoc DL = MI.getDebugLoc();
+                unsigned Dst = MI.getOperand(0).getReg();
+                unsigned Src = MI.getOperand(1).getReg();
+
+                BuildMI(*MBB, MI, DL, LII.get(ZCPU::ADDregimmint), Dst).addReg(Src).addImm(MaxCallFrameSize);
+                MI.eraseFromParent();
+            }
+        }
+    }
+}
+void ZCPUFrameLowering::determineCalleeSaves(MachineFunction &MF,
+                                              BitVector &SavedRegs,
+                                              RegScavenger *RS) const {
+    TargetFrameLowering::determineCalleeSaves(MF, SavedRegs, RS);
+
+    MachineFrameInfo *MFI = MF.getFrameInfo();
+    const ZCPURegisterInfo *LRI = STI.getRegisterInfo();
+    int Offset = -4;
+
+    // Reserve 4 bytes for the saved RCA
+    MFI->CreateFixedObject(4, Offset, true);
+    Offset -= 4;
+
+    // Reserve 4 bytes for the saved FP
+    MFI->CreateFixedObject(4, Offset, true);
+    Offset -= 4;
+
+    if (LRI->hasBasePointer(MF)) {
+        MFI->CreateFixedObject(4, Offset, true);
+        SavedRegs.reset(ZCPU::EBP);
+    }
 }

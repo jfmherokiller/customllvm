@@ -53,3 +53,17 @@ def BOR:I<065,(outs), (ins),[], "BOR">; //Write result of binary OR between oper
 def BXOR:I<066,(outs), (ins),[], "BXOR">; //Write result of binary XOR between operands
 def BSHL:I<067,(outs), (ins),[], "BSHL">; //Shift bits of INT left by X
 def BSHR:I<068,(outs), (ins),[], "BSHR">; //Shift bits of INT right by X
+
+def FPWR:I<080,(outs), (ins),[], "FPWR">; //Raise X to power Y
+def XCHG:I<081,(outs), (ins ),[], "XCHG">; //Swap X and Y
+def FLOG:I<082,(outs), (ins),[], "FLOG">; //FLN
+def FLN:I<082,(outs), (ins),[], "FLN">; //Write logarithm (base e) of Y to X
+def FLOG10:I<083,(outs), (ins),[], "FLOG10">; //Write logarithm (base 10) of Y to X
+def IN:I<084,(outs), (ins),[], "IN">; //Input value from PORT to X
+def OUT:I<085,(outs), (ins),[], "OUT">; //Write X to PORT
+def FABS:I<086,(outs), (ins),[], "FABS">; //Write absolute value of Y to X
+def FSGN:I<087,(outs), (ins),[], "FSGN">; //Write sign of Y to X
+def FEXP:I<088,(outs), (ins),[], "FEXP">; //Write exponent of Y to X
+
+def FPI:I<090,(outs), (ins),[], "FPI">; //Set X to precise value of PI (3.1415926..)
+def FE:I<091,(outs), (ins),[], "FE">; //Set X to precise value of E (2.7182818..)

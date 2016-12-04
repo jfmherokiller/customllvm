@@ -64,6 +64,9 @@ void ZCPURegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II, int S
     if (MI.getOpcode() == ZCPU::SSTACKTrun) {
         MI.getOperand(FIOperandNum).ChangeToImmediate(FrameIndex);
     }
+    if (MI.getOpcode() == ZCPU::RSTACKSext) {
+        MI.getOperand(FIOperandNum).ChangeToImmediate(FrameIndex);
+    }
 }
 
 unsigned ZCPURegisterInfo::getFrameRegister(const MachineFunction &MF) const {

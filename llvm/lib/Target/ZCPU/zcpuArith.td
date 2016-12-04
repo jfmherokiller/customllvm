@@ -11,7 +11,7 @@ def FDIV:I<013,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFlo
 
 
 
-def CMP:I<015,(outs), (ins ),[], "CMP">; //Compare X and Y. Use with conditional branching instructions
+
 
 def MIN:I<018,(outs), (ins ),[], "MIN">; //Set X to smaller value out of X and Y
 def MAX:I<019,(outs), (ins ),[], "MAX">; //Set X to bigger value out of X and Y
@@ -37,11 +37,13 @@ def AND:I<050, (outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:
 def OR:I<051,  (outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2),[(set BothNormAndExtendedInt:$dst,(or BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))],  "OR\t$src1,$src2">; //Logical OR between X and Y
 def XOR:I<052, (outs  BothNormAndExtendedInt:$dst), (ins BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2),[(set BothNormAndExtendedInt:$dst,(xor BothNormAndExtendedInt:$src1,BothNormAndExtendedInt:$src2))], "XOR\t$src1,$src2">; //Logical XOR between X and Y
 def FCEIL:I<094,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src1),[(set BothNormAndExtendedFloat:$dst ,(fceil BothNormAndExtendedFloat:$src1))], "FCEIL\t$dst">; //Rounds X up to the next integer
+def FPWR:I<080,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src1,BothNormAndExtendedFloat:$power),[(set BothNormAndExtendedFloat:$dst,(fpow BothNormAndExtendedFloat:$src1,BothNormAndExtendedFloat:$power))], "FPWR\t$src1,$power">; //Raise X to power Y
+
 
 }
-def FSIN:I<053,(outs), (ins),[], "FSIN">; //Write sine of X to Y
-def FCOS:I<054,(outs), (ins),[], "FCOS">; //Write cosine of X to Y
-def FTAN:I<055,(outs), (ins),[], "FTAN">; //Write tangent of X to Y
+def FSIN:I<053,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,(fsin BothNormAndExtendedFloat:$src))], "FSIN\t$src,$dst">; //Write sine of X to Y
+def FCOS:I<054,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,(fcos BothNormAndExtendedFloat:$src))], "FCOS\t$src,$dst">; //Write cosine of X to Y
+def FTAN:I<055,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,(fdiv (fsin BothNormAndExtendedFloat:$src),(fcos BothNormAndExtendedFloat:$src)))], "FTAN\t$src,$dst">; //Write tangent of X to Y
 def FASIN:I<056,(outs), (ins),[], "FASIN">; //Write arcsine of X to Y
 def FACOS:I<057,(outs), (ins),[], "FACOS">; //Write arccosine of X to Y
 def FATAN:I<058,(outs), (ins),[], "FATAN">; //Write arctangent of X to Y
@@ -56,14 +58,13 @@ def BXOR:I<066,(outs), (ins),[], "BXOR">; //Write result of binary XOR between o
 def BSHL:I<067,(outs), (ins),[], "BSHL">; //Shift bits of INT left by X
 def BSHR:I<068,(outs), (ins),[], "BSHR">; //Shift bits of INT right by X
 
-def FPWR:I<080,(outs), (ins),[], "FPWR">; //Raise X to power Y
 def XCHG:I<081,(outs), (ins),[], "XCHG">; //Swap X and Y
 def FLOG:I<082,(outs), (ins),[], "FLOG">; //FLN
 def FLN:I<082,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,(fdiv (flog2 BothNormAndExtendedFloat:$src),(flog2 (bitconvert 0x4005bf0a8b145703))))], "FLN\t$src,$dst">; //Write logarithm (base e) of Y to X
 def FLOG10:I<083,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,(fdiv (flog2 BothNormAndExtendedFloat:$src),(flog2 (sint_to_fp 10))))], "FLOG10\t$src,$dst">; //Write logarithm (base 10) of Y to X
 def IN:I<084,(outs), (ins),[], "IN">; //Input value from PORT to X
 def OUT:I<085,(outs), (ins),[], "OUT">; //Write X to PORT
-def FABS:I<086,(outs), (ins),[], "FABS">; //Write absolute value of Y to X
+def FABS:I<086,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,(fabs BothNormAndExtendedFloat:$src))], "FABS\t$src,$dst">; //Write absolute value of Y to X
 def FSGN:I<087,(outs), (ins),[], "FSGN">; //Write sign of Y to X
 def FEXP:I<088,(outs), (ins),[], "FEXP">; //Write exponent of Y to X
 

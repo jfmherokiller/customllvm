@@ -1,20 +1,5 @@
 
-let isBranch = 1 in {
-def JNE:I<001,(outs), (ins brtarget:$dst),[], "JNE\t$dst">; //Jump to PTR if result is not equal
-def JNZ:I<001,(outs), (ins brtarget:$dst),[], "JNZ\t$dst">; //Jump to PTR if result is not zero
-def JMP:I<002,(outs), (ins brtarget:$dst),[(br bb:$dst)], "JMP\t$dst">; //Jump to PTR
-def JG:I<003,(outs), (ins brtarget:$dst),[], "JG\t$dst">; //Jump to PTR if result is greater
-def JNLE:I<003,(outs), (ins brtarget:$dst),[], "JNLE\t$dst">; //Jump to PTR if result is not less or equal
-def JGE:I<004,(outs), (ins brtarget:$dst),[], "JGE\t$dst">; //Jump to PTR if result is greater or equal
-def JNL:I<004,(outs), (ins brtarget:$dst),[], "JNL\t$dst">; //Jump to PTR if result is not less
-def JL:I<005,(outs), (ins brtarget:$dst),[], "JL\t$dst">; //Jump to PTR if result is less
-def JNGE:I<005,(outs), (ins brtarget:$dst),[], "JNGE\t$dst">; //Jump to PTR if result is not greater or equal
-def JLE:I<006,(outs), (ins brtarget:$dst),[], "JLE\t$dst">; //Jump to PTR if result is less or equal
-def JNG:I<006,(outs), (ins brtarget:$dst),[], "JNG\t$dst">; //Jump to PTR if result is not greater
-def JE:I<007,(outs), (ins brtarget:$dst),[], "JE\t$dst">; //Jump to PTR if result is equal
-def JZ:I<007,(outs), (ins brtarget:$dst),[], "JZ\t$dst">; //Jump to PTR if result is zero
-def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
-}
+
 //def MOV32:I<014,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst, (zext(i32 imm:$src)))],"mov\t{$src, $dst|$dst, $src}">; //X = Y
 def MOVI:I<014,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,imm:$src)], "MOV\t$dst,$src">; //X = Y
 //def MOVF:I<014,(outs BothNormAndExtendedFloat:$dst), (ins BothNormAndExtendedFloat:$src),[(set BothNormAndExtendedFloat:$dst,BothNormAndExtendedFloat:$src)], "MOV\t$dst,$src">; //X = Y
@@ -140,6 +125,9 @@ def SMAP:I<131,(outs), (ins),[], "SMAP">; //Remap PAGE1 to physical page PAGE2
 def GMAP:I<132,(outs), (ins),[], "GMAP">; //Read what physical page PAGE is mapped to
 let mayLoad = 1 in {
 def RSTACKInt:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
+def RSTACKSext:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(sextload tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
+//def RSTACKanyext:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(anyext(load tframeindex:$src)))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
+
 }
 let mayStore = 1,Uses = [ESP] in {
 def SSTACK:I<134,(outs ), (ins i64imm:$ptr,i32imm:$val),[(store (i32 imm:$val),tframeindex:$ptr)], "SSTACK\t$ptr,$val">; //Write value to stack at offset IDX (to address SS+IDX)

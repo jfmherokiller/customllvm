@@ -100,7 +100,7 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     setOperationAction(ISD::UINT_TO_FP, MVT::i8, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i16, Promote);
     setOperationAction(ISD::UINT_TO_FP, MVT::i32, Promote);
-    for (auto T : {MVT::i32, MVT::i64}) {
+    for (auto T : {MVT::f64, MVT::i64}) {
         // Expand unavailable integer operations.
         for (auto Op :
                 {ISD::BSWAP, ISD::SMUL_LOHI, ISD::UMUL_LOHI,
@@ -113,8 +113,8 @@ ZCPUTargetLowering::ZCPUTargetLowering(const TargetMachine &TM, const ZCPUSubtar
     //setOperationAction(ISD::GlobalAddress,MVT::i32,Expand);
     //setOperationAction(ISD::STORE,MVT::i32,Legal);
     //setOperationAction(ISD::Constant,MVT::i32,Promote);
-    setMinFunctionAlignment(2);
-    setMinStackArgumentAlignment(2);
+    setMinFunctionAlignment(0);
+    setMinStackArgumentAlignment(0);
 }
 
 FastISel *ZCPUTargetLowering::createFastISel(
@@ -587,7 +587,7 @@ SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const 
         unsigned Reg = cast<RegisterSDNode>(Op.getOperand(1))->getReg();
         EVT VT = Src.getValueType();
         SDValue Copy(
-                DAG.getMachineNode( ZCPU::COPY, DL, VT, Src), 0);
+                DAG.getMachineNode( ZCPU::RSTACKSext, DL, VT, Src), 0);
         return Op.getNode()->getNumValues() == 1
                ? DAG.getCopyToReg(Chain, DL, Reg, Copy)
                : DAG.getCopyToReg(Chain, DL, Reg, Copy, Op.getNumOperands() == 4
@@ -618,7 +618,7 @@ SDValue ZCPUTargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DA
     unsigned SPReg = getStackPointerRegisterToSaveRestore();
 
     // Get a reference to the stack pointer.
-    SDValue StackPointer = DAG.getCopyFromReg(Chain, DL, SPReg, MVT::i32);
+    SDValue StackPointer = DAG.getCopyFromReg(Chain, DL, SPReg, MVT::i64);
 
     // Subtract the dynamic size from the actual stack size to
     // obtain the new stack size.

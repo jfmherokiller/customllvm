@@ -6,7 +6,7 @@ let Defs = [ESP], Uses = [ESP] in {
 }
 multiclass BrcondPatsCmp<RegisterClass RC, Instruction JEQOp, Instruction JNEOp,
 Instruction JLTOp, Instruction JGTOp, Instruction JLEOp, Instruction JGEOp,
-Instruction CMPOp> {
+Instruction CMPOp,Instruction CMPIOp> {
 def : Pat<(brcond (i64 (seteq RC:$lhs, RC:$rhs)), bb:$dst),
           (JEQOp (CMPOp RC:$lhs, RC:$rhs), bb:$dst)>;
 def : Pat<(brcond (i64 (setueq RC:$lhs, RC:$rhs)), bb:$dst),
@@ -52,6 +52,7 @@ def JZ:I<007,(outs), (ins BothNormAndExtendedInt:$ra,brtarget:$dst),[], "JZ\t$ds
 def JMPF:I<069,(outs), (ins),[], "JMPF">; //Jump to PTR in code segment CS
 }
 
-def CMP:I<015,(outs BothNormAndExtendedInt:$ra), (ins BothNormAndExtendedInt:$rb, BothNormAndExtendedInt:$rc),[], "CMP">; //Compare X and Y. Use with conditional branching instructions
+def CMP:I<015,(outs BothNormAndExtendedInt:$ra), (ins BothNormAndExtendedInt:$rb, BothNormAndExtendedInt:$rc),[], "CMP\t$rb,$rc">; //Compare X and Y. Use with conditional branching instructions
+def CMPImm:I<015,(outs BothNormAndExtendedInt:$ra), (ins BothNormAndExtendedInt:$rb, i64imm:$rc),[], "CMP\t$rb,$rc">; //Compare X and Y. Use with conditional branching instructions
 
-defm : BrcondPatsCmp<BothNormAndExtendedInt, JE, JNE, JL, JG, JLE, JGE, CMP>;
+defm : BrcondPatsCmp<BothNormAndExtendedInt, JE, JNE, JL, JG, JLE, JGE, CMP,CMPImm>;

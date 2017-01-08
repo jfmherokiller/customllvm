@@ -103,7 +103,6 @@ def POPA:I<115,(outs), (ins),[], "POPA">; //Pop all general purpose registers of
 
 
 def STD2:I<116,(outs), (ins),[], "STD2">; //Enable hardware debug mode
-def LEAVE:I<117,(outs), (ins),[], "LEAVE">; //Leave subroutine stack frame
 def STM:I<118,(outs), (ins),[], "STM">; //Enable extended memory mode
 def CLM:I<119,(outs), (ins),[], "CLM">; //Disable extended memory mode
 def CPUGET:I<120,(outs BothNormAndExtendedInt:$outreg), (ins i64imm:$regnum),[], "CPUGET\t$outreg,$regnum">; //Read internal processor register IDX
@@ -126,12 +125,16 @@ def GMAP:I<132,(outs), (ins),[], "GMAP">; //Read what physical page PAGE is mapp
 let mayLoad = 1 in {
 def RSTACKInt:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
 def RSTACKSext:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(sextload tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
-//def RSTACKanyext:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(anyext(load tframeindex:$src)))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
+def RSTACKany:I<133,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(extload tframeindex:$src))], "RSTACK\t$dst,$src">; //Read value from stack at offset IDX (from address SS+IDX)
 
 }
-let mayStore = 1,Uses = [ESP] in {
-def SSTACK:I<134,(outs ), (ins i64imm:$ptr,i32imm:$val),[(store (i32 imm:$val),tframeindex:$ptr)], "SSTACK\t$ptr,$val">; //Write value to stack at offset IDX (to address SS+IDX)
+let mayStore = 1,Uses = [ESP], Defs = [ESP] in {
+def SSTACK:I<134,(outs ), (ins i64imm:$ptr,i64imm:$val),[(store (i64 imm:$val),tframeindex:$ptr)], "SSTACK\t$ptr,$val">; //Write value to stack at offset IDX (to address SS+IDX)
+
 def SSTACKTrun:I<134,(outs ), (ins i64imm:$ptr,i64imm:$val),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "SSTACK\tESP:$ptr,$val">; //Write value to stack at offset IDX (to address SS+IDX)
+}
+let isTerminator = 1, hasCtrlDep = 1, isBarrier = 1 in {
+def LEAVE:I<117,(outs), (ins),[], "LEAVE">; //Leave subroutine stack frame
 }
 def ENTER:I<135,(outs), (ins i64imm:$amt),[], "ENTER $amt">; //Enter stack frame and allocate SIZE bytes on stack for local variables
 
@@ -142,8 +145,8 @@ def EXTRETPA:I<141,(outs), (ins),[], "EXTRETPA">; //"Set PTB
 
 
 
-//def RDInt:I<016,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load imm:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
-//def RDInt32:I<016,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst,(load imm:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
+def RDInt:I<016,(outs BothNormAndExtendedInt:$dst), (ins i64imm:$src),[(set BothNormAndExtendedInt:$dst,(load imm:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
+def RDInt32:I<016,(outs BothNormAndExtendedInt:$dst), (ins i32imm:$src),[(set BothNormAndExtendedInt:$dst,(load imm:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
 
 //def RDFloat:I<016,(outs BothNormAndExtendedFloat:$dst), (ins i64imm:$src),[(set BothNormAndExtendedFloat:$dst,(load imm:$src))], "RD\t$dst,$src">; //Read value from memory by pointer PTR
 
@@ -152,5 +155,5 @@ def EXTRETPA:I<141,(outs), (ins),[], "EXTRETPA">; //"Set PTB
 //def WDIntFrame32:I<017,(outs ), (ins i32imm:$val, i64imm:$ptr),[(store (i32 imm:$val),tframeindex:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
 //def WDIntFrame32trunc:I<017,(outs ), (ins i64imm:$val, i64imm:$ptr),[(truncstore (i64 imm:$val),tframeindex:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
 
-def WDFloat:I<017,(outs ), (ins BothNormAndExtendedFloat:$val, i64imm:$ptr),[(store BothNormAndExtendedFloat:$val,imm:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
+//def WDFloat:I<017,(outs ), (ins BothNormAndExtendedFloat:$val, i64imm:$ptr),[(store BothNormAndExtendedFloat:$val,imm:$ptr)], "WD\t$val,$ptr">; //Write value to memory by pointer PTR
 

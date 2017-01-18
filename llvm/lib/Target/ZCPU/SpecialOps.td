@@ -56,3 +56,4 @@ def CMP:I<015,(outs BothNormAndExtendedInt:$ra), (ins BothNormAndExtendedInt:$rb
 def CMPImm:I<015,(outs BothNormAndExtendedInt:$ra), (ins BothNormAndExtendedInt:$rb, i64imm:$rc),[], "CMP\t$rb,$rc">; //Compare X and Y. Use with conditional branching instructions
 
 defm : BrcondPatsCmp<BothNormAndExtendedInt, JE, JNE, JL, JG, JLE, JGE, CMP,CMPImm>;
+

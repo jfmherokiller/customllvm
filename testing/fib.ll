@@ -3,6 +3,9 @@ source_filename = "testing/fib.c"
 target datalayout = "e-m:o-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-apple-darwin16.1.0"
 
+declare void @llvm.trap() noreturn nounwind
+
+
 ; Function Attrs: nounwind
 define i32 @main() #0 {
   %retval = alloca i32, align 4

@@ -596,8 +596,7 @@ SDValue ZCPUTargetLowering::LowerCopyToReg(SDValue Op, SelectionDAG &DAG) const 
     }
     return SDValue();
 }
-SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
-                                           SelectionDAG &DAG) const {
+SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const {
     // Non-zero depths are not supported by WebAssembly currently. Use the
     // legalizer's default expansion, which is to return 0 (what this function is
     // documented to do).
@@ -606,8 +605,7 @@ SDValue ZCPUTargetLowering::LowerFRAMEADDR(SDValue Op,
 
     DAG.getMachineFunction().getFrameInfo()->setFrameAddressIsTaken(true);
     EVT VT = Op.getValueType();
-    unsigned FP =
-            Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
+    unsigned FP = Subtarget->getRegisterInfo()->getFrameRegister(DAG.getMachineFunction());
     return DAG.getCopyFromReg(DAG.getEntryNode(), SDLoc(Op), FP, VT);
 }
 SDValue ZCPUTargetLowering::LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG) const {
